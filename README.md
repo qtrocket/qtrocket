@@ -1,2 +1,2 @@
 # fxrocket
-Model Rocket Simulator written in C++ and FOX Toolkit
+Model Rocket Simulator written in C++ and wxWidgets Toolkit
