@@ -1,5 +1,4 @@
 #include <iostream>
-#include <memory>
 
 #include <wx/wxprec.h>
 
@@ -28,7 +27,6 @@ private:
 
 };
 
-wxIMPLEMENT_APP(wxRocket);
 
 bool wxRocket::OnInit()
 {
@@ -81,3 +79,6 @@ void MainWindowFrame::onAbout(wxCommandEvent& evt)
    wxMessageBox(_("This is wxRocket. (c) 2023 by Travis Hunter"),
                 _("About wxRocket"), wxOK | wxICON_INFORMATION);
 }
+
+// This will build the main function
+wxIMPLEMENT_APP(wxRocket);
