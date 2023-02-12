@@ -41,52 +41,40 @@ MainWindowFrame::MainWindowFrame()
    // Create the layout
 
    // Create the splitter window, then we can add panels to it
-   wxSplitterWindow* windowSplitter = new wxSplitterWindow(this,
+   wxSplitterWindow* mainSplitter = new wxSplitterWindow(this,
+                                                         wxID_ANY,
+                                                         wxDefaultPosition,
+                                                         wxDefaultSize,
+                                                         wxSP_BORDER | wxSP_LIVE_UPDATE);
+   wxSplitterWindow* designSplitter = new wxSplitterWindow(mainSplitter,
                                                            wxID_ANY,
                                                            wxDefaultPosition,
                                                            wxDefaultSize,
                                                            wxSP_BORDER | wxSP_LIVE_UPDATE);
-   windowSplitter->SetMinimumPaneSize(200);
-   //wxSplitterWindow* topSplitter    = new wxSplitterWindow(this);
+   designSplitter->SetMinimumPaneSize(200);
 
 
    // NOTE, we never call delete manually on the panel since setting the parent pointer (this)
    // will put the onus on the parent to manage the resource. It'll get deleted
    // when the parent gets deleted. In this case the MainWindowFrame
-   wxPanel* rocketTreePanel = new wxPanel(windowSplitter,
+   wxPanel* rocketTreePanel = new wxPanel(designSplitter,
                                           wxID_ANY,
                                           wxDefaultPosition,
                                           wxSize(200, 100));
    rocketTreePanel->SetBackgroundColour(wxColor(100, 100, 200));
 
-   wxPanel* rocketComponentPanel = new wxPanel(windowSplitter,
+   wxPanel* rocketComponentPanel = new wxPanel(designSplitter,
                                                wxID_ANY,
                                                wxDefaultPosition,
                                                wxSize(200, 100));
    rocketComponentPanel->SetBackgroundColour(wxColor(200, 100, 100));
 
-   windowSplitter->SplitVertically(rocketTreePanel, rocketComponentPanel);
-/*
-   wxSizer* rocketDesignSizer = new wxBoxSizer(wxHORIZONTAL);
-   rocketDesignSizer->Add(rocketTreePanel, 1, wxEXPAND | wxRIGHT, 2);
-   rocketDesignSizer->Add(rocketComponentPanel, 1, wxEXPAND);
-*/
+   designSplitter->SplitVertically(rocketTreePanel, rocketComponentPanel);
 
-/*
-   wxPanel* rocketVisPanel = new wxPanel(this, wxID_ANY);
+   wxPanel* rocketVisPanel = new wxPanel(mainSplitter, wxID_ANY);
    rocketVisPanel->SetBackgroundColour(wxColor(100, 200, 100));
-*/
 
-//   wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
-//   mainSizer->Add(rocketDesignSizer, 2, wxEXPAND | wxALL, 2);
-//   mainSizer->Add(rocketVisPanel, 1, wxEXPAND | wxLEFT | wxBOTTOM | wxRIGHT, 2);
-//   this->SetSizerAndFit(mainSizer);
-   /*
-   SetSizer(mainSizer);
-   wxTextCtrl* firstNameBox = new wxTextCtrl(this, wxID_ANY);
-   mainSizer->Add(firstNameBox, 1, wxEXPAND);
-   */
-
+   mainSplitter->SplitHorizontally(designSplitter, rocketVisPanel);
 
    Bind(wxEVT_MENU, &MainWindowFrame::onAbout, this, wxID_ABOUT);
    Bind(wxEVT_MENU, &MainWindowFrame::onExit, this, wxID_EXIT);
