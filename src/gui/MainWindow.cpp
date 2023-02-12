@@ -12,6 +12,11 @@ namespace gui
 MainWindowFrame::MainWindowFrame()
    : wxFrame(nullptr, wxID_ANY, "wxRocket", wxDefaultPosition, wxDefaultSize)
 {
+   // Set the icon
+   wxIcon appIcon(rocket32x32);
+   wxMask* appIconMask = new wxMask(appIcon, wxColor(0, 0, 0));
+   appIcon.SetMask(appIconMask);
+   this->SetIcon(appIcon);
    // Add a File menu
    wxMenu* fileMenu = new wxMenu;
    fileMenu->Append(wxID_NEW);
