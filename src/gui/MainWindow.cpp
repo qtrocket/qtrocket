@@ -3,6 +3,9 @@
 #include <wx/artprov.h>
 #include <wx/splitter.h>
 
+#include "images/rocket16x16.xpm"
+#include "images/rocket32x32.xpm"
+
 namespace gui
 {
 
@@ -19,6 +22,10 @@ MainWindowFrame::MainWindowFrame()
    wxMenu* editMenu = new wxMenu;
    // Add a Tools menu
    wxMenu* toolsMenu = new wxMenu;
+   wxBitmap launchItemIcon = wxBitmap(rocket16x16);
+   wxMask* liMask = new wxMask(launchItemIcon, wxColor(0, 0, 0));
+   launchItemIcon.SetMask(liMask);
+   wxMenuItem* launchItem = toolsMenu->Append(wxID_ANY, _("&Launch"));
 
    // Add a Help menu
    wxMenu* helpMenu = new wxMenu;
@@ -36,6 +43,7 @@ MainWindowFrame::MainWindowFrame()
 
    wxToolBar* toolbar = CreateToolBar();
    toolbar->AddTool(wxID_NEW, _("New"), wxArtProvider::GetBitmap("wxART_NEW"));
+   toolbar->AddTool(launchItem->GetId(), _("Launch Rocket"), launchItemIcon);
    toolbar->Realize();
 
    // Create the layout
