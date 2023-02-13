@@ -5,7 +5,7 @@
 #include <curl/curl.h>
 #include <vector>
 
-namespace Utils
+namespace utils
 {
 
 class CurlConnection
