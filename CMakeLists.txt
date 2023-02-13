@@ -26,6 +26,7 @@ enable_testing()
 add_subdirectory(src/gui)
 add_subdirectory(src/sim)
 add_subdirectory(src/Utils)
+add_subdirectory(src/model)
 
 #find_package(wxWidgets REQUIRED gl core base)
 #include(${wxWidgets_USE_FILE})
