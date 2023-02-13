@@ -16,7 +16,7 @@ namespace
 }
 }
 
-namespace Utils
+namespace utils
 {
 
 CurlConnection::CurlConnection()
