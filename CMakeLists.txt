@@ -23,8 +23,6 @@ endif()
 
 enable_testing()
 
-include_directories(".")
-
 add_subdirectory(src/gui)
 add_subdirectory(src/sim)
 add_subdirectory(src/Utils)
