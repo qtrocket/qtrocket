@@ -4,3 +4,4 @@ add_library(sim
    WindModel.cpp
    USStandardAtmosphere.cpp)
 
+target_include_directories(sim PRIVATE ${PROJECT_SOURCE_DIR}/src)
