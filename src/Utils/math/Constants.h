@@ -4,12 +4,12 @@
 namespace utils::math
 {
 
-struct Constants
+namespace Constants
 {
-   static const double Rstar = 8.3144598;
-   static const double g0 = 9.80665;
-   static const double airMolarMass = 0.0289644;
-   static const double standardTemperature = 288.15;
+   constexpr double Rstar = 8.3144598;
+   constexpr const double g0 = 9.80665;
+   constexpr const double airMolarMass = 0.0289644;
+   constexpr const double standardTemperature = 288.15;
 };
 
 } // namespace utils::math
