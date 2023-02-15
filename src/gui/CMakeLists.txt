@@ -4,4 +4,4 @@ add_executable(wxRocket
    main.cpp
    MainWindow.cpp)
 
-target_link_libraries(wxRocket PRIVATE ${wxWidgets_LIBRARIES})
+target_link_libraries(wxRocket PRIVATE sim model utils math ${wxWidgets_LIBRARIES})
