@@ -28,6 +28,9 @@ public:
    double getTemperature(double altitude) override;
 
 private:
+   static utils::BinMap temperatureLapseRate;
+   static utils::BinMap standardTemperature;
+   static utils::BinMap standardDensity;
 
 
 };
