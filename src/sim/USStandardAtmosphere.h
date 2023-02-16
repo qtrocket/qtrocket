@@ -15,6 +15,10 @@ public:
 
    /**
     * @brief Get the density of the air at a given altitude above mean sea level
+    *        This is overly simplistic and wrong implementation.
+    * 
+    * @todo Fix this implementation. See the 1976 NOAA paper for the right way to
+    *       do it
     * 
     * @param altitude the altitude above sea level
     * @return the density in kg/m^3
