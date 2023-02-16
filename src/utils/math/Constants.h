@@ -10,6 +10,7 @@ namespace Constants
    constexpr const double g0 = 9.80665;
    constexpr const double airMolarMass = 0.0289644;
    constexpr const double standardTemperature = 288.15;
+   constexpr const double standardDensity = 1.2250;
 };
 
 } // namespace utils::math
