@@ -10,7 +10,7 @@ Thrustcurve::Thrustcurve(std::vector<std::pair<double, double>>& tc)
                               thrustCurve.end(),
                               [](const auto& a, const auto& b)
                               {
-                                 return a.first < a.second;
+                                 return a.first < b.first;
                               })->first;
 }
 
@@ -52,9 +52,10 @@ double Thrustcurve::getThrust(double t)
    // the start of the interval. 
    double tStart = std::prev(i)->first;
    double thrustStart = std::prev(i)->second;
+   double thrustEnd = i->second;
    double tEnd = i->first;
-   double slope = (i->second - std::prev(i)->second) / 
-                  (i->first - std::prev(i)->first);
+   double slope = (thrustEnd - thrustStart) /
+                  (tEnd - tStart);
    return thrustStart + (t - tStart) * slope;
 
 }

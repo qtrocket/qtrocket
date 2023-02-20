@@ -1,15 +1,10 @@
 #include "CurlConnection.h"
 
-#include <vector>
 #include <iostream>
-
-#include <time.h>
-
-#include <curl/curl.h>
 
 namespace
 {
-   size_t curlCallback(void* content, size_t size, size_t nmemb, std::string* buffer)
+size_t curlCallback(void* content, size_t size, size_t nmemb, std::string* buffer)
 {
    buffer->append(static_cast<char*>(content), size*nmemb);
    return size*nmemb;
@@ -42,7 +37,7 @@ std::string CurlConnection::get(const std::string& url,
       if(!extraHttpHeaders.empty())
       {
          struct curl_slist *chunk = NULL;
-         for(int i = 0; i < extraHttpHeaders.size(); ++i)
+         for(size_t i = 0; i < extraHttpHeaders.size(); ++i)
          {
             chunk = curl_slist_append(chunk, extraHttpHeaders[i].c_str());
          }
@@ -68,4 +63,4 @@ std::string CurlConnection::get(const std::string& url,
    return str_result;
 }
 
-} // namespace Utils
+} // namespace utils
