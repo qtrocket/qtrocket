@@ -1,7 +1,0 @@
-find_package(wxWidgets REQUIRED gl core base)
-include(${wxWidgets_USE_FILE})
-add_executable(wxRocket
-   main.cpp
-   MainWindow.cpp)
-
-target_link_libraries(wxRocket PRIVATE sim model utils math ${wxWidgets_LIBRARIES})

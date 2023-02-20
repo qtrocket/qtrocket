@@ -1,12 +1,11 @@
-#ifndef _APPRESETAPI_H_
-#define _APPRESETAPI_H_
+#ifndef UTILS_CURLCONNECTION_H
+#define UTILS_CURLCONNECTION_H
 
+#include <vector>
 #include <string>
 #include <curl/curl.h>
-#include <vector>
 
-namespace utils
-{
+namespace utils {
 
 class CurlConnection
 {
@@ -22,8 +21,6 @@ private:
 
 };
 
-void initCurl(const std::string& host);
-
 } // namespace utils
 
-#endif // _APPRESETAPI_H_
+#endif // UTILS_CURLCONNECTION_H

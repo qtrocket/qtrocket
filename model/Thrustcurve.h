@@ -4,6 +4,9 @@
 #include <vector>
 #include <tuple>
 
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+
 // No namespace. Maybe should be, but this is a model rocket program
 // so model is sort of implied? Or I'm just making excuses for being lazy
 
@@ -29,10 +32,23 @@ public:
     * @param t The time in seconds. For t > burntime or < 0, this will return 0.0
     * @return Thrust in Newtons
    */
-  double getThrust(double t);
+   double getThrust(double t);
 
 private:
+   // We're using boost::serialize for data storage and retrieval
+   friend class boost::serialization::access;
+   template<class Archive>
+   void serialize(Archive& ar, const unsigned int version);
+
    std::vector<std::pair<double, double>> thrustCurve;
    double maxTime;
 };
+
+template<class Archive>
+void Thrustcurve::serialize(Archive& ar, const unsigned int version)
+{
+   ar & maxTime;
+   ar & thrustCurve;
+}
+
 #endif // MODEL_THRUSTCURVE_H
