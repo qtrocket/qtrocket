@@ -17,13 +17,17 @@ SOURCES += \
     qcustomplot.cpp \
     sim/AtmosphericModel.cpp \
     sim/GravityModel.cpp \
+    sim/Propagator.cpp \
+    sim/RK4Solver.cpp \
     sim/SphericalGeoidModel.cpp \
     sim/SphericalGravityModel.cpp \
     sim/USStandardAtmosphere.cpp \
     sim/WindModel.cpp \
     utils/BinMap.cpp \
     utils/CurlConnection.cpp \
-    utils/ThrustCurveAPI.cpp
+    utils/ThrustCurveAPI.cpp \
+    utils/math/Quaternion.cpp \
+    utils/math/Vector3.cpp
 
 HEADERS += \
     QtRocket.h \
@@ -32,8 +36,11 @@ HEADERS += \
     model/Thrustcurve.h \
     qcustomplot.h \
     sim/AtmosphericModel.h \
+    sim/DESolver.h \
     sim/GeoidModel.h \
     sim/GravityModel.h \
+    sim/Propagator.h \
+    sim/RK4Solver.h \
     sim/SphericalGeoidModel.h \
     sim/SphericalGravityModel.h \
     sim/USStandardAtmosphere.h \
@@ -41,7 +48,9 @@ HEADERS += \
     utils/BinMap.h \
     utils/CurlConnection.h \
     utils/ThrustCurveAPI.h \
-    utils/math/Constants.h
+    utils/math/Constants.h \
+    utils/math/Quaternion.h \
+    utils/math/Vector3.h
 
 FORMS += \
     QtRocket.ui

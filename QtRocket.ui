@@ -13,6 +13,10 @@
   <property name="windowTitle">
    <string>QtRocket</string>
   </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>resources/qtrocket.png</normaloff>resources/qtrocket.png</iconset>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout" stretch="2">
     <item>
