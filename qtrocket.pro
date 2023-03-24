@@ -25,6 +25,7 @@ SOURCES += \
     sim/WindModel.cpp \
     utils/BinMap.cpp \
     utils/CurlConnection.cpp \
+    utils/Logger.cpp \
     utils/ThrustCurveAPI.cpp \
     utils/math/Quaternion.cpp \
     utils/math/Vector3.cpp
@@ -47,6 +48,7 @@ HEADERS += \
     sim/WindModel.h \
     utils/BinMap.h \
     utils/CurlConnection.h \
+    utils/Logger.h \
     utils/ThrustCurveAPI.h \
     utils/math/Constants.h \
     utils/math/Quaternion.h \
