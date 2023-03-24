@@ -59,6 +59,8 @@ void Logger::log(std::string_view msg, const LogLevel& lvl)
             std::cout << "[WARN] " << msg << std::endl;
          }
          [[fallthrough]];
+      // Regardless of what level is set, ERROR is always logged, so
+      // rather than explicitly check for the ERROR case, we just use default case
       default:
          if(lvl == ERROR)
          {
