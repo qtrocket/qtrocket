@@ -7,6 +7,7 @@
 int main(int argc, char *argv[])
 {
    QApplication a(argc, argv);
+   a.setWindowIcon(QIcon(":/qtrocket.png"));
 
    // Start translation component.
    // TODO: Only support US English at the moment. Anyone want to help translate?

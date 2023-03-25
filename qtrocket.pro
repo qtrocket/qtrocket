@@ -69,3 +69,6 @@ unix: CONFIG += link_pkgconfig
 unix: PKGCONFIG += libcurl
 
 unix: PKGCONFIG += fmt
+
+RESOURCES += \
+   qtrocket.qrc

@@ -14,8 +14,8 @@
    <string>QtRocket</string>
   </property>
   <property name="windowIcon">
-   <iconset>
-    <normaloff>resources/qtrocket.png</normaloff>resources/qtrocket.png</iconset>
+   <iconset resource="qtrocket.qrc">
+    <normaloff>:/qtrocket.png</normaloff>:/qtrocket.png</iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout" stretch="2">
@@ -109,6 +109,8 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="qtrocket.qrc"/>
+ </resources>
  <connections/>
 </ui>
