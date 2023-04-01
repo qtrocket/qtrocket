@@ -1,15 +1,17 @@
 #include "QtRocket.h"
-#include "ui_QtRocket.h"
 
-QtRocket::QtRocket(QWidget *parent)
-   : QMainWindow(parent)
-   , ui(new Ui::QtRocket)
+QtRocket* QtRocket::instance = nullptr;
+
+QtRocket* QtRocket::getInstance()
 {
-   ui->setupUi(this);
+   if(!instance)
+   {
+      instance = new QtRocket();
+   }
+   return instance;
 }
 
-QtRocket::~QtRocket()
+QtRocket::QtRocket()
 {
-   delete ui;
+   logger = utils::Logger::getInstance();
 }
-

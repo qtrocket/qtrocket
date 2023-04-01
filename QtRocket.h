@@ -1,21 +1,27 @@
 #ifndef QTROCKET_H
 #define QTROCKET_H
 
-#include <QMainWindow>
+#include "utils/Logger.h"
+#include "gui/MainWindow.h"
 
-QT_BEGIN_NAMESPACE
-namespace Ui { class QtRocket; }
-QT_END_NAMESPACE
-
-class QtRocket : public QMainWindow
+/**
+ * @brief The QtRocket class is the master controller for the QtRocket application.
+ * It is the singleton that controls the interaction of the various components of
+ * the QtRocket program
+ */
+class QtRocket
 {
-   Q_OBJECT
-
 public:
-   QtRocket(QWidget *parent = nullptr);
-   ~QtRocket();
-
+   static QtRocket* getInstance();
 private:
-   Ui::QtRocket *ui;
+   QtRocket();
+
+   static QtRocket* instance;
+
+   utils::Logger* logger;
+
+
+
 };
+
 #endif // QTROCKET_H

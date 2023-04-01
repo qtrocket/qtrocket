@@ -24,6 +24,7 @@ public:
    };
 
    static Logger* getInstance();
+   ~Logger();
 
    Logger(Logger const&) = delete;
    Logger(Logger&&) = delete;
@@ -54,7 +55,6 @@ private:
    static Logger* instance;
    std::mutex mtx;
    Logger();
-   ~Logger();
 };
 
 } // namespace utils

@@ -29,7 +29,7 @@ public:
    double getX3() { return x3; }
 
 
-private:
+//private:
    double x1;
    double x2;
    double x3;

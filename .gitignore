@@ -37,3 +37,5 @@ build/
 # IDE
 .vscode/qtrocket.pro.user
 qtrocket.pro.user
+.qmake.stash
+

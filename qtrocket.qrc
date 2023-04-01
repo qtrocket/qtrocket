@@ -1,7 +1,6 @@
-<!DOCTYPE RCC>
-<RCC version="1.0">
-  <qresource>
-    <file alias="qtrocket.png">resources/qtrocket.png</file>
-  </qresource>
+<RCC>
+    <qresource prefix="/"/>
+    <qresource prefix="/images">
+        <file>resources/rocket64.png</file>
+    </qresource>
 </RCC>
-

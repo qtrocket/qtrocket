@@ -10,7 +10,8 @@ public:
    DESolver() {}
    virtual ~DESolver() {}
 
-   virtual double step(double curVal, double t, double dt) = 0;
+   virtual void setTimeStep(double ts) = 0;
+   virtual double step(double curVal, double t) const = 0;
 };
 
 } // namespace sim

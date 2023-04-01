@@ -9,33 +9,41 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    main.cpp \
     QtRocket.cpp \
+    gui/AboutWindow.cpp \
+    gui/qcustomplot.cpp \
+    main.cpp \
+    gui/RocketTreeView.cpp \
+    gui/MainWindow.cpp \
     model/Motor.cpp \
     model/MotorCase.cpp \
     model/Thrustcurve.cpp \
-    qcustomplot.cpp \
     sim/AtmosphericModel.cpp \
     sim/GravityModel.cpp \
     sim/Propagator.cpp \
     sim/RK4Solver.cpp \
     sim/SphericalGeoidModel.cpp \
     sim/SphericalGravityModel.cpp \
+    sim/StateData.cpp \
     sim/USStandardAtmosphere.cpp \
     sim/WindModel.cpp \
     utils/BinMap.cpp \
     utils/CurlConnection.cpp \
     utils/Logger.cpp \
+    utils/ThreadPool.cpp \
     utils/ThrustCurveAPI.cpp \
     utils/math/Quaternion.cpp \
     utils/math/Vector3.cpp
 
 HEADERS += \
     QtRocket.h \
+    gui/AboutWindow.h \
+    gui/RocketTreeView.h \
+    gui/MainWindow.h \
+    gui/qcustomplot.h \
     model/Motor.h \
     model/MotorCase.h \
     model/Thrustcurve.h \
-    qcustomplot.h \
     sim/AtmosphericModel.h \
     sim/DESolver.h \
     sim/GeoidModel.h \
@@ -44,18 +52,21 @@ HEADERS += \
     sim/RK4Solver.h \
     sim/SphericalGeoidModel.h \
     sim/SphericalGravityModel.h \
+    sim/StateData.h \
     sim/USStandardAtmosphere.h \
     sim/WindModel.h \
     utils/BinMap.h \
     utils/CurlConnection.h \
     utils/Logger.h \
+    utils/ThreadPool.h \
     utils/ThrustCurveAPI.h \
     utils/math/Constants.h \
     utils/math/Quaternion.h \
     utils/math/Vector3.h
 
 FORMS += \
-    QtRocket.ui
+    gui/AboutWindow.ui \
+    gui/MainWindow.ui
 
 TRANSLATIONS += \
     qtrocket_en_US.ts
