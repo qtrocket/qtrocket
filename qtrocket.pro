@@ -17,11 +17,11 @@ SOURCES += \
     gui/MainWindow.cpp \
     model/Motor.cpp \
     model/MotorCase.cpp \
+    model/Rocket.cpp \
     model/Thrustcurve.cpp \
     sim/AtmosphericModel.cpp \
     sim/GravityModel.cpp \
     sim/Propagator.cpp \
-    sim/RK4Solver.cpp \
     sim/SphericalGeoidModel.cpp \
     sim/SphericalGravityModel.cpp \
     sim/StateData.cpp \
@@ -43,6 +43,7 @@ HEADERS += \
     gui/qcustomplot.h \
     model/Motor.h \
     model/MotorCase.h \
+    model/Rocket.h \
     model/Thrustcurve.h \
     sim/AtmosphericModel.h \
     sim/DESolver.h \

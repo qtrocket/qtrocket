@@ -2,6 +2,7 @@
 #define STATEDATA_H
 
 #include "utils/math/Vector3.h"
+#include "utils/math/Quaternion.h"
 
 /**
  * @brief The StateData class holds physical state data. Things such as position, velocity,
@@ -14,12 +15,11 @@ public:
    StateData();
 
 private:
-   math::Vector3 position;
-   math::Vector3 velocity;
-   math::Vector3 acceleration;
+   math::Vector3 position{0.0, 0.0, 0.0};
+   math::Vector3 velocity{0.0, 0.0, 0.0};
 
-   math::Vector3 orientation; // roll, pitch, yaw
-   math::Vector3 orientationVelocity; // roll-rate, pitch-rate, yaw-rate
+   math::Quaternion orientation{0.0, 0.0, 0.0, 0.0}; // roll, pitch, yaw
+   math::Quaternion orientationRate{0.0, 0.0, 0.0, 0.0}; // roll-rate, pitch-rate, yaw-rate
    // Necessary?
    //math::Vector3 orientationAccel;
 

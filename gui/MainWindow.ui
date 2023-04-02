@@ -99,7 +99,7 @@
         <string>Calculate Ballistic Trajectory</string>
        </property>
       </widget>
-      <widget class="QWidget" name="">
+      <widget class="QWidget" name="layoutWidget">
        <property name="geometry">
         <rect>
          <x>260</x>
@@ -117,7 +117,11 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QLineEdit" name="initialVelocity"/>
+         <widget class="QLineEdit" name="initialVelocity">
+          <property name="text">
+           <string>500.0</string>
+          </property>
+         </widget>
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="label_2">
@@ -127,7 +131,11 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QLineEdit" name="initialAngle"/>
+         <widget class="QLineEdit" name="initialAngle">
+          <property name="text">
+           <string>45.0</string>
+          </property>
+         </widget>
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label_3">
@@ -137,7 +145,11 @@
          </widget>
         </item>
         <item row="2" column="1">
-         <widget class="QLineEdit" name="mass"/>
+         <widget class="QLineEdit" name="mass">
+          <property name="text">
+           <string>1.0</string>
+          </property>
+         </widget>
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="label_4">
@@ -147,7 +159,11 @@
          </widget>
         </item>
         <item row="3" column="1">
-         <widget class="QLineEdit" name="dragCoeff"/>
+         <widget class="QLineEdit" name="dragCoeff">
+          <property name="text">
+           <string>0.5</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </widget>

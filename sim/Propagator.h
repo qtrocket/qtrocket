@@ -1,6 +1,9 @@
 #ifndef SIM_PROPAGATOR_H
 #define SIM_PROPAGATOR_H
 
+#include "sim/DESolver.h"
+
+#include <memory>
 
 namespace sim
 {
@@ -11,6 +14,8 @@ public:
     Propagator();
 
 private:
+
+   std::unique_ptr<sim::DESolver> solver;
 };
 
 } // namespace sim

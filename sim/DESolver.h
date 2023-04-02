@@ -11,7 +11,7 @@ public:
    virtual ~DESolver() {}
 
    virtual void setTimeStep(double ts) = 0;
-   virtual double step(double curVal, double t) const = 0;
+   virtual void step(double t, double* curVal, double* res ) = 0;
 };
 
 } // namespace sim

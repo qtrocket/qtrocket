@@ -82,15 +82,27 @@ void MainWindow::on_testButton2_clicked()
 
    double ts = 0.01;
 
-   sim::RK4Solver velXSolver([=](double x, double t) -> double { return 0.0; });
-   velXSolver.setTimeStep(ts);
-   sim::RK4Solver velYSolver([=](double y, double t) -> double { return -9.8; });
-   velYSolver.setTimeStep(ts);
+   // X position/velocity. x[0] is X position, x[1] is X velocity
+   double x[2] = {0.0, initialVelocityX};
 
-   sim::RK4Solver posXSolver([=](double x, double t) -> double { return velXSolver.step(x, t); });
-   posXSolver.setTimeStep(ts);
-   sim::RK4Solver posYSolver([=](double y, double t) -> double { return velYSolver.step(x, t); });
-   posYSolver.setTimeStep(ts);
+   // Y position/velocity. y[0] is Y position, y[1] is Y velocity
+   double y[2] = {0.0, initialVelocityY};
+
+   auto xvelODE = [mass, dragCoeff](double, double* x) -> double
+      {
+
+         return -dragCoeff * 1.225 * 0.00774192 / (2.0 * mass) * x[1]*x[1]; };
+   auto xposODE = [](double, double* x) -> double { return x[1]; };
+   sim::RK4Solver xSolver(xposODE, xvelODE);
+   xSolver.setTimeStep(0.01);
+
+   auto yvelODE = [mass, dragCoeff](double, double* y) -> double
+      {
+
+         return -dragCoeff * 1.225 * 0.00774192 / (2.0 * mass) * y[1]*y[1] - 9.8; };
+   auto yposODE = [](double, double* y) -> double { return y[1]; };
+   sim::RK4Solver ySolver(yposODE, yvelODE);
+   ySolver.setTimeStep(0.01);
 
 
    // These can be solved independently for now. Maybe figure out how to merge them later
@@ -98,33 +110,42 @@ void MainWindow::on_testButton2_clicked()
    QTextStream cout(stdout);
    cout << "Initial X velocity: " << initialVelocityX << "\n";
    cout << "Initial Y velocity: " << initialVelocityY << "\n";
+   double resX[2];
+   double resY[2];
    for(size_t i = 0; i < maxTs; ++i)
    {
-      position.emplace_back(posXSolver.step(position[i].getX1(), i * ts),
-                            posYSolver.step(position[i].getX2(), i * ts),
-                            0.0);
+      xSolver.step(i * ts, x, resX);
+      ySolver.step(i * ts, y, resY);
+      position.emplace_back(resX[0], resY[0], 0.0);
+
+      x[0] = resX[0];
+      x[1] = resX[1];
+      y[0] = resY[0];
+      y[1] = resY[1];
 
       cout << "(" << position[i].getX1() << ", " << position[i].getX2() << ")\n";
+      if(y[0] < 0.0)
+         break;
 
    }
-
    auto& plot = ui->plotWindow;
    // generate some data:
-   QVector<double> x(position.size()), y(position.size());
-   for (int i = 0; i < x.size(); ++i)
+   QVector<double> xData(position.size()), yData(position.size());
+   for (int i = 0; i < xData.size(); ++i)
    {
-     x[i] = position[i].getX1();
-     y[i] = position[i].getX2();
+     xData[i] = position[i].getX1();
+     yData[i] = position[i].getX2();
    }
    // create graph and assign data to it:
    plot->addGraph();
-   plot->graph(0)->setData(x, y);
+   plot->graph(0)->setData(xData, yData);
    // give the axes some labels:
    plot->xAxis->setLabel("x");
    plot->yAxis->setLabel("y");
    // set axes ranges, so we see all data:
-   plot->xAxis->setRange(*std::min_element(std::begin(x), std::end(x)), *std::max_element(std::begin(x), std::end(x)));
-   plot->yAxis->setRange(*std::min_element(std::begin(y), std::end(y)), *std::max_element(std::begin(y), std::end(y)));
+   plot->xAxis->setRange(*std::min_element(std::begin(xData), std::end(xData)), *std::max_element(std::begin(xData), std::end(xData)));
+   plot->yAxis->setRange(*std::min_element(std::begin(yData), std::end(yData)), *std::max_element(std::begin(yData), std::end(yData)));
    plot->replot();
+
 }
 
