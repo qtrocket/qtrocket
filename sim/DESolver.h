@@ -1,6 +1,8 @@
 #ifndef SIM_DESOLVER_H
 #define SIM_DESOLVER_H
 
+#include <vector>
+
 namespace sim
 {
 
@@ -11,7 +13,7 @@ public:
    virtual ~DESolver() {}
 
    virtual void setTimeStep(double ts) = 0;
-   virtual void step(double t, double* curVal, double* res ) = 0;
+   virtual void step(double t, const std::vector<double>& curVal, std::vector<double>& res ) = 0;
 };
 
 } // namespace sim

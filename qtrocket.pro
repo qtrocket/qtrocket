@@ -59,6 +59,7 @@ HEADERS += \
     utils/BinMap.h \
     utils/CurlConnection.h \
     utils/Logger.h \
+    utils/TSQueue.h \
     utils/ThreadPool.h \
     utils/ThrustCurveAPI.h \
     utils/math/Constants.h \

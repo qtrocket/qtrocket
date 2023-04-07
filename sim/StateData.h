@@ -14,6 +14,7 @@ class StateData
 public:
    StateData();
 
+
 private:
    math::Vector3 position{0.0, 0.0, 0.0};
    math::Vector3 velocity{0.0, 0.0, 0.0};
@@ -23,6 +24,8 @@ private:
    // Necessary?
    //math::Vector3 orientationAccel;
 
+   // This is an array because the integrator expects it
+   double data[6];
 
 };
 

@@ -4,6 +4,7 @@
 #include "sim/DESolver.h"
 
 #include <memory>
+#include <vector>
 
 namespace sim
 {
@@ -12,23 +13,50 @@ class Propagator
 {
 public:
     Propagator();
+    ~Propagator();
 
-   double getForceX();
-   double getForceY();
-   double getForceZ();
+    void setInitialState(std::vector<double>& initialState)
+    {
+       currentState = initialState;
+    }
 
-   double getTorqueP();
-   double getTorqueQ();
-   double getTorqueR();
+    const std::vector<double>& getCurrentState() const
+    {
+       return currentState;
+    }
 
-   double getMass();
+    void runUntilTerminate();
+
+    void retainStates(bool s)
+    {
+       saveStates = s;
+    }
+
+    const std::vector<std::vector<double>>& getStates() const { return states; }
+
+    void setTimeStep(double ts) { timeStep = ts; }
 
 private:
+    double getForceX() { return 0.0; }
+    double getForceY() { return 0.0; }
+    double getForceZ() { return 0.0; }
+
+    double getTorqueP() { return 0.0; }
+    double getTorqueQ() { return 0.0; }
+    double getTorqueR() { return 0.0; }
+
+   double getMass() { return 0.0; }
+
+//private:
 
    std::unique_ptr<sim::DESolver> integrator;
 
-   double currentState[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   double nextState[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> nextState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   bool saveStates{true};
+   double currentTime{0.0};
+   double timeStep{0.01};
+   std::vector<std::vector<double>> states;
 };
 
 } // namespace sim

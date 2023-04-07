@@ -19,13 +19,14 @@ public:
    RK4Solver(Ts... funcs)
    {
       (odes.push_back(funcs), ...);
+      temp.resize(sizeof...(Ts));
 
    }
    virtual ~RK4Solver() {}
 
    void setTimeStep(double inTs) override { dt = inTs;  halfDT = dt / 2.0; }
 
-   void step(double t, double* curVal, double* res) override
+   void step(double t, const std::vector<double>& curVal, std::vector<double>& res) override
    {
       if(dt == std::numeric_limits<double>::quiet_NaN())
       {
@@ -76,7 +77,7 @@ public:
    }
 
 private:
-   std::vector<std::function<double(double, double*)>> odes;
+   std::vector<std::function<double(double, const std::vector<double>&)>> odes;
 
    static constexpr size_t len = sizeof...(Ts);
    double k1[len];
@@ -84,7 +85,7 @@ private:
    double k3[len];
    double k4[len];
 
-   double temp[len];
+   std::vector<double> temp;
 
    double dt = std::numeric_limits<double>::quiet_NaN();
    double halfDT = 0.0;

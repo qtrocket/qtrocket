@@ -83,24 +83,24 @@ void MainWindow::on_testButton2_clicked()
    double ts = 0.01;
 
    // X position/velocity. x[0] is X position, x[1] is X velocity
-   double x[2] = {0.0, initialVelocityX};
+   std::vector<double> x = {0.0, initialVelocityX};
 
    // Y position/velocity. y[0] is Y position, y[1] is Y velocity
-   double y[2] = {0.0, initialVelocityY};
+   std::vector<double> y = {0.0, initialVelocityY};
 
-   auto xvelODE = [mass, dragCoeff](double, double* x) -> double
+   auto xvelODE = [mass, dragCoeff](double, const std::vector<double>& x) -> double
       {
 
          return -dragCoeff * 1.225 * 0.00774192 / (2.0 * mass) * x[1]*x[1]; };
-   auto xposODE = [](double, double* x) -> double { return x[1]; };
+   auto xposODE = [](double, const std::vector<double>& x) -> double { return x[1]; };
    sim::RK4Solver xSolver(xposODE, xvelODE);
    xSolver.setTimeStep(0.01);
 
-   auto yvelODE = [mass, dragCoeff](double, double* y) -> double
+   auto yvelODE = [mass, dragCoeff](double, const std::vector<double>& y) -> double
       {
 
          return -dragCoeff * 1.225 * 0.00774192 / (2.0 * mass) * y[1]*y[1] - 9.8; };
-   auto yposODE = [](double, double* y) -> double { return y[1]; };
+   auto yposODE = [](double, const std::vector<double>& y) -> double { return y[1]; };
    sim::RK4Solver ySolver(yposODE, yvelODE);
    ySolver.setTimeStep(0.01);
 
@@ -110,18 +110,16 @@ void MainWindow::on_testButton2_clicked()
    QTextStream cout(stdout);
    cout << "Initial X velocity: " << initialVelocityX << "\n";
    cout << "Initial Y velocity: " << initialVelocityY << "\n";
-   double resX[2];
-   double resY[2];
+   std::vector<double> resX(2);
+   std::vector<double> resY(2);
    for(size_t i = 0; i < maxTs; ++i)
    {
       xSolver.step(i * ts, x, resX);
       ySolver.step(i * ts, y, resY);
       position.emplace_back(resX[0], resY[0], 0.0);
 
-      x[0] = resX[0];
-      x[1] = resX[1];
-      y[0] = resY[0];
-      y[1] = resY[1];
+      x = resX;
+      y = resY;
 
       cout << "(" << position[i].getX1() << ", " << position[i].getX2() << ")\n";
       if(y[0] < 0.0)
