@@ -20,6 +20,7 @@ SOURCES += \
     model/Rocket.cpp \
     model/Thrustcurve.cpp \
     sim/AtmosphericModel.cpp \
+    sim/ConstantGravityModel.cpp \
     sim/GravityModel.cpp \
     sim/Propagator.cpp \
     sim/SphericalGeoidModel.cpp \
@@ -46,6 +47,7 @@ HEADERS += \
     model/Rocket.h \
     model/Thrustcurve.h \
     sim/AtmosphericModel.h \
+    sim/ConstantGravityModel.h \
     sim/DESolver.h \
     sim/GeoidModel.h \
     sim/GravityModel.h \

@@ -6,6 +6,10 @@
 #include <atomic>
 
 #include "utils/Logger.h"
+#include "model/Rocket.h"
+
+#include "sim/AtmosphericModel.h"
+#include "sim/GravityModel.h"
 
 /**
  * @brief The QtRocket class is the master controller for the QtRocket application.
@@ -23,6 +27,9 @@ public:
    // If called multiple times, subsequent calls, will simply
    // immediately return with value 0
    int run(int argc, char* argv[]);
+
+   void runSim();
+
 private:
    QtRocket();
 
@@ -34,6 +41,11 @@ private:
    static QtRocket* instance;
 
    utils::Logger* logger;
+
+   std::shared_ptr<Rocket> rocket;
+   std::shared_ptr<sim::AtmosphericModel> atmosphere;
+   std::shared_ptr<sim::GravityModel> gravity;
+
 
 };
 

@@ -7,6 +7,9 @@
 
 #include <thread>
 
+#include "sim/USStandardAtmosphere.h"
+#include "sim/ConstantGravityModel.h"
+
 
 // Initialize static member data
 QtRocket* QtRocket::instance = nullptr;
@@ -64,6 +67,12 @@ QtRocket::QtRocket()
 {
    logger = utils::Logger::getInstance();
    running = false;
+
+   atmosphere =
+        std::make_shared<sim::USStandardAtmosphere>();
+
+   gravity =
+        std::make_shared<sim::ConstantGravityModel>();
 }
 
 int QtRocket::run(int argc, char* argv[])
