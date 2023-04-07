@@ -10,9 +10,10 @@
 #include <memory>
 #include <cmath>
 
-MainWindow::MainWindow(QWidget *parent)
-   : QMainWindow(parent)
-   , ui(new Ui::MainWindow)
+MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
+   : QMainWindow(parent),
+   ui(new Ui::MainWindow),
+   qtRocket(_qtRocket)
 {
    ui->setupUi(this);
 }

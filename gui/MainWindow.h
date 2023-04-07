@@ -1,7 +1,10 @@
-#ifndef QTROCKET_H
-#define QTROCKET_H
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
 
 #include <QMainWindow>
+
+#include "QtRocket.h"
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -12,7 +15,7 @@ class MainWindow : public QMainWindow
    Q_OBJECT
 
 public:
-   MainWindow(QWidget *parent = nullptr);
+   MainWindow(QtRocket* _qtRocket, QWidget *parent = nullptr);
    ~MainWindow();
 
 private slots:
@@ -24,5 +27,6 @@ private slots:
 
 private:
    Ui::MainWindow* ui;
+   QtRocket* qtRocket;
 };
-#endif // QTROCKET_H
+#endif // MAINWINDOW_H
