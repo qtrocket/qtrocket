@@ -1,13 +1,17 @@
+#include <iostream>
 #include "Propagator.h"
 
 #include "sim/RK4Solver.h"
+#include "model/Rocket.h"
 
 #include <utility>
+#include <QTextStream>
 
 namespace sim {
 
-Propagator::Propagator()
-   : integrator()
+Propagator::Propagator(Rocket* r)
+   : integrator(),
+     rocket(r)
 
 {
 
@@ -30,6 +34,7 @@ Propagator::Propagator()
 
 
    integrator->setTimeStep(timeStep);
+   saveStates = true;
 }
 
 Propagator::~Propagator()
@@ -38,20 +43,51 @@ Propagator::~Propagator()
 
 void Propagator::runUntilTerminate()
 {
-   while(true)
+
+    QTextStream out(stdout);
+       std::size_t j = 0;
+   while(true && j < 100000)
    {
       // nextState gets overwritten
-      integrator->step(currentTime, currentState, nextState);
-      std::swap(currentState, nextState);
+      integrator->step(currentTime, currentState, tempRes);
+      std::size_t size = currentState.size();
+      for(size_t i = 0; i < size; ++i)
+      {
+          currentState[i] = tempRes[i];
+          tempRes[i] = 0;
+      }
+
+      //std::swap(currentState, nextState);
       if(saveStates)
       {
          states.push_back(currentState);
       }
+      out << currentTime << ": ("
+          << currentState[0] << ", "
+          << currentState[1] << ", "
+          << currentState[2] << ", "
+          << currentState[3] << ", "
+          << currentState[4] << ", "
+          << currentState[5] << ")\n";
       if(currentState[1] < 0.0)
          break;
 
+       j++;
       currentTime += timeStep;
    }
 }
+
+double Propagator::getMass()
+{
+    return rocket->getMass();
+}
+
+double Propagator::getForceX() { return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3]; }
+double Propagator::getForceY() { return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4] -9.8; }
+double Propagator::getForceZ() { return 0; }
+
+double Propagator::getTorqueP() { return 0.0; }
+double Propagator::getTorqueQ() { return 0.0; }
+double Propagator::getTorqueR() { return 0.0; }
 
 } // namespace sim

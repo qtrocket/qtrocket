@@ -6,18 +6,26 @@
 #include <memory>
 #include <vector>
 
+// Forward declare
+class Rocket;
+
 namespace sim
 {
 
 class Propagator
 {
 public:
-    Propagator();
+    Propagator(Rocket* r);
     ~Propagator();
 
-    void setInitialState(std::vector<double>& initialState)
+    void setInitialState(const std::vector<double>& initialState)
     {
-       currentState = initialState;
+       currentState.resize(initialState.size());
+       for(std::size_t i = 0; i < initialState.size(); ++i)
+       {
+           currentState[i] = initialState[i];
+       }
+
     }
 
     const std::vector<double>& getCurrentState() const
@@ -36,23 +44,27 @@ public:
 
     void setTimeStep(double ts) { timeStep = ts; }
 
+    void setSaveStats(bool s) { saveStates = s; }
+
 private:
-    double getForceX() { return 0.0; }
-    double getForceY() { return 0.0; }
-    double getForceZ() { return 0.0; }
+    double getForceX();
+    double getForceY();
+    double getForceZ();
 
-    double getTorqueP() { return 0.0; }
-    double getTorqueQ() { return 0.0; }
-    double getTorqueR() { return 0.0; }
+    double getTorqueP();
+    double getTorqueQ();
+    double getTorqueR();
 
-   double getMass() { return 0.0; }
+   double getMass();
 
 //private:
 
    std::unique_ptr<sim::DESolver> integrator;
 
+   Rocket* rocket;
+
    std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   std::vector<double> nextState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};

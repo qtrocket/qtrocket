@@ -1,9 +1,6 @@
 #ifndef ROCKET_H
 #define ROCKET_H
 
-#include "utils/math/Vector3.h"
-#include "utils/math/Quaternion.h"
-
 #include "sim/Propagator.h"
 
 #include <utility> // std::move
@@ -14,30 +11,21 @@ class Rocket
 public:
    Rocket();
 
-   void setPosition(const math::Vector3& pos) { *position = pos; }
-   void setPosition(math::Vector3&& pos) { *position = std::move(pos); }
+   void launch();
+   const std::vector<std::vector<double>>& getStates() const { return propagator.getStates(); }
 
-   void setVelocity(const math::Vector3& vel) { *velocity = vel; }
-   void setVelocity(math::Vector3&& vel) { *velocity = std::move(vel); }
+   void setInitialState(const std::vector<double>& initState) { propagator.setInitialState(initState); }
 
-   void setOrientation(const math::Quaternion& ori) { *orientation = ori; }
-   void setOrientation(math::Quaternion&& ori) { *orientation = std::move(ori); }
+   double getMass() const { return mass; }
+   void setMass(double m) { mass = m;}
 
-   void setOrientationRate(const math::Quaternion& ori) { *orientationRate = ori; }
-   void setOrientationRate(math::Quaternion&& ori) { *orientationRate = std::move(ori); }
-
-   const math::Vector3& getPosition() const { return *position; }
-   const math::Vector3& getVelocity() const { return *velocity; }
-   const math::Quaternion& getOrientation() const { return *orientation; }
-   const math::Quaternion& getOrientationRate() const { return *orientation; }
+   void setDragCoefficient(double d) { dragCoeff = d; }
+   double getDragCoefficient() const { return dragCoeff; }
 private:
 
-   std::shared_ptr<math::Vector3> position;
-   std::shared_ptr<math::Vector3> velocity;
-   std::shared_ptr<math::Quaternion> orientation;
-   std::shared_ptr<math::Quaternion> orientationRate;
-
    sim::Propagator propagator;
+   double dragCoeff;
+   double mass;
 };
 
 #endif // ROCKET_H

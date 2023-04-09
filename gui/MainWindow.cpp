@@ -4,6 +4,7 @@
 
 #include "utils/math/Vector3.h"
 #include "sim/RK4Solver.h"
+#include "model/Rocket.h"
 
 #include <QTextStream>
 
@@ -74,66 +75,21 @@ void MainWindow::on_testButton2_clicked()
 
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
    double initialVelocityY = initialVelocity * std::sin(initialAngle / 57.2958);
-   math::Vector3 initialVelVector(initialVelocityX, initialVelocityY, 0.0);
-   std::vector<math::Vector3> position;
-   position.emplace_back(0.0, 0.0, 0.0);
+   Rocket rocket;
+   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, initialVelocityY, 0.0};
+   rocket.setInitialState(initialState);
+   rocket.setMass(mass);
+   rocket.setDragCoefficient(dragCoeff);
+   rocket.launch();
 
-   std::vector<math::Vector3> velocity;
-   velocity.push_back(initialVelVector);
-
-   double ts = 0.01;
-
-   // X position/velocity. x[0] is X position, x[1] is X velocity
-   std::vector<double> x = {0.0, initialVelocityX};
-
-   // Y position/velocity. y[0] is Y position, y[1] is Y velocity
-   std::vector<double> y = {0.0, initialVelocityY};
-
-   auto xvelODE = [mass, dragCoeff](double, const std::vector<double>& x) -> double
-      {
-
-         return -dragCoeff * 1.225 * 0.00774192 / (2.0 * mass) * x[1]*x[1]; };
-   auto xposODE = [](double, const std::vector<double>& x) -> double { return x[1]; };
-   sim::RK4Solver xSolver(xposODE, xvelODE);
-   xSolver.setTimeStep(0.01);
-
-   auto yvelODE = [mass, dragCoeff](double, const std::vector<double>& y) -> double
-      {
-
-         return -dragCoeff * 1.225 * 0.00774192 / (2.0 * mass) * y[1]*y[1] - 9.8; };
-   auto yposODE = [](double, const std::vector<double>& y) -> double { return y[1]; };
-   sim::RK4Solver ySolver(yposODE, yvelODE);
-   ySolver.setTimeStep(0.01);
-
-
-   // These can be solved independently for now. Maybe figure out how to merge them later
-   size_t maxTs = std::ceil(100.0 / ts);
-   QTextStream cout(stdout);
-   cout << "Initial X velocity: " << initialVelocityX << "\n";
-   cout << "Initial Y velocity: " << initialVelocityY << "\n";
-   std::vector<double> resX(2);
-   std::vector<double> resY(2);
-   for(size_t i = 0; i < maxTs; ++i)
-   {
-      xSolver.step(i * ts, x, resX);
-      ySolver.step(i * ts, y, resY);
-      position.emplace_back(resX[0], resY[0], 0.0);
-
-      x = resX;
-      y = resY;
-
-      cout << "(" << position[i].getX1() << ", " << position[i].getX2() << ")\n";
-      if(y[0] < 0.0)
-         break;
-
-   }
+   const std::vector<std::vector<double>>& res = rocket.getStates();
    auto& plot = ui->plotWindow;
    // generate some data:
-   QVector<double> xData(position.size()), yData(position.size());
+   QVector<double> xData(res.size()), yData(res.size());
    for (int i = 0; i < xData.size(); ++i)
    {
-     xData[i] = position[i].getX1();
-     yData[i] = position[i].getX2();
+     xData[i] = res[i][0];
+     yData[i] = res[i][1];
    }
    // create graph and assign data to it:
    plot->addGraph();
