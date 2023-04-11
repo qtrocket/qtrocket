@@ -59,7 +59,7 @@ void Propagator::runUntilTerminate()
       }
       */
 
-      std::swap(currentState, nextState);
+      std::swap(currentState, tempRes);
       if(saveStates)
       {
          states.push_back(currentState);
