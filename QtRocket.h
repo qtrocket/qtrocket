@@ -30,6 +30,9 @@ public:
 
    void runSim();
 
+   std::shared_ptr<sim::GravityModel> getGravityModel() { return gravity; }
+   std::shared_ptr<sim::AtmosphericModel> getAtmosphereModel() { return atmosphere; }
+
 private:
    QtRocket();
 

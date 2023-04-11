@@ -12,7 +12,7 @@ public:
 
     virtual ~ConstantGravityModel() {}
 
-    std::tuple<double, double, double> getAccel(double, double, double) override { return std::make_tuple(0.0, 0.0, 9.8); }
+    std::tuple<double, double, double> getAccel(double, double, double) override { return std::make_tuple(0.0, 0.0, -9.8); }
 };
 
 } // namespace sim

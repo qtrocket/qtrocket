@@ -3,6 +3,7 @@
 
 #include "sim/RK4Solver.h"
 #include "model/Rocket.h"
+#include "QtRocket.h"
 
 #include <utility>
 #include <QTextStream>
@@ -11,7 +12,8 @@ namespace sim {
 
 Propagator::Propagator(Rocket* r)
    : integrator(),
-     rocket(r)
+     rocket(r),
+     qtrocket(QtRocket::getInstance())
 
 {
 
@@ -71,7 +73,7 @@ void Propagator::runUntilTerminate()
           << currentState[3] << ", "
           << currentState[4] << ", "
           << currentState[5] << ")\n";
-      if(currentState[1] < 0.0)
+      if(currentState[2] < 0.0)
          break;
 
        j++;
@@ -84,9 +86,22 @@ double Propagator::getMass()
     return rocket->getMass();
 }
 
-double Propagator::getForceX() { return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3]; }
-double Propagator::getForceY() { return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4] -9.8; }
-double Propagator::getForceZ() { return 0; }
+double Propagator::getForceX()
+{
+    return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
+}
+
+double Propagator::getForceY()
+{
+    return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
+}
+
+double Propagator::getForceZ()
+{
+    double gravity = std::get<2>(qtrocket->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2]));
+    double airDrag = -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
+    return gravity + airDrag;
+}
 
 double Propagator::getTorqueP() { return 0.0; }
 double Propagator::getTorqueQ() { return 0.0; }

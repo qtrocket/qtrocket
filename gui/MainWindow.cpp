@@ -74,9 +74,9 @@ void MainWindow::on_testButton2_clicked()
             ui->rocketPartButtons->findChild<QLineEdit*>(QString("dragCoeff"))->text().toDouble();
 
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
-   double initialVelocityY = initialVelocity * std::sin(initialAngle / 57.2958);
+   double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
    Rocket rocket;
-   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, initialVelocityY, 0.0};
+   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ};
    rocket.setInitialState(initialState);
    rocket.setMass(mass);
    rocket.setDragCoefficient(dragCoeff);
@@ -89,7 +89,7 @@ void MainWindow::on_testButton2_clicked()
    for (int i = 0; i < xData.size(); ++i)
    {
      xData[i] = res[i][0];
-     yData[i] = res[i][1];
+     yData[i] = res[i][2];
    }
    // create graph and assign data to it:
    plot->addGraph();
