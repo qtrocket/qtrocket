@@ -50,14 +50,16 @@ void Propagator::runUntilTerminate()
    {
       // nextState gets overwritten
       integrator->step(currentTime, currentState, tempRes);
+      /*
       std::size_t size = currentState.size();
       for(size_t i = 0; i < size; ++i)
       {
           currentState[i] = tempRes[i];
           tempRes[i] = 0;
       }
+      */
 
-      //std::swap(currentState, nextState);
+      std::swap(currentState, nextState);
       if(saveStates)
       {
          states.push_back(currentState);
