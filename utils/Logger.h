@@ -4,7 +4,6 @@
 #include <fstream>
 #include <mutex>
 #include <string_view>
-//#include <functional>
 
 /**
  * @todo write docs

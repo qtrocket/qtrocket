@@ -18,12 +18,6 @@ Logger* Logger::getInstance()
 Logger::Logger()
 {
    outFile.open("log.txt");
-   /*
-   error = [this](std::string_view msg) { log(msg, ERROR); };
-   warn  = [this](std::string_view msg) { log(msg, WARN); };
-   info  = [this](std::string_view msg) { log(msg, INFO); };
-   debug = [this](std::string_view msg) { log(msg, DEBUG); };
-   */
 }
 
 Logger::~Logger()
@@ -42,21 +36,21 @@ void Logger::log(std::string_view msg, const LogLevel& lvl)
          if(lvl == DEBUG)
          {
             outFile << "[DEBUG] " << msg << std::endl;
-            std::cout << "[DEBUG] " << msg << std::endl;
+             std::cout << "[DEBUG] " << msg << "\n";
          }
          [[fallthrough]];
       case INFO:
          if(lvl == INFO)
          {
             outFile << "[INFO] " << msg << std::endl;
-            std::cout << "[INFO] " << msg << std::endl;
+             std::cout << "[INFO] " << msg << "\n";
          }
          [[fallthrough]];
       case WARN:
          if(lvl == WARN)
          {
             outFile << "[WARN] " << msg << std::endl;
-            std::cout << "[WARN] " << msg << std::endl;
+             std::cout << "[WARN] " << msg << "\n";
          }
          [[fallthrough]];
       // Regardless of what level is set, ERROR is always logged, so
@@ -65,8 +59,7 @@ void Logger::log(std::string_view msg, const LogLevel& lvl)
          if(lvl == ERROR)
          {
             outFile << "[ERROR] " << msg << std::endl;
-            std::cout << "[ERROR] " << msg << std::endl;
-            std::cerr << "[ERROR] " << msg << std::endl;
+             std::cout << "[ERROR] " << msg << "\n";
          }
    }
 }

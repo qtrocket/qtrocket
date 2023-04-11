@@ -3,10 +3,12 @@
 
 #include "sim/RK4Solver.h"
 #include "model/Rocket.h"
+#include "utils/Logger.h"
 #include "QtRocket.h"
 
 #include <utility>
-#include <QTextStream>
+#include <chrono>
+#include <sstream>
 
 namespace sim {
 
@@ -45,8 +47,9 @@ Propagator::~Propagator()
 
 void Propagator::runUntilTerminate()
 {
+   std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
+   std::chrono::steady_clock::time_point endTime;
 
-    QTextStream out(stdout);
        std::size_t j = 0;
    while(true && j < 100000)
    {
@@ -66,19 +69,19 @@ void Propagator::runUntilTerminate()
       {
          states.push_back(currentState);
       }
-      out << currentTime << ": ("
-          << currentState[0] << ", "
-          << currentState[1] << ", "
-          << currentState[2] << ", "
-          << currentState[3] << ", "
-          << currentState[4] << ", "
-          << currentState[5] << ")\n";
       if(currentState[2] < 0.0)
          break;
 
        j++;
       currentTime += timeStep;
    }
+   endTime = std::chrono::steady_clock::now();
+
+   std::stringstream duration;
+   duration << "runUntilTerminate time (microseconds): ";
+   duration << std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+   utils::Logger::getInstance()->debug(duration.str());
+
 }
 
 double Propagator::getMass()
