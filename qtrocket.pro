@@ -11,6 +11,7 @@ CONFIG += c++17
 SOURCES += \
     QtRocket.cpp \
     gui/AboutWindow.cpp \
+    gui/AnalysisWindow.cpp \
     gui/qcustomplot.cpp \
     main.cpp \
     gui/RocketTreeView.cpp \
@@ -39,6 +40,7 @@ SOURCES += \
 HEADERS += \
     QtRocket.h \
     gui/AboutWindow.h \
+    gui/AnalysisWindow.h \
     gui/RocketTreeView.h \
     gui/MainWindow.h \
     gui/qcustomplot.h \
@@ -70,6 +72,7 @@ HEADERS += \
 
 FORMS += \
     gui/AboutWindow.ui \
+    gui/AnalysisWindow.ui \
     gui/MainWindow.ui
 
 TRANSLATIONS += \
