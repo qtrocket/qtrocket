@@ -25,6 +25,8 @@ public:
 
    double getThrust(double t);
    void setThrustCurve(const Thrustcurve& curve);
+
+   bool terminateCondition(const std::pair<double, std::vector<double>>& cond);
 private:
 
    sim::Propagator propagator;

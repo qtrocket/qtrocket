@@ -23,6 +23,14 @@ void Rocket::launch()
     propagator.runUntilTerminate();
 }
 
+bool Rocket::terminateCondition(const std::pair<double, std::vector<double>>& cond)
+{
+    if(cond.second[2] < 0)
+        return true;
+    else
+        return false;
+}
+
 double Rocket::getThrust(double t)
 {
    return tc.getThrust(t);

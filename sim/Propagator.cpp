@@ -60,7 +60,7 @@ void Propagator::runUntilTerminate()
       {
          states.push_back(std::make_pair(currentTime, currentState));
       }
-      if(currentState[2] < 0.0)
+      if(rocket->terminateCondition(std::make_pair(currentTime, currentState)))
          break;
 
       currentTime += timeStep;
