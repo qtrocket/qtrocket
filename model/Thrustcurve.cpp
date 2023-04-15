@@ -29,12 +29,18 @@ void Thrustcurve::setThrustCurveVector(const std::vector<std::pair<double, doubl
    thrustCurve.clear();
    thrustCurve.resize(v.size());
    std::copy(v.begin(), v.end(), thrustCurve.begin());
+   maxTime = std::max_element(thrustCurve.begin(),
+                              thrustCurve.end(),
+                              [](const auto& a, const auto& b)
+                              {
+                                  return a.first < b.first;
+                              })->first;
 }
 
 void Thrustcurve::setIgnitionTime(double t)
 {
    ignitionTime = t;
-   maxTime += ignitionTime;
+   //maxTime += ignitionTime;
 }
 
 double Thrustcurve::getThrust(double t)
