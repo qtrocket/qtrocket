@@ -1,3 +1,6 @@
+// This is not my file, so I don't want to mess with it. I want to silence these warnings
+// so I don't miss any from my own code
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 /***************************************************************************
 **                                                                        **
 **  QCustomPlot, an easy to use, modern plotting widget for Qt            **

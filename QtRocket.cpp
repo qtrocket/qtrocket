@@ -7,7 +7,7 @@
 
 #include <thread>
 
-#include "sim/USStandardAtmosphere.h"
+#include "sim/ConstantAtmosphere.h"
 #include "sim/ConstantGravityModel.h"
 
 
@@ -69,7 +69,7 @@ QtRocket::QtRocket()
    running = false;
 
    atmosphere =
-        std::make_shared<sim::USStandardAtmosphere>();
+        std::make_shared<sim::ConstantAtmosphere>();
 
    gravity =
         std::make_shared<sim::ConstantGravityModel>();

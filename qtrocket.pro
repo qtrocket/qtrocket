@@ -16,11 +16,10 @@ SOURCES += \
     main.cpp \
     gui/RocketTreeView.cpp \
     gui/MainWindow.cpp \
-    model/Motor.cpp \
     model/MotorCase.cpp \
+    model/MotorModel.cpp \
     model/Rocket.cpp \
     model/Thrustcurve.cpp \
-    sim/AtmosphericModel.cpp \
     sim/ConstantGravityModel.cpp \
     sim/GravityModel.cpp \
     sim/Propagator.cpp \
@@ -44,11 +43,12 @@ HEADERS += \
     gui/RocketTreeView.h \
     gui/MainWindow.h \
     gui/qcustomplot.h \
-    model/Motor.h \
     model/MotorCase.h \
+    model/MotorModel.h \
     model/Rocket.h \
     model/Thrustcurve.h \
     sim/AtmosphericModel.h \
+    sim/ConstantAtmosphere.h \
     sim/ConstantGravityModel.h \
     sim/DESolver.h \
     sim/GeoidModel.h \
@@ -66,6 +66,7 @@ HEADERS += \
     utils/TSQueue.h \
     utils/ThreadPool.h \
     utils/ThrustCurveAPI.h \
+    utils/Triplet.h \
     utils/math/Constants.h \
     utils/math/Quaternion.h \
     utils/math/Vector3.h

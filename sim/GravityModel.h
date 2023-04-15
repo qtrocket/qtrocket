@@ -1,7 +1,7 @@
 #ifndef SIM_GRAVITYMODEL_H
 #define SIM_GRAVITYMODEL_H
 
-#include <tuple>
+#include "utils/Triplet.h"
 
 namespace sim
 {
@@ -12,7 +12,8 @@ public:
    GravityModel();
    virtual ~GravityModel();
 
-   virtual std::tuple<double, double, double> getAccel(double x, double y, double z) = 0;
+   virtual TripletD getAccel(double x, double y, double z) = 0;
+   TripletD getAccel(const TripletD& t) { return this->getAccel(t.x1, t.x2, t.x3); }
 };
 
 } // namespace sim

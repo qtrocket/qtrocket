@@ -7,9 +7,6 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
-// No namespace. Maybe should be, but this is a model rocket program
-// so model is sort of implied? Or I'm just making excuses for being lazy
-
 class Thrustcurve
 {
 public:
@@ -25,6 +22,18 @@ public:
    Thrustcurve();
    ~Thrustcurve();
 
+   Thrustcurve& operator=(const Thrustcurve& rhs)
+   {
+      if(this != &rhs)
+      {
+         thrustCurve = rhs.thrustCurve;
+         maxTime = rhs.maxTime;
+         ignitionTime = rhs.ignitionTime;
+      }
+      return *this;
+
+   }
+
    /**
     * Assuming that the thrust is one dimensional. Seems reasonable, but just
     * documenting that for the record. For timesteps between known points the thrust
@@ -34,6 +43,14 @@ public:
    */
    double getThrust(double t);
 
+   void setIgnitionTime(double t);
+
+   /**
+ * TODO: Get rid of this. This is for temporary testing
+ */
+   void setThrustCurveVector(const std::vector<std::pair<double, double>>& v);
+
+
 private:
    // We're using boost::serialize for data storage and retrieval
    friend class boost::serialization::access;
@@ -41,7 +58,8 @@ private:
    void serialize(Archive& ar, const unsigned int version);
 
    std::vector<std::pair<double, double>> thrustCurve;
-   double maxTime;
+   double maxTime{0.0};
+   double ignitionTime{0.0};
 };
 
 template<class Archive>

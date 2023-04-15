@@ -7,8 +7,8 @@ namespace sim
 class AtmosphericModel
 {
 public:
-   AtmosphericModel();
-   virtual ~AtmosphericModel();
+   AtmosphericModel() {}
+   virtual ~AtmosphericModel() {}
 
    virtual double getDensity(double altitude) = 0;
    virtual double getPressure(double altitude) = 0;

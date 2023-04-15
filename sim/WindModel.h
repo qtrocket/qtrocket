@@ -1,7 +1,7 @@
 #ifndef SIM_WINDMODEL_H
 #define SIM_WINDMODEL_H
 
-#include <tuple>
+#include "utils/Triplet.h"
 
 namespace sim
 {
@@ -12,7 +12,7 @@ public:
    WindModel();
    virtual ~WindModel();
 
-   virtual std::tuple<double, double, double> getWindSpeed(double x, double y, double z);
+   virtual TripletD getWindSpeed(double x, double y, double z);
 
 };
 

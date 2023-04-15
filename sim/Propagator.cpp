@@ -50,29 +50,19 @@ void Propagator::runUntilTerminate()
    std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
    std::chrono::steady_clock::time_point endTime;
 
-       std::size_t j = 0;
-   while(true && j < 100000)
+   while(true)
    {
-      // nextState gets overwritten
+      // tempRes gets overwritten
       integrator->step(currentTime, currentState, tempRes);
-      /*
-      std::size_t size = currentState.size();
-      for(size_t i = 0; i < size; ++i)
-      {
-          currentState[i] = tempRes[i];
-          tempRes[i] = 0;
-      }
-      */
 
       std::swap(currentState, tempRes);
       if(saveStates)
       {
-         states.push_back(currentState);
+         states.push_back(std::make_pair(currentTime, currentState));
       }
       if(currentState[2] < 0.0)
          break;
 
-       j++;
       currentTime += timeStep;
    }
    endTime = std::chrono::steady_clock::now();
@@ -91,19 +81,20 @@ double Propagator::getMass()
 
 double Propagator::getForceX()
 {
-    return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
+    return - qtrocket->getAtmosphereModel()->getDensity(currentState[3])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
 }
 
 double Propagator::getForceY()
 {
-    return -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
+    return -qtrocket->getAtmosphereModel()->getDensity(currentState[3]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
 }
 
 double Propagator::getForceZ()
 {
-    double gravity = std::get<2>(qtrocket->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2]));
-    double airDrag = -1.225 / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
-    return gravity + airDrag;
+    double gravity = (qtrocket->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2])).x3;
+    double airDrag = -qtrocket->getAtmosphereModel()->getDensity(currentState[3]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
+    double thrust  = rocket->getThrust(currentTime);
+    return gravity + airDrag + thrust;
 }
 
 double Propagator::getTorqueP() { return 0.0; }

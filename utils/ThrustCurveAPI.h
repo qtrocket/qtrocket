@@ -5,13 +5,15 @@
 #include <string>
 
 #include "CurlConnection.h"
+#include "model/MotorModel.h"
+#include "model/Thrustcurve.h"
 
 namespace utils
 {
 
 /**
- * @brief This is a bit more than just an API for Thrustcurve.org, so the name is unfortunate
- *        It is also an internal database of motor data that it grabs from Thrustcurve.org
+ * @brief This API for Thrustcurve.org - It will provide an interface for querying thrustcurve.org
+ * for motor data
  *
  */
 class ThrustCurveAPI
@@ -19,6 +21,14 @@ class ThrustCurveAPI
 public:
    ThrustCurveAPI();
    ~ThrustCurveAPI();
+
+
+   /**
+    * @brief getThrustCurve will download the thrust data for the given Motor using the motorId
+    * @param m MotorModel to populate
+    */
+   MotorModel getMotorData(const std::string& motorId);
+
 
 
 

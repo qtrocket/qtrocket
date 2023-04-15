@@ -4,7 +4,8 @@
 
 Thrustcurve::Thrustcurve(std::vector<std::pair<double, double>>& tc)
    : thrustCurve(tc),
-     maxTime(0.0)
+     maxTime(0.0),
+     ignitionTime(0.0)
 {
    maxTime = std::max_element(thrustCurve.begin(),
                               thrustCurve.end(),
@@ -23,8 +24,23 @@ Thrustcurve::Thrustcurve()
 Thrustcurve::~Thrustcurve()
 {}
 
+void Thrustcurve::setThrustCurveVector(const std::vector<std::pair<double, double>>& v)
+{
+   thrustCurve.clear();
+   thrustCurve.resize(v.size());
+   std::copy(v.begin(), v.end(), thrustCurve.begin());
+}
+
+void Thrustcurve::setIgnitionTime(double t)
+{
+   ignitionTime = t;
+   maxTime += ignitionTime;
+}
+
 double Thrustcurve::getThrust(double t)
 {
+   // calculate t relative to the start time of the motor
+   t -= ignitionTime;
    if(t < 0.0 || t > maxTime)
    {
       return 0.0;

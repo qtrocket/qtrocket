@@ -3,8 +3,6 @@
 
 #include "GravityModel.h"
 
-#include <tuple>
-
 namespace sim
 {
 
@@ -14,7 +12,7 @@ public:
    SphericalGravityModel();
    virtual ~SphericalGravityModel();
 
-   std::tuple<double, double, double> getAccel(double x, double y, double z) override;
+   TripletD getAccel(double x, double y, double z) override;
 };
 
 } // namespace sim

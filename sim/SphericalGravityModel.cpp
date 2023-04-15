@@ -3,7 +3,6 @@
 #include "utils/math/Constants.h"
 
 #include <cmath>
-#include <tuple>
 
 namespace sim
 {
@@ -18,7 +17,7 @@ SphericalGravityModel::~SphericalGravityModel()
 
 }
 
-std::tuple<double, double, double> SphericalGravityModel::getAccel(double x, double y, double z)
+TripletD SphericalGravityModel::getAccel(double x, double y, double z)
 {
    // Convert x, y, z from meters to km. This is to avoid potential precision losses
    // with using the earth's gravitation parameter in meters (14 digit number).
@@ -36,7 +35,7 @@ std::tuple<double, double, double> SphericalGravityModel::getAccel(double x, dou
    double ay = accelFactor * y_km * 1000.0;
    double az = accelFactor * z_km * 1000.0;
 
-   return std::make_tuple(ax, ay, az);
+   return TripletD(ax, ay, az);
 }
 
 

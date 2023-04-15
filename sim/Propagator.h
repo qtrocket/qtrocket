@@ -41,7 +41,7 @@ public:
        saveStates = s;
     }
 
-    const std::vector<std::vector<double>>& getStates() const { return states; }
+    const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return states; }
 
     void setTimeStep(double ts) { timeStep = ts; }
 
@@ -70,7 +70,7 @@ private:
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};
-   std::vector<std::vector<double>> states;
+   std::vector<std::pair<double, std::vector<double>>> states;
 };
 
 } // namespace sim

@@ -2,6 +2,7 @@
 #define SIM_CONSTANTGRAVITYMODEL_H
 
 #include "GravityModel.h"
+#include "utils/Triplet.h"
 
 namespace sim {
 
@@ -12,7 +13,7 @@ public:
 
     virtual ~ConstantGravityModel() {}
 
-    std::tuple<double, double, double> getAccel(double, double, double) override { return std::make_tuple(0.0, 0.0, -9.8); }
+    TripletD getAccel(double, double, double) override { return TripletD(0.0, 0.0, -9.8); }
 };
 
 } // namespace sim
