@@ -11,6 +11,8 @@
 #include "sim/AtmosphericModel.h"
 #include "sim/GravityModel.h"
 
+#include "model/MotorModel.h"
+
 /**
  * @brief The QtRocket class is the master controller for the QtRocket application.
  * It is the singleton that controls the interaction of the various components of
@@ -42,6 +44,9 @@ private:
    static bool initialized;
    static std::mutex mtx;
    static QtRocket* instance;
+
+   // Motor "database(s)"
+   std::vector<MotorModel> motorModels;
 
    utils::Logger* logger;
 

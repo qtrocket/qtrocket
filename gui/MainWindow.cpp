@@ -6,6 +6,8 @@
 #include "sim/RK4Solver.h"
 #include "model/Rocket.h"
 
+#include "utils/RSEDatabaseLoader.h"
+
 #include <QTextStream>
 
 #include <memory>
@@ -56,6 +58,7 @@ void MainWindow::on_testButton1_clicked()
    plot->yAxis->setRange(0, 1);
    plot->replot();
 
+   utils::RSEDatabaseLoader("Aerotech.rse");
 }
 
 

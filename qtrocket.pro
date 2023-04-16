@@ -31,6 +31,7 @@ SOURCES += \
     utils/BinMap.cpp \
     utils/CurlConnection.cpp \
     utils/Logger.cpp \
+    utils/RSEDatabaseLoader.cpp \
     utils/ThreadPool.cpp \
     utils/ThrustCurveAPI.cpp \
     utils/math/Quaternion.cpp \
@@ -63,6 +64,7 @@ HEADERS += \
     utils/BinMap.h \
     utils/CurlConnection.h \
     utils/Logger.h \
+    utils/RSEDatabaseLoader.h \
     utils/TSQueue.h \
     utils/ThreadPool.h \
     utils/ThrustCurveAPI.h \

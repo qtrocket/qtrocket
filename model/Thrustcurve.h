@@ -20,6 +20,8 @@ public:
     * for all requested times.
    */
    Thrustcurve();
+   Thrustcurve(const Thrustcurve&) = default;
+   Thrustcurve(Thrustcurve&&) = default;
    ~Thrustcurve();
 
    Thrustcurve& operator=(const Thrustcurve& rhs)
@@ -31,7 +33,14 @@ public:
          ignitionTime = rhs.ignitionTime;
       }
       return *this;
+   }
 
+   Thrustcurve& operator=(Thrustcurve&& rhs)
+   {
+      thrustCurve = std::move(rhs.thrustCurve);
+      maxTime = std::move(rhs.maxTime);
+      ignitionTime = std::move(rhs.ignitionTime);
+      return *this;
    }
 
    /**

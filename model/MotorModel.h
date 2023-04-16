@@ -9,13 +9,17 @@
 #include <string>
 
 #include "Thrustcurve.h"
-#include "MotorCase.h"
 
 class MotorModel
 {
 public:
    MotorModel();
+   MotorModel(const MotorModel&) = default;
+   MotorModel(MotorModel&&) = default;
    ~MotorModel();
+
+   MotorModel& operator=(const MotorModel&) = default;
+   MotorModel& operator=(MotorModel&&) = default;
 
    void setDataFromJsonString(const std::string& jsonString);
 
@@ -31,7 +35,8 @@ public:
       CAR,
       NAR,
       TRA,
-      UNC
+      UNC,
+      UNK
    };
 
    enum class MOTORTYPE
@@ -44,7 +49,11 @@ public:
    struct MotorAvailability
    {
       MotorAvailability(const AVAILABILITY& a) : availability(a) {}
+      MotorAvailability(MotorAvailability&&) = default;
       MotorAvailability() : MotorAvailability(AVAILABILITY::REGULAR) {}
+
+      MotorAvailability& operator=(const MotorAvailability&) = default;
+      MotorAvailability& operator=(MotorAvailability&&) = default;
 
       AVAILABILITY availability{AVAILABILITY::REGULAR};
       std::string str()
@@ -59,7 +68,11 @@ public:
    struct CertOrg
    {
       CertOrg(const CERTORG& c) : org(c) {}
+      CertOrg(CertOrg&&) = default;
       CertOrg() : CertOrg(CERTORG::UNC) {}
+
+      CertOrg& operator=(const CertOrg&) = default;
+      CertOrg& operator=(CertOrg&&) = default;
 
       CERTORG org{CERTORG::UNC};
       std::string str()
@@ -72,15 +85,21 @@ public:
             return std::string("National Association of Rocketry");
          else if(org == CERTORG::TRA)
             return std::string("Tripoli Rocketry Association, Inc.");
-         else // Uncertified
+         else if(org == CERTORG::UNC)
             return std::string("Uncertified");
+         else // UNK - Unknown
+            return std::string("Unkown");
       }
    };
 
    struct MotorType
    {
       MotorType(const MOTORTYPE& t) : type(t) {}
+      MotorType(MotorType&&) = default;
       MotorType() : MotorType(MOTORTYPE::SU) {}
+
+      MotorType& operator=(const MotorType&) = default;
+      MotorType& operator=(MotorType&&) = default;
 
       MOTORTYPE type;
       std::string str()
@@ -95,7 +114,8 @@ public:
    };
 
 
-private:
+// TODO: make these private. Public just for testing
+//private:
    // Needed for boost serialize
    friend class boost::serialization::access;
    template<class Archive>
@@ -112,16 +132,16 @@ private:
    int diameter{0};
    std::string impulseClass; // 'A', 'B', '1/2A', 'M', etc
    std::string infoUrl{""};
-   int length;
-   std::string manufacturer;
+   double length{0.0};
+   std::string manufacturer{""};
 
    double maxThrust{0.0};
    std::string motorIdTC{""}; // 24 character hex string used by thrustcurve to ID a motor
    std::string propType{""}; // black powder, etc
    double propWeight{0.0};
    bool sparky{false};
-   double totalImpulse;
-   double totalWeight;
+   double totalImpulse{0.0};
+   double totalWeight{0.0};
    MotorType type{MOTORTYPE::SU};
    std::string lastUpdated{""};
 
