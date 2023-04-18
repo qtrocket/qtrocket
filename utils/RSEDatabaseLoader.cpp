@@ -5,6 +5,8 @@
 #include <iostream>
 #include <cmath>
 
+#include "QtRocket.h"
+
 namespace utils {
 
 RSEDatabaseLoader::RSEDatabaseLoader(const std::string& filename)
@@ -19,6 +21,7 @@ RSEDatabaseLoader::RSEDatabaseLoader(const std::string& filename)
       buildAndAppendMotorModel(v.second);
    }
 
+   QtRocket::getInstance()->addMotorModels(motors);
 }
 
 RSEDatabaseLoader::~RSEDatabaseLoader()
@@ -81,15 +84,17 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
       double fdata = w.second.get<double>("<xmlattr>.f");
       thrustData.push_back(std::make_pair(tdata, fdata));
    }
+   /*
    std::cout << "\n--------------------------------------------\n";
    std::cout << "name: " << mm.commonName << std::endl;
+   std::cout << "impulseClass: " << mm.impulseClass << std::endl;
    std::cout << "length: " << mm.length << std::endl;
    std::cout << "manufacturer: " << mm.manufacturer << std::endl;
    std::cout << "maxThrust: " << mm.maxThrust << std::endl;
    std::cout << "propWeight: " << mm.propWeight << std::endl;
    std::cout << "totalImpulse: " << mm.totalImpulse << std::endl;
    std::cout << "--------------------------------------------\n";
-   /*
+
    std::cout << "thrust data:\n";
    for(const auto& i : thrustData)
    {

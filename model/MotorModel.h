@@ -49,6 +49,7 @@ public:
    struct MotorAvailability
    {
       MotorAvailability(const AVAILABILITY& a) : availability(a) {}
+      MotorAvailability(const MotorAvailability&) = default;
       MotorAvailability(MotorAvailability&&) = default;
       MotorAvailability() : MotorAvailability(AVAILABILITY::REGULAR) {}
 
@@ -68,6 +69,7 @@ public:
    struct CertOrg
    {
       CertOrg(const CERTORG& c) : org(c) {}
+      CertOrg(const CertOrg&) = default;
       CertOrg(CertOrg&&) = default;
       CertOrg() : CertOrg(CERTORG::UNC) {}
 
@@ -95,6 +97,7 @@ public:
    struct MotorType
    {
       MotorType(const MOTORTYPE& t) : type(t) {}
+      MotorType(const MotorType&) = default;
       MotorType(MotorType&&) = default;
       MotorType() : MotorType(MOTORTYPE::SU) {}
 

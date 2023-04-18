@@ -8,7 +8,7 @@
 
 #include "utils/RSEDatabaseLoader.h"
 
-#include <QTextStream>
+#include <QFileDialog>
 
 #include <memory>
 #include <iostream>
@@ -110,5 +110,28 @@ void MainWindow::on_testButton2_clicked()
    plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
    plot->replot();
 
+}
+
+
+void MainWindow::on_loadRSE_button_clicked()
+{
+   QString rseFile = QFileDialog::getOpenFileName(this,
+                                                  tr("Import RSE Database File"),
+                                                  "/home",
+                                                  tr("RSE Files (*.rse)"));
+
+   utils::RSEDatabaseLoader loader(rseFile.toStdString());
+
+   ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
+
+   QComboBox* engineSelector =
+         ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
+
+   const std::vector<MotorModel>& motors = loader.getMotors();
+   for(const auto& motor : motors)
+   {
+      std::cout << "Adding: " << motor.commonName << std::endl;
+      engineSelector->addItem(QString(motor.commonName.c_str()));
+   }
 }
 

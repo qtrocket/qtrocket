@@ -167,6 +167,35 @@
         </item>
        </layout>
       </widget>
+      <widget class="QWidget" name="gridLayoutWidget">
+       <property name="geometry">
+        <rect>
+         <x>90</x>
+         <y>220</y>
+         <width>421</width>
+         <height>80</height>
+        </rect>
+       </property>
+       <layout class="QGridLayout" name="gridLayout_2">
+        <item row="0" column="0">
+         <widget class="QPushButton" name="loadRSE_button">
+          <property name="text">
+           <string>Load RSE Database File</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="databaseFileLine">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QComboBox" name="engineSelectorComboBox"/>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </widget>
     <widget class="QCustomPlot" name="plotWindow" native="true"/>

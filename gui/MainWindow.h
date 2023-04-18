@@ -25,6 +25,8 @@ private slots:
 
    void on_testButton2_clicked();
 
+   void on_loadRSE_button_clicked();
+
 private:
    Ui::MainWindow* ui;
    QtRocket* qtRocket;

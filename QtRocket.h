@@ -35,6 +35,8 @@ public:
    std::shared_ptr<sim::GravityModel> getGravityModel() { return gravity; }
    std::shared_ptr<sim::AtmosphericModel> getAtmosphereModel() { return atmosphere; }
 
+
+   void addMotorModels(std::vector<MotorModel>& m);
 private:
    QtRocket();
 

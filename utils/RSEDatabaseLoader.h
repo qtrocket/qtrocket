@@ -16,6 +16,7 @@ public:
    RSEDatabaseLoader(const std::string& filename);
    ~RSEDatabaseLoader();
 
+   const std::vector<MotorModel>& getMotors() const { return motors; }
 private:
 
    std::vector<MotorModel> motors;

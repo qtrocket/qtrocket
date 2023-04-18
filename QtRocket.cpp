@@ -88,3 +88,12 @@ int QtRocket::run(int argc, char* argv[])
    }
    return 0;
 }
+
+void QtRocket::addMotorModels(std::vector<MotorModel>& m)
+{
+   for(const auto& i : m)
+   {
+      motorModels.push_back(i);
+   }
+   // TODO: Now clear any duplicates?
+}
