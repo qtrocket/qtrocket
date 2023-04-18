@@ -80,7 +80,7 @@ void MainWindow::on_testButton2_clicked()
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
    double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
    Rocket rocket;
-   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ};
+   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    rocket.setInitialState(initialState);
    rocket.setMass(mass);
    rocket.setDragCoefficient(dragCoeff);
