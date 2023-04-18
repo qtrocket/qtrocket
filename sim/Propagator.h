@@ -48,6 +48,7 @@ public:
     void setSaveStats(bool s) { saveStates = s; }
 
 private:
+    double getMass();
     double getForceX();
     double getForceY();
     double getForceZ();
@@ -56,7 +57,9 @@ private:
     double getTorqueQ();
     double getTorqueR();
 
-   double getMass();
+    double getIpitch() { return 1.0; }
+    double getIyaw()   { return 1.0; }
+    double getIroll()  { return 1.0; }
 
 //private:
 
@@ -65,8 +68,8 @@ private:
    Rocket* rocket;
    QtRocket* qtrocket;
 
-   std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};

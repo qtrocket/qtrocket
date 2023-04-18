@@ -27,14 +27,21 @@ Propagator::Propagator(Rocket* r)
    // template types, and it derives from DESolver, so we can just reset the unique_ptr
    // and pass it a freshly allocated RK4Solver pointer
 
-   // The state vector has components of the form: (x, y, z, xdot, ydot, zdot)
+   // The state vector has components of the form:
+   // (x, y, z, xdot, ydot, zdot, pitch, yaw, roll, pitchRate, yawRate, rollRate)
    integrator.reset(new RK4Solver(
       /* dx/dt  */ [](double, const std::vector<double>& s) -> double {return s[3]; },
       /* dy/dt  */ [](double, const std::vector<double>& s) -> double {return s[4]; },
       /* dz/dt  */ [](double, const std::vector<double>& s) -> double {return s[5]; },
       /* dvx/dt */ [this](double, const std::vector<double>& ) -> double { return getForceX() / getMass(); },
       /* dvy/dt */ [this](double, const std::vector<double>& ) -> double { return getForceY() / getMass(); },
-      /* dvz/dt */ [this](double, const std::vector<double>& ) -> double { return getForceZ() / getMass(); }));
+      /* dvz/dt */ [this](double, const std::vector<double>& ) -> double { return getForceZ() / getMass(); },
+       /* dpitch/dt    */ [this](double, const std::vector<double>& s) -> double { return s[9]; },
+       /* dyaw/dt      */ [this](double, const std::vector<double>& s) -> double { return s[10]; },
+       /* droll/dt     */ [this](double, const std::vector<double>& s) -> double { return s[11]; },
+       /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { (getTorqueP() - s[7] * s[8] * (getIroll() - getIyaw())) / getIpitch(); },
+       /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { (getTorqueQ() - s[6] * s[9] * (getIpitch() - getIroll())) / getIyaw(); },
+      /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { (getTorqueR() - s[6] * s[7] * (getIyaw() - getIpitch())) / getIroll(); }));
 
 
    integrator->setTimeStep(timeStep);
