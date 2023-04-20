@@ -27,8 +27,11 @@ public:
    void setThrustCurve(const Thrustcurve& curve);
 
    bool terminateCondition(const std::pair<double, std::vector<double>>& cond);
+
+   void setName(const std::string& n) { name = n; }
 private:
 
+   std::string name;
    sim::Propagator propagator;
    double dragCoeff;
    double mass;

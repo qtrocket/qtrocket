@@ -37,6 +37,11 @@ public:
 
 
    void addMotorModels(std::vector<MotorModel>& m);
+
+   void addRocket(std::shared_ptr<Rocket> r) { rocket = r; }
+
+   std::shared_ptr<Rocket> getRocket() { return rocket; }
+
 private:
    QtRocket();
 

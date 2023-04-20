@@ -1,22 +1,22 @@
 #ifndef ANALYSISWINDOW_H
 #define ANALYSISWINDOW_H
 
-#include <QMainWindow>
+#include <QDialog>
 
 namespace Ui {
 class AnalysisWindow;
 }
 
-class AnalysisWindow : public QMainWindow
+class AnalysisWindow : public QDialog
 {
-    Q_OBJECT
+   Q_OBJECT
 
 public:
-    explicit AnalysisWindow(QWidget *parent = nullptr);
-    ~AnalysisWindow();
+   explicit AnalysisWindow(QWidget *parent = nullptr);
+   ~AnalysisWindow();
 
 private:
-    Ui::AnalysisWindow *ui;
+   Ui::AnalysisWindow *ui;
 };
 
 #endif // ANALYSISWINDOW_H
