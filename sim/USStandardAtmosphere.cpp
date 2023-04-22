@@ -1,7 +1,15 @@
-#include "USStandardAtmosphere.h"
 
-#include "utils/math/Constants.h"
+/// \cond
+// C headers
+// C++ headers
 #include <cmath>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "sim/USStandardAtmosphere.h"
+#include "utils/math/Constants.h"
 
 using namespace utils::math;
 

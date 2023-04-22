@@ -1,17 +1,22 @@
 #ifndef QTROCKET_H
 #define QTROCKET_H
 
+/// \cond
+// C headers
+// C++ headers
+#include <atomic>
 #include <memory>
 #include <mutex>
-#include <atomic>
 
-#include "utils/Logger.h"
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "model/MotorModel.h"
 #include "model/Rocket.h"
-
 #include "sim/AtmosphericModel.h"
 #include "sim/GravityModel.h"
-
-#include "model/MotorModel.h"
+#include "utils/Logger.h"
 
 /**
  * @brief The QtRocket class is the master controller for the QtRocket application.
@@ -37,6 +42,11 @@ public:
 
 
    void addMotorModels(std::vector<MotorModel>& m);
+
+   void addRocket(std::shared_ptr<Rocket> r) { rocket = r; }
+
+   std::shared_ptr<Rocket> getRocket() { return rocket; }
+
 private:
    QtRocket();
 

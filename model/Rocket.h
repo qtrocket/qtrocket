@@ -1,11 +1,18 @@
 #ifndef ROCKET_H
 #define ROCKET_H
 
-#include "sim/Propagator.h"
-#include "model/Thrustcurve.h"
-
-#include <utility> // std::move
+/// \cond
+// C headers
+// C++ headers
 #include <memory>
+#include <utility> // std::move
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "model/Thrustcurve.h"
+#include "sim/Propagator.h"
 
 class Rocket
 {
@@ -27,8 +34,11 @@ public:
    void setThrustCurve(const Thrustcurve& curve);
 
    bool terminateCondition(const std::pair<double, std::vector<double>>& cond);
+
+   void setName(const std::string& n) { name = n; }
 private:
 
+   std::string name;
    sim::Propagator propagator;
    double dragCoeff;
    double mass;

@@ -1,6 +1,14 @@
+
+/// \cond
+// C headers
+// C++ headers
+#include <algorithm>
+
+// 3rd party headers
+/// \endcond
+
 #include "Thrustcurve.h"
 
-#include <algorithm>
 
 Thrustcurve::Thrustcurve(std::vector<std::pair<double, double>>& tc)
    : thrustCurve(tc),

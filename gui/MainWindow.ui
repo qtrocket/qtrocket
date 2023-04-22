@@ -188,7 +188,7 @@
        <property name="geometry">
         <rect>
          <x>90</x>
-         <y>220</y>
+         <y>250</y>
          <width>421</width>
          <height>80</height>
         </rect>
@@ -212,6 +212,19 @@
          <widget class="QComboBox" name="engineSelectorComboBox"/>
         </item>
        </layout>
+      </widget>
+      <widget class="QPushButton" name="getTCMotorData">
+       <property name="geometry">
+        <rect>
+         <x>240</x>
+         <y>360</y>
+         <width>201</width>
+         <height>25</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Get Thrustcurve Motor Data</string>
+       </property>
       </widget>
      </widget>
     </widget>

@@ -1,4 +1,6 @@
-#include "Quaternion.h"
+
+// qtrocket headers
+#include "utils/math/Quaternion.h"
 
 namespace math
 {

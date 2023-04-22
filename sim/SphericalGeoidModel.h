@@ -1,6 +1,7 @@
 #ifndef SIM_SPHERICALGEOIDMODEL_H
 #define SIM_SPHERICALGEOIDMODEL_H
 
+// qtrocket headers
 #include "GeoidModel.h"
 
 namespace sim

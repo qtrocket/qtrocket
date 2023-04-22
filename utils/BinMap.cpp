@@ -1,11 +1,17 @@
-#include "BinMap.h"
 
+/// \cond
+// C headers
+// C++ headers
 #include <algorithm>
-
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 
+// 3rd party headers
 #include <fmt/core.h>
+/// \endcond
+
+// qtrocket headers
+#include "BinMap.h"
 
 // TODO: Check on the availability of this in Clang.
 // Replace libfmt with format when LLVM libc++ supports it

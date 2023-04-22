@@ -1,12 +1,19 @@
 #ifndef UTILS_RSEDATABASELOADER_H
 #define UTILS_RSEDATABASELOADER_H
 
-#include "model/MotorModel.h"
 
-#include <vector>
+/// \cond
+// C headers
+// C++ headers
 #include <string>
+#include <vector>
 
+// 3rd party headers
 #include <boost/property_tree/ptree.hpp>
+/// \endcond
+
+// qtrocket headers
+#include "model/MotorModel.h"
 
 namespace utils {
 

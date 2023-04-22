@@ -1,11 +1,15 @@
 #ifndef MODEL_THRUSTCURVE_H
 #define MODEL_THRUSTCURVE_H
 
+/// \cond
+// C headers
+// C++ headers
 #include <vector>
-#include <tuple>
 
+// 3rd party headers
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+/// \endcond
 
 class Thrustcurve
 {

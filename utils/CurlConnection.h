@@ -1,9 +1,16 @@
 #ifndef UTILS_CURLCONNECTION_H
 #define UTILS_CURLCONNECTION_H
 
-#include <vector>
-#include <string>
+/// \cond
+// C headers
 #include <curl/curl.h>
+
+// C++ headers
+#include <string>
+#include <vector>
+
+// 3rd party headers
+/// \endcond
 
 namespace utils {
 

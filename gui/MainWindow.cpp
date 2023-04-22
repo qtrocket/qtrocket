@@ -1,18 +1,28 @@
-#include "MainWindow.h"
-#include "ui_MainWindow.h"
-#include "AboutWindow.h"
 
-#include "utils/math/Vector3.h"
-#include "sim/RK4Solver.h"
-#include "model/Rocket.h"
+/// \cond
+// C headers
+// C++ headers
+#include <cmath>
+#include <iostream>
+#include <memory>
 
-#include "utils/RSEDatabaseLoader.h"
-
+// 3rd party headers
 #include <QFileDialog>
 
-#include <memory>
-#include <iostream>
-#include <cmath>
+/// \endcond
+
+
+// qtrocket headers
+#include "ui_MainWindow.h"
+
+#include "gui/AboutWindow.h"
+#include "gui/AnalysisWindow.h"
+#include "gui/MainWindow.h"
+#include "gui/ThrustCurveMotorSelector.h"
+#include "model/Rocket.h"
+#include "utils/RSEDatabaseLoader.h"
+
+
 
 MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
    : QMainWindow(parent),
@@ -79,13 +89,19 @@ void MainWindow::on_testButton2_clicked()
 
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
    double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
-   Rocket rocket;
+   std::shared_ptr<Rocket> rocket = std::make_shared<Rocket>();
+   QtRocket::getInstance()->addRocket(rocket);
    std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   rocket.setInitialState(initialState);
-   rocket.setMass(mass);
-   rocket.setDragCoefficient(dragCoeff);
-   rocket.launch();
+   rocket->setInitialState(initialState);
+   rocket->setMass(mass);
+   rocket->setDragCoefficient(dragCoeff);
+   rocket->launch();
 
+   AnalysisWindow aWindow;
+   aWindow.setModal(false);
+   aWindow.exec();
+
+   /*
    const std::vector<std::pair<double, std::vector<double>>>& res = rocket.getStates();
    for(const auto& i : res)
    {
@@ -109,9 +125,9 @@ void MainWindow::on_testButton2_clicked()
    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
    plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
    plot->replot();
+   */
 
 }
-
 
 void MainWindow::on_loadRSE_button_clicked()
 {
@@ -133,5 +149,14 @@ void MainWindow::on_loadRSE_button_clicked()
       std::cout << "Adding: " << motor.commonName << std::endl;
       engineSelector->addItem(QString(motor.commonName.c_str()));
    }
+}
+
+
+void MainWindow::on_getTCMotorData_clicked()
+{
+   ThrustCurveMotorSelector window;
+   window.setModal(false);
+   window.exec();
+
 }
 

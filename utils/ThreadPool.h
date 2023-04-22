@@ -1,12 +1,19 @@
 #ifndef THREADPOOL_H
 #define THREADPOOL_H
 
+/// \cond
+// C headers
+// C++ headers
 #include <atomic>
 #include <functional>
-#include <vector>
 #include <thread>
+#include <vector>
 
-#include "TSQueue.h"
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "utils/TSQueue.h"
 
 
 /**

@@ -1,4 +1,6 @@
-#include "SphericalGeoidModel.h"
+
+// qtrocket headers
+#include "sim/SphericalGeoidModel.h"
 #include "utils/math/Constants.h"
 
 namespace sim

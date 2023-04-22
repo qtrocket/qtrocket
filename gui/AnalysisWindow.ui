@@ -1,48 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>AnalysisWindow</class>
- <widget class="QMainWindow" name="AnalysisWindow">
+ <widget class="QDialog" name="AnalysisWindow">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>989</width>
+    <height>821</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Dialog</string>
   </property>
-  <widget class="QWidget" name="centralwidget">
-   <widget class="QWidget" name="widget" native="true">
-    <property name="geometry">
-     <rect>
-      <x>9</x>
-      <y>9</y>
-      <width>701</width>
-      <height>351</height>
-     </rect>
-    </property>
-   </widget>
-  </widget>
-  <widget class="QMenuBar" name="menubar">
+  <widget class="QCustomPlot" name="plotWidget" native="true">
    <property name="geometry">
     <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>800</width>
-     <height>22</height>
+     <x>19</x>
+     <y>29</y>
+     <width>961</width>
+     <height>671</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuFile">
-    <property name="title">
-     <string>File</string>
-    </property>
-   </widget>
-   <addaction name="menuFile"/>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QCustomPlot</class>
+   <extends>QWidget</extends>
+   <header>gui/qcustomplot.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -1,6 +1,7 @@
 #ifndef SIM_SPHERICALGRAVITYMODEL_H
 #define SIM_SPHERICALGRAVITYMODEL_H
 
+// qtrocket headers
 #include "GravityModel.h"
 
 namespace sim

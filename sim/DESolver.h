@@ -1,7 +1,13 @@
 #ifndef SIM_DESOLVER_H
 #define SIM_DESOLVER_H
 
+/// \cond
+// C headers
+// C++ headers
 #include <vector>
+
+// 3rd party headers
+/// \endcond
 
 namespace sim
 {

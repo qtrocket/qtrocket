@@ -1,13 +1,19 @@
 #ifndef MODEL_MOTORMODEL_H
 #define MODEL_MOTORMODEL_H
 
+/// \cond
+// C headers
+// C++ headers
+#include <string>
+
+// 3rd party headers
 // For boost serialization. We're using boost::serialize to save
 // and load Motor data to file
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+/// \endcond
 
-#include <string>
-
+// qtrocke theaders
 #include "Thrustcurve.h"
 
 class MotorModel
@@ -28,6 +34,8 @@ public:
       REGULAR, // available
       OOP      // Out of Production
    };
+
+
 
    enum class CERTORG
    {
@@ -116,7 +124,6 @@ public:
       }
    };
 
-
 // TODO: make these private. Public just for testing
 //private:
    // Needed for boost serialize
@@ -132,7 +139,7 @@ public:
    // int dataFiles
    std::vector<int> delays; // -1 delay means no ejection charge
    std::string designation{""};
-   int diameter{0};
+   double diameter{0};
    std::string impulseClass; // 'A', 'B', '1/2A', 'M', etc
    std::string infoUrl{""};
    double length{0.0};

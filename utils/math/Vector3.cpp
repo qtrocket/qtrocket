@@ -1,4 +1,6 @@
-#include "Vector3.h"
+
+// qtrocket headers
+#include "utils/math/Vector3.h"
 
 namespace math
 {

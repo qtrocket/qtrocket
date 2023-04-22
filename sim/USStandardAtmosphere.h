@@ -1,7 +1,8 @@
 #ifndef SIM_USSTANDARDATMOSPHERE_H
 #define SIM_USSTANDARDATMOSPHERE_H
 
-#include "AtmosphericModel.h"
+// qtrocket headers
+#include "sim/AtmosphericModel.h"
 #include "utils/BinMap.h"
 
 namespace sim

@@ -2,14 +2,60 @@
 #define UTILS_THRUSTCURVEAPI_H
 
 
+/// \cond
+// C headers
+// C++ headers
+#include <map>
 #include <string>
 
-#include "CurlConnection.h"
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "utils/CurlConnection.h"
 #include "model/MotorModel.h"
-#include "model/Thrustcurve.h"
 
 namespace utils
 {
+
+class ThrustcurveMetadata
+{
+public:
+   ThrustcurveMetadata() = default;
+   ~ThrustcurveMetadata() = default;
+
+   ThrustcurveMetadata(const ThrustcurveMetadata&) = default;
+   ThrustcurveMetadata(ThrustcurveMetadata&&) = default;
+
+   ThrustcurveMetadata& operator=(const ThrustcurveMetadata&) = default;
+   ThrustcurveMetadata& operator=(ThrustcurveMetadata&&) = default;
+
+//private:
+   std::vector<MotorModel::CertOrg> certOrgs;
+   std::vector<double> diameters;
+   std::vector<std::string> impulseClasses;
+   std::map<std::string, std::string> manufacturers;
+   std::vector<MotorModel::MotorType> types;
+
+};
+
+class SearchCriteria
+{
+public:
+   SearchCriteria() = default;
+   ~SearchCriteria() = default;
+   SearchCriteria(const SearchCriteria&) = default;
+   SearchCriteria(SearchCriteria&&) = default;
+
+   SearchCriteria& operator=(const SearchCriteria&) = default;
+   SearchCriteria& operator=(SearchCriteria&&) = default;
+
+   void addCriteria(const std::string& name,
+                    const std::string& vaue);
+
+   std::map<std::string, std::string> criteria;
+
+};
 
 /**
  * @brief This API for Thrustcurve.org - It will provide an interface for querying thrustcurve.org
@@ -30,12 +76,23 @@ public:
    MotorModel getMotorData(const std::string& motorId);
 
 
+   /**
+ * @brief getMetaData
+ */
+
+   ThrustcurveMetadata getMetadata();
+
+   std::vector<MotorModel> searchMotors(const SearchCriteria& c);
+
 
 
 private:
 
    const std::string hostname;
    CurlConnection curlConnection;
+
+   // no extra headers, but CurlConnection library wants them
+   const std::vector<std::string> extraHeaders{};
 };
 
 } // namespace utils

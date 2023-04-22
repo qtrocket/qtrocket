@@ -1,6 +1,15 @@
-#include "CurlConnection.h"
 
+/// \cond
+// C headers
+// C++ headers
 #include <iostream>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "utils/CurlConnection.h"
+
 
 namespace
 {
