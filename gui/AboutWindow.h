@@ -7,6 +7,12 @@ namespace Ui {
 class AboutWindow;
 }
 
+/**
+ * @brief The AboutWindow class
+ *
+ * The AboutWindow just displays some copyright information.
+ *
+ */
 class AboutWindow : public QDialog
 {
    Q_OBJECT

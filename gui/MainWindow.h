@@ -10,6 +10,13 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
+/**
+ * @brief The MainWindow class
+ *
+ * The MainWindow class holds the primary GUI window of the application. All user interactions
+ * with QtRocket begin with interactions in this window. This window can spawn other windows.
+ */
+
 class MainWindow : public QMainWindow
 {
    Q_OBJECT

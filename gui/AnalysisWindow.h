@@ -7,6 +7,12 @@ namespace Ui {
 class AnalysisWindow;
 }
 
+/**
+ * @brief The AnalysisWindow class.
+ *
+ * The Analysis Windows class shows a plot of data. This allows visual inspection of
+ * data
+ */
 class AnalysisWindow : public QDialog
 {
    Q_OBJECT
