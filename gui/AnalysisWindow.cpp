@@ -21,6 +21,8 @@ AnalysisWindow::AnalysisWindow(QWidget *parent) :
    }
    */
    auto& plot = ui->plotWidget;
+   plot->setInteraction(QCP::iRangeDrag, true);
+   plot->setInteraction(QCP::iRangeZoom, true);
    // generate some data:
    QVector<double> tData(res.size()), zData(res.size());
    for (int i = 0; i < tData.size(); ++i)

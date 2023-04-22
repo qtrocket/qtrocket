@@ -27,6 +27,8 @@ private slots:
 
    void on_loadRSE_button_clicked();
 
+   void on_getTCMotorData_clicked();
+
 private:
    Ui::MainWindow* ui;
    QtRocket* qtRocket;

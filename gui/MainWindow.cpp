@@ -2,6 +2,7 @@
 #include "ui_MainWindow.h"
 #include "gui/AboutWindow.h"
 #include "gui/AnalysisWindow.h"
+#include "gui/ThrustCurveMotorSelector.h"
 
 #include "sim/RK4Solver.h"
 #include "model/Rocket.h"
@@ -139,5 +140,14 @@ void MainWindow::on_loadRSE_button_clicked()
       std::cout << "Adding: " << motor.commonName << std::endl;
       engineSelector->addItem(QString(motor.commonName.c_str()));
    }
+}
+
+
+void MainWindow::on_getTCMotorData_clicked()
+{
+   ThrustCurveMotorSelector window;
+   window.setModal(false);
+   window.exec();
+
 }
 

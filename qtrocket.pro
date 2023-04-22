@@ -12,6 +12,7 @@ SOURCES += \
     QtRocket.cpp \
     gui/AboutWindow.cpp \
     gui/AnalysisWindow.cpp \
+    gui/ThrustCurveMotorSelector.cpp \
     gui/qcustomplot.cpp \
     main.cpp \
     gui/RocketTreeView.cpp \
@@ -43,6 +44,7 @@ HEADERS += \
     gui/AnalysisWindow.h \
     gui/RocketTreeView.h \
     gui/MainWindow.h \
+    gui/ThrustCurveMotorSelector.h \
     gui/qcustomplot.h \
     model/MotorCase.h \
     model/MotorModel.h \
@@ -76,7 +78,8 @@ HEADERS += \
 FORMS += \
     gui/AboutWindow.ui \
     gui/AnalysisWindow.ui \
-    gui/MainWindow.ui
+    gui/MainWindow.ui \
+    gui/ThrustCurveMotorSelector.ui
 
 TRANSLATIONS += \
     qtrocket_en_US.ts
@@ -90,8 +93,8 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 unix: CONFIG += link_pkgconfig
 unix: PKGCONFIG += libcurl
-
 unix: PKGCONFIG += fmt
+unix: PKGCONFIG += jsoncpp
 
 RESOURCES += \
    qtrocket.qrc

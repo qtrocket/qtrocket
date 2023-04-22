@@ -29,6 +29,8 @@ public:
       OOP      // Out of Production
    };
 
+
+
    enum class CERTORG
    {
       AMRS,
@@ -116,7 +118,6 @@ public:
       }
    };
 
-
 // TODO: make these private. Public just for testing
 //private:
    // Needed for boost serialize
@@ -132,7 +133,7 @@ public:
    // int dataFiles
    std::vector<int> delays; // -1 delay means no ejection charge
    std::string designation{""};
-   int diameter{0};
+   double diameter{0};
    std::string impulseClass; // 'A', 'B', '1/2A', 'M', etc
    std::string infoUrl{""};
    double length{0.0};
