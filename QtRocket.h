@@ -41,7 +41,7 @@ public:
    std::shared_ptr<sim::AtmosphericModel> getAtmosphereModel() { return atmosphere; }
 
 
-   void addMotorModels(std::vector<MotorModel>& m);
+   void addMotorModels(std::vector<model::MotorModel>& m);
 
    void addRocket(std::shared_ptr<Rocket> r) { rocket = r; }
 
@@ -58,7 +58,7 @@ private:
    static QtRocket* instance;
 
    // Motor "database(s)"
-   std::vector<MotorModel> motorModels;
+   std::vector<model::MotorModel> motorModels;
 
    utils::Logger* logger;
 

@@ -34,7 +34,7 @@ public:
      * @param manufacturer The manufacturer to search for
      * @return vector of MotorModels from a given manufacturer
      */
-    std::vector<MotorModel> findMotorsByManufacturer(const std::string& manufacturer);
+    std::vector<model::MotorModel> findMotorsByManufacturer(const std::string& manufacturer);
 
     /**
      * @brief findMotersByImpulseClass returns a vector of MotorModels with a given
@@ -42,11 +42,11 @@ public:
      * @param imClass Impulse class to search for
      * @return vector of MotorModels with a given Impulse class
      */
-    std::vector<MotorModel> findMotersByImpulseClass(const std::string& imClass);
+    std::vector<model::MotorModel> findMotersByImpulseClass(const std::string& imClass);
 
 private:
 
-    std::vector<MotorModel> motors;
+    std::vector<model::MotorModel> motors;
 
 };
 

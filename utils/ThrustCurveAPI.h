@@ -31,11 +31,11 @@ public:
    ThrustcurveMetadata& operator=(ThrustcurveMetadata&&) = default;
 
 //private:
-   std::vector<MotorModel::CertOrg> certOrgs;
+   std::vector<model::MotorModel::CertOrg> certOrgs;
    std::vector<double> diameters;
    std::vector<std::string> impulseClasses;
    std::map<std::string, std::string> manufacturers;
-   std::vector<MotorModel::MotorType> types;
+   std::vector<model::MotorModel::MotorType> types;
 
 };
 
@@ -73,7 +73,7 @@ public:
     * @brief getThrustCurve will download the thrust data for the given Motor using the motorId
     * @param m MotorModel to populate
     */
-   MotorModel getMotorData(const std::string& motorId);
+   model::MotorModel getMotorData(const std::string& motorId);
 
 
    /**
@@ -82,7 +82,7 @@ public:
 
    ThrustcurveMetadata getMetadata();
 
-   std::vector<MotorModel> searchMotors(const SearchCriteria& c);
+   std::vector<model::MotorModel> searchMotors(const SearchCriteria& c);
 
 
 

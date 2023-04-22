@@ -16,6 +16,9 @@
 // qtrocket theaders
 #include "ThrustCurve.h"
 
+namespace model
+{
+
 /**
  * @brief The MotorModel class
  *
@@ -134,6 +137,14 @@ public:
          else
             return std::string("OOP");
       }
+
+      static AVAILABILITY toEnum(const std::string& name)
+      {
+         if(name == "regular")
+            return AVAILABILITY::REGULAR;
+         else
+            return AVAILABILITY::OOP;
+      }
    };
 
    /**
@@ -171,6 +182,22 @@ public:
          else // UNK - Unknown
             return std::string("Unkown");
       }
+      static CERTORG toEnum(const std::string& name)
+      {
+         if(name == "AMRS")
+            return CERTORG::AMRS;
+         else if(name == "CAR")
+            return CERTORG::CAR;
+         else if(name == "NAR")
+            return CERTORG::NAR;
+         else if(name == "TRA")
+            return CERTORG::TRA;
+         else if(name == "UNC")
+            return CERTORG::UNC;
+         else // Unknown
+            return CERTORG::UNK;
+
+      }
    };
 
    /**
@@ -201,6 +228,17 @@ public:
             return std::string("Reload");
          else
             return std::string("Hybrid");
+      }
+      static MOTORTYPE toEnum(const std::string& name)
+      {
+         if(name == "SU" ||
+             name == "Single Use")
+            return MOTORTYPE::SU;
+         else if(name == "Hybrid")
+            return MOTORTYPE::HYBRID;
+         else if(name == "reload" ||
+                  name == "Reload")
+            return MOTORTYPE::RELOAD;
       }
    };
 
@@ -245,6 +283,24 @@ public:
             return std::string("Unknown");
          }
       }
+      static MOTORMANUFACTURER toEnum(const std::string& name)
+      {
+         if(name == "AeroTech" ||
+             name == "Aerotech")
+            return MOTORMANUFACTURER::AEROTECH;
+         else if(name == "AMW")
+            return MOTORMANUFACTURER::AMW;
+         else if(name == "Cesaroni")
+            return MOTORMANUFACTURER::CESARONI;
+         else if(name == "Estes")
+            return MOTORMANUFACTURER::ESTES;
+         else if(name == "Loki")
+            return MOTORMANUFACTURER::LOKI;
+         else if(name == "Apogee")
+            return MOTORMANUFACTURER::APOGEE;
+         else
+            return MOTORMANUFACTURER::UNKNOWN;
+      }
    };
 
 /// TODO: make these MotorModel members private. Public just for testing
@@ -278,5 +334,7 @@ public:
    ThrustCurve thrust; /// The measured motor thrust curve
    
 };
+
+} // namespace model
 
 #endif // MODEL_MOTORMODEL_H

@@ -23,10 +23,10 @@ public:
    RSEDatabaseLoader(const std::string& filename);
    ~RSEDatabaseLoader();
 
-   const std::vector<MotorModel>& getMotors() const { return motors; }
+   const std::vector<model::MotorModel>& getMotors() const { return motors; }
 private:
 
-   std::vector<MotorModel> motors;
+   std::vector<model::MotorModel> motors;
 
    void buildAndAppendMotorModel(boost::property_tree::ptree& v);
 

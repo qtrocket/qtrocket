@@ -143,7 +143,7 @@ void MainWindow::on_loadRSE_button_clicked()
    QComboBox* engineSelector =
          ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
 
-   const std::vector<MotorModel>& motors = loader.getMotors();
+   const std::vector<model::MotorModel>& motors = loader.getMotors();
    for(const auto& motor : motors)
    {
       std::cout << "Adding: " << motor.commonName << std::endl;

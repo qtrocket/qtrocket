@@ -26,7 +26,7 @@ ThrustCurveAPI::~ThrustCurveAPI()
 }
 
 
-MotorModel ThrustCurveAPI::getMotorData(const std::string& motorId)
+model::MotorModel ThrustCurveAPI::getMotorData(const std::string& motorId)
 {
    std::stringstream endpoint;
    endpoint << hostname << "download.json?motorId=" << motorId << "&data=samples";
@@ -35,7 +35,7 @@ MotorModel ThrustCurveAPI::getMotorData(const std::string& motorId)
    std::string res = curlConnection.get(endpoint.str(), extraHeaders);
 
    /// TODO: fix this
-   MotorModel mm;
+   model::MotorModel mm;
    return mm;
 }
 
@@ -62,17 +62,17 @@ ThrustcurveMetadata ThrustCurveAPI::getMetadata()
             std::string org = (*iter)["abbrev"].asString();
 
             if(org == "AMRS")
-               ret.certOrgs.emplace_back(MotorModel::CERTORG::AMRS);
+                ret.certOrgs.emplace_back(model::MotorModel::CERTORG::AMRS);
             else if(org == "CAR")
-               ret.certOrgs.emplace_back(MotorModel::CERTORG::CAR);
+                ret.certOrgs.emplace_back(model::MotorModel::CERTORG::CAR);
             else if(org == "NAR")
-               ret.certOrgs.emplace_back(MotorModel::CERTORG::NAR);
+                ret.certOrgs.emplace_back(model::MotorModel::CERTORG::NAR);
             else if(org == "TRA")
-               ret.certOrgs.emplace_back(MotorModel::CERTORG::TRA);
+                ret.certOrgs.emplace_back(model::MotorModel::CERTORG::TRA);
             else if(org == "UNC")
-               ret.certOrgs.emplace_back(MotorModel::CERTORG::UNC);
+                ret.certOrgs.emplace_back(model::MotorModel::CERTORG::UNC);
             else
-               ret.certOrgs.emplace_back(MotorModel::CERTORG::UNK);
+                ret.certOrgs.emplace_back(model::MotorModel::CERTORG::UNK);
          }
          for(Json::ValueConstIterator iter = jsonResult["diameters"].begin();
              iter != jsonResult["diameters"].end();
@@ -98,11 +98,11 @@ ThrustcurveMetadata ThrustCurveAPI::getMetadata()
          {
             std::string type = (*iter)["types"].asString();
             if(type == "SU")
-               ret.types.emplace_back(MotorModel::MOTORTYPE::SU);
+                ret.types.emplace_back(model::MotorModel::MOTORTYPE::SU);
             else if(type == "reload")
-               ret.types.emplace_back(MotorModel::MOTORTYPE::RELOAD);
+                ret.types.emplace_back(model::MotorModel::MOTORTYPE::RELOAD);
             else
-               ret.types.emplace_back(MotorModel::MOTORTYPE::HYBRID);
+                ret.types.emplace_back(model::MotorModel::MOTORTYPE::HYBRID);
          }
       }
       catch(const std::exception& e)
@@ -119,9 +119,9 @@ ThrustcurveMetadata ThrustCurveAPI::getMetadata()
 
 }
 
-std::vector<MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
+std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
 {
-   std::vector<MotorModel> retVal;
+   std::vector<model::MotorModel> retVal;
    std::string endpoint = hostname;
    endpoint += "search.json?";
    for(const auto& i : c.criteria)
@@ -148,14 +148,14 @@ std::vector<MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
              iter != jsonResult["results"].end();
              ++iter)
          {
-            MotorModel mm;
+            model::MotorModel mm;
             mm.commonName = (*iter)["commonName"].asString();
 
             std::string availability = (*iter)["availability"].asString();
             if(availability == "regular")
-               mm.availability = MotorModel::MotorAvailability(MotorModel::AVAILABILITY::REGULAR);
+                mm.availability = model::MotorModel::MotorAvailability(model::MotorModel::AVAILABILITY::REGULAR);
             else
-               mm.availability = MotorModel::MotorAvailability(MotorModel::AVAILABILITY::OOP);
+                mm.availability = model::MotorModel::MotorAvailability(model::MotorModel::AVAILABILITY::OOP);
 
             mm.avgThrust = (*iter)["avgThrustN"].asDouble();
             mm.burnTime  = (*iter)["burnTimeS"].asDouble();
@@ -167,7 +167,7 @@ std::vector<MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
             mm.length       = (*iter)["length"].asDouble();
             std::string manu = (*iter)["manufacturer"].asString();
             if(manu == "AeroTech")
-               mm.manufacturer = MotorModel::MOTORMANUFACTURER::AEROTECH;
+                mm.manufacturer = model::MotorModel::MOTORMANUFACTURER::AEROTECH;
             //mm.manufacturer = (*iter)["manufacturer"].asString();
             mm.maxThrust    = (*iter)["maxThrustN"].asDouble();
             mm.motorIdTC    = (*iter)["motorId"].asString();
@@ -179,11 +179,11 @@ std::vector<MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
 
             std::string type = (*iter)["type"].asString();
             if(type == "SU")
-               mm.type = MotorModel::MotorType(MotorModel::MOTORTYPE::SU);
+                mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::SU);
             else if(type == "reload")
-               mm.type = MotorModel::MotorType(MotorModel::MOTORTYPE::RELOAD);
+                mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::RELOAD);
             else
-               mm.type = MotorModel::MotorType(MotorModel::MOTORTYPE::HYBRID);
+                mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::HYBRID);
 
             retVal.push_back(mm);
          }

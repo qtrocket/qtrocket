@@ -56,7 +56,7 @@ void ThrustCurveMotorSelector::on_searchButton_clicked()
    c.addCriteria("manufacturer", manufacturer);
    c.addCriteria("impulseClass", impulseClass);
 
-   std::vector<MotorModel> motors = tcApi->searchMotors(c);
+   std::vector<model::MotorModel> motors = tcApi->searchMotors(c);
 
    for(const auto& i : motors)
    {

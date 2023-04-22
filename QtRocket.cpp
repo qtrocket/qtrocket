@@ -95,7 +95,7 @@ int QtRocket::run(int argc, char* argv[])
    return 0;
 }
 
-void QtRocket::addMotorModels(std::vector<MotorModel>& m)
+void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
 {
    for(const auto& i : m)
    {
