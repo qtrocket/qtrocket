@@ -12,14 +12,9 @@ AnalysisWindow::AnalysisWindow(QWidget *parent) :
    this->hide();
    this->show();
 
+
    std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
    const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
-   /*
-   for(const auto& i : res)
-   {
-      std::cout << i.first << ": " << "(" << i.second[0] << ", " << i.second[1] << ", " << i.second[2] << ")\n";
-   }
-   */
    auto& plot = ui->plotWidget;
    plot->setInteraction(QCP::iRangeDrag, true);
    plot->setInteraction(QCP::iRangeZoom, true);

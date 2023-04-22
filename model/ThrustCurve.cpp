@@ -7,10 +7,10 @@
 // 3rd party headers
 /// \endcond
 
-#include "Thrustcurve.h"
+#include "ThrustCurve.h"
 
 
-Thrustcurve::Thrustcurve(std::vector<std::pair<double, double>>& tc)
+ThrustCurve::ThrustCurve(std::vector<std::pair<double, double>>& tc)
    : thrustCurve(tc),
      maxTime(0.0),
      ignitionTime(0.0)
@@ -23,16 +23,16 @@ Thrustcurve::Thrustcurve(std::vector<std::pair<double, double>>& tc)
                               })->first;
 }
 
-Thrustcurve::Thrustcurve()
+ThrustCurve::ThrustCurve()
 {
    thrustCurve.emplace_back(0.0, 0.0);
    maxTime = 0.0;
 }
 
-Thrustcurve::~Thrustcurve()
+ThrustCurve::~ThrustCurve()
 {}
 
-void Thrustcurve::setThrustCurveVector(const std::vector<std::pair<double, double>>& v)
+void ThrustCurve::setThrustCurveVector(const std::vector<std::pair<double, double>>& v)
 {
    thrustCurve.clear();
    thrustCurve.resize(v.size());
@@ -45,13 +45,13 @@ void Thrustcurve::setThrustCurveVector(const std::vector<std::pair<double, doubl
                               })->first;
 }
 
-void Thrustcurve::setIgnitionTime(double t)
+void ThrustCurve::setIgnitionTime(double t)
 {
    ignitionTime = t;
    //maxTime += ignitionTime;
 }
 
-double Thrustcurve::getThrust(double t)
+double ThrustCurve::getThrust(double t)
 {
    // calculate t relative to the start time of the motor
    t -= ignitionTime;

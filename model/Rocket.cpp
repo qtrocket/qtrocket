@@ -36,7 +36,7 @@ double Rocket::getThrust(double t)
    return tc.getThrust(t);
 }
 
-void Rocket::setThrustCurve(const Thrustcurve& curve)
+void Rocket::setThrustCurve(const ThrustCurve& curve)
 {
    tc = curve;
 }

@@ -59,7 +59,17 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
    // infoUrl not present in RSE file
    mm.infoUrl = "";
    mm.length = v.get<double>("<xmlattr>.len", 0.0);
-   mm.manufacturer = v.get<std::string>("<xmlattr>.mfg", "");
+   {
+      std::string manufacturer = v.get<std::string>("<xmlattr>.mfg", "");
+      MotorModel::MotorManufacturer manu(MotorModel::MOTORMANUFACTURER::UNKNOWN);
+      if(manufacturer == "Aerotech")
+          manu = MotorModel::MOTORMANUFACTURER::AEROTECH;
+      else if(manufacturer == "Animal Motor Works")
+          manu = MotorModel::MOTORMANUFACTURER::AMW;
+      else if(manufacturer == "Apogee")
+          manu = MotorModel::MOTORMANUFACTURER::APOGEE;
+      mm.manufacturer = manu;
+   }
    mm.maxThrust = v.get<double>("<xmlattr>.peakThrust", 0.0);
    mm.propWeight = v.get<double>("<xmlattr>.propWt", 0.0);
    mm.totalImpulse = v.get<double>("<xmlattr>.Itot", 0.0);

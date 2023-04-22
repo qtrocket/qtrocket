@@ -11,24 +11,24 @@
 #include <boost/archive/text_oarchive.hpp>
 /// \endcond
 
-class Thrustcurve
+class ThrustCurve
 {
 public:
    /**
     * Constructor takes a vector of pairs. The first item a timestamp,
     * the second the thrust in newtons.
    */
-   Thrustcurve(std::vector<std::pair<double, double>>& tc);
+   ThrustCurve(std::vector<std::pair<double, double>>& tc);
    /**
     * Default constructor. Will create an empty thrustcurve, always returning 0.0
     * for all requested times.
    */
-   Thrustcurve();
-   Thrustcurve(const Thrustcurve&) = default;
-   Thrustcurve(Thrustcurve&&) = default;
-   ~Thrustcurve();
+   ThrustCurve();
+   ThrustCurve(const ThrustCurve&) = default;
+   ThrustCurve(ThrustCurve&&) = default;
+   ~ThrustCurve();
 
-   Thrustcurve& operator=(const Thrustcurve& rhs)
+   ThrustCurve& operator=(const ThrustCurve& rhs)
    {
       if(this != &rhs)
       {
@@ -39,7 +39,7 @@ public:
       return *this;
    }
 
-   Thrustcurve& operator=(Thrustcurve&& rhs)
+   ThrustCurve& operator=(ThrustCurve&& rhs)
    {
       thrustCurve = std::move(rhs.thrustCurve);
       maxTime = std::move(rhs.maxTime);
@@ -76,7 +76,7 @@ private:
 };
 
 template<class Archive>
-void Thrustcurve::serialize(Archive& ar, const unsigned int version)
+void ThrustCurve::serialize(Archive& ar, const unsigned int version)
 {
    ar & maxTime;
    ar & thrustCurve;

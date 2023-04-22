@@ -32,6 +32,7 @@ public:
    ~MainWindow();
 
 private slots:
+
    void on_actionAbout_triggered();
 
    void on_testButton1_clicked();

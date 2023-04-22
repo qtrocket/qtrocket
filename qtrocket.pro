@@ -21,7 +21,7 @@ SOURCES += \
     model/MotorModel.cpp \
     model/MotorModelDatabase.cpp \
     model/Rocket.cpp \
-    model/Thrustcurve.cpp \
+    model/ThrustCurve.cpp \
     sim/ConstantGravityModel.cpp \
     sim/GravityModel.cpp \
     sim/Propagator.cpp \
@@ -51,7 +51,7 @@ HEADERS += \
     model/MotorModel.h \
     model/MotorModelDatabase.h \
     model/Rocket.h \
-    model/Thrustcurve.h \
+    model/ThrustCurve.h \
     sim/AtmosphericModel.h \
     sim/ConstantAtmosphere.h \
     sim/ConstantGravityModel.h \

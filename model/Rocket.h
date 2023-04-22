@@ -11,12 +11,19 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/Thrustcurve.h"
+#include "model/ThrustCurve.h"
 #include "sim/Propagator.h"
 
+/**
+ * @brief The Rocket class holds all rocket components
+ *
+ */
 class Rocket
 {
 public:
+    /**
+    * @brief Rocket class constructor
+    */
    Rocket();
 
    void launch();
@@ -31,7 +38,7 @@ public:
    double getDragCoefficient() const { return dragCoeff; }
 
    double getThrust(double t);
-   void setThrustCurve(const Thrustcurve& curve);
+   void setThrustCurve(const ThrustCurve& curve);
 
    bool terminateCondition(const std::pair<double, std::vector<double>>& cond);
 
@@ -43,7 +50,7 @@ private:
    double dragCoeff;
    double mass;
 
-   Thrustcurve tc;
+   ThrustCurve tc;
 
 };
 

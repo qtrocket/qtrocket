@@ -34,8 +34,8 @@ MotorModel ThrustCurveAPI::getMotorData(const std::string& motorId)
 
    std::string res = curlConnection.get(endpoint.str(), extraHeaders);
 
+   /// TODO: fix this
    MotorModel mm;
-   mm.setDataFromJsonString(res);
    return mm;
 }
 
@@ -165,7 +165,10 @@ std::vector<MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
             mm.diameter    = (*iter)["diameter"].asDouble();
             mm.impulseClass = (*iter)["impulseClass"].asString();
             mm.length       = (*iter)["length"].asDouble();
-            mm.manufacturer = (*iter)["manufacturer"].asString();
+            std::string manu = (*iter)["manufacturer"].asString();
+            if(manu == "AeroTech")
+               mm.manufacturer = MotorModel::MOTORMANUFACTURER::AEROTECH;
+            //mm.manufacturer = (*iter)["manufacturer"].asString();
             mm.maxThrust    = (*iter)["maxThrustN"].asDouble();
             mm.motorIdTC    = (*iter)["motorId"].asString();
             mm.propType     = (*iter)["propInfo"].asString();
