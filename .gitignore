@@ -34,6 +34,9 @@
 # Build files and executable
 build/
 
+# Doxygen
+docs/doxygen/*
+
 # IDE
 .vscode/qtrocket.pro.user
 qtrocket.pro.user
