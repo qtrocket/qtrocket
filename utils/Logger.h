@@ -1,16 +1,22 @@
 #ifndef UTILS_LOGGER_H
 #define UTILS_LOGGER_H
 
+/// \cond
+// C headers
+// C++ headers
 #include <fstream>
 #include <mutex>
 #include <string_view>
 
-/**
- * @todo write docs
- */
+// 3rd party headers
+/// \endcond
+
 namespace utils
 {
 
+/**
+ * @todo write docs
+ */
 class Logger
 {
 public:

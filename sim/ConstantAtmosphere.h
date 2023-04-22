@@ -1,6 +1,7 @@
 #ifndef SIM_CONSTANTATMOSPHERE_H
 #define SIM_CONSTANTATMOSPHERE_H
 
+// qtrocket headers
 #include "AtmosphericModel.h"
 
 namespace sim {

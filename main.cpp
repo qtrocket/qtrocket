@@ -1,3 +1,11 @@
+
+/// \cond
+// C headers
+// C++ headers
+// 3rd party headers
+/// \endcond
+
+
 #include "QtRocket.h"
 #include "utils/Logger.h"
 

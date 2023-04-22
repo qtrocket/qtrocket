@@ -1,11 +1,18 @@
 #ifndef ROCKET_H
 #define ROCKET_H
 
-#include "sim/Propagator.h"
-#include "model/Thrustcurve.h"
-
-#include <utility> // std::move
+/// \cond
+// C headers
+// C++ headers
 #include <memory>
+#include <utility> // std::move
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "model/Thrustcurve.h"
+#include "sim/Propagator.h"
 
 class Rocket
 {

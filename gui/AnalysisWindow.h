@@ -1,7 +1,15 @@
 #ifndef ANALYSISWINDOW_H
 #define ANALYSISWINDOW_H
 
+/// \cond
+
+// C
+// C++
+// 3rd party
 #include <QDialog>
+/// \endcond
+
+// qtrocket headers
 
 namespace Ui {
 class AnalysisWindow;

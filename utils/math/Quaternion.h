@@ -1,9 +1,17 @@
 #ifndef MATH_QUATERNION_H
 #define MATH_QUATERNION_H
 
+/// \cond
+// C headers
+// C++ headers
+#include <utility>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
 #include "Vector3.h"
 
-#include <utility>
 
 namespace math
 {

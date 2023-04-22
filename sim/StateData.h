@@ -1,6 +1,7 @@
 #ifndef STATEDATA_H
 #define STATEDATA_H
 
+// qtrocket headers
 #include "utils/math/Vector3.h"
 #include "utils/math/Quaternion.h"
 

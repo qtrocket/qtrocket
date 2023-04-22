@@ -1,7 +1,14 @@
 #ifndef ABOUTWINDOW_H
 #define ABOUTWINDOW_H
 
+/// \cond
+// C headers
+// C++ headers
+// 3rd party headers
 #include <QDialog>
+/// \endcond
+
+// qtrocket headers
 
 namespace Ui {
 class AboutWindow;

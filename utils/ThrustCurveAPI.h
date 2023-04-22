@@ -2,10 +2,17 @@
 #define UTILS_THRUSTCURVEAPI_H
 
 
-#include <string>
+/// \cond
+// C headers
+// C++ headers
 #include <map>
+#include <string>
 
-#include "CurlConnection.h"
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "utils/CurlConnection.h"
 #include "model/MotorModel.h"
 
 namespace utils

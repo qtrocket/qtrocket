@@ -1,19 +1,28 @@
-#include "gui/MainWindow.h"
-#include "ui_MainWindow.h"
-#include "gui/AboutWindow.h"
-#include "gui/AnalysisWindow.h"
-#include "gui/ThrustCurveMotorSelector.h"
 
-#include "sim/RK4Solver.h"
-#include "model/Rocket.h"
+/// \cond
+// C headers
+// C++ headers
+#include <cmath>
+#include <iostream>
+#include <memory>
 
-#include "utils/RSEDatabaseLoader.h"
-
+// 3rd party headers
 #include <QFileDialog>
 
-#include <memory>
-#include <iostream>
-#include <cmath>
+/// \endcond
+
+
+// qtrocket headers
+#include "ui_MainWindow.h"
+
+#include "gui/AboutWindow.h"
+#include "gui/AnalysisWindow.h"
+#include "gui/MainWindow.h"
+#include "gui/ThrustCurveMotorSelector.h"
+#include "model/Rocket.h"
+#include "utils/RSEDatabaseLoader.h"
+
+
 
 MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
    : QMainWindow(parent),

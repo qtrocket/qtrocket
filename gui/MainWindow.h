@@ -1,8 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+/// \cond
+// C headers
+// C++ headers
+// 3rd Party headers
 #include <QMainWindow>
+/// \endcond
 
+// qtrocket headers
 #include "QtRocket.h"
 
 

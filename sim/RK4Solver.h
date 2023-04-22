@@ -1,13 +1,21 @@
 #ifndef SIM_RK4SOLVER_H
 #define SIM_RK4SOLVER_H
 
-#include <functional>
-#include <vector>
-#include <limits>
+/// \cond
+// C headers
+// C++ headers
 #include <cmath>
+#include <functional>
+#include <limits>
+#include <vector>
 
-#include "utils/Logger.h"
+// 3rd party headers
+
+/// \endcond
+
+// qtrocket headers
 #include "sim/DESolver.h"
+#include "utils/Logger.h"
 
 namespace sim {
 

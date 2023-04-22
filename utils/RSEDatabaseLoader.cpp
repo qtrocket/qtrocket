@@ -1,10 +1,16 @@
-#include "RSEDatabaseLoader.h"
 
-#include <boost/property_tree/xml_parser.hpp>
-
+/// \cond
+// C headers
+// C++ headers
 #include <iostream>
 #include <cmath>
 
+// 3rd party headers
+#include <boost/property_tree/xml_parser.hpp>
+/// \endcond
+
+// qtrocket headers
+#include "utils/RSEDatabaseLoader.h"
 #include "QtRocket.h"
 
 namespace utils {

@@ -1,8 +1,14 @@
 #ifndef UTILS_BINMAP_H
 #define UTILS_BINMAP_H
 
-#include <vector>
+/// \cond
+// C headers
+// C++ headers
 #include <utility>
+#include <vector>
+
+// 3rd party headers
+/// \endcond
 
 namespace utils {
 

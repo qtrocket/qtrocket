@@ -1,13 +1,19 @@
 #ifndef MODEL_MOTORMODEL_H
 #define MODEL_MOTORMODEL_H
 
+/// \cond
+// C headers
+// C++ headers
+#include <string>
+
+// 3rd party headers
 // For boost serialization. We're using boost::serialize to save
 // and load Motor data to file
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+/// \endcond
 
-#include <string>
-
+// qtrocke theaders
 #include "Thrustcurve.h"
 
 class MotorModel

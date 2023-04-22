@@ -1,10 +1,16 @@
 #ifndef THRUSTCURVEMOTORSELECTOR_H
 #define THRUSTCURVEMOTORSELECTOR_H
 
-#include <QDialog>
-
+/// \cond
+// C headers
+// C++ headers
 #include <memory>
 
+// 3rd party headers
+#include <QDialog>
+/// \endcond
+
+// qtrocket headers
 #include "utils/ThrustCurveAPI.h"
 
 namespace Ui {

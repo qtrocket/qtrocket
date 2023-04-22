@@ -1,10 +1,18 @@
 #ifndef SIM_PROPAGATOR_H
 #define SIM_PROPAGATOR_H
 
-#include "sim/DESolver.h"
-
+/// \cond
+// C headers
+// C++ headers
 #include <memory>
 #include <vector>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "sim/DESolver.h"
+
 
 // Forward declare
 class Rocket;

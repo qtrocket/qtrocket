@@ -1,8 +1,16 @@
-#include "SphericalGravityModel.h"
 
+/// \cond
+// C headers
+// C++ headers
+#include <cmath>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "sim/SphericalGravityModel.h"
 #include "utils/math/Constants.h"
 
-#include <cmath>
 
 namespace sim
 {

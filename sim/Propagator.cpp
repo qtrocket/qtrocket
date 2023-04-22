@@ -1,14 +1,23 @@
+
+/// \cond
+// C headers
+// C++ headers
+#include <chrono>
 #include <iostream>
+#include <sstream>
+#include <utility>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
 #include "Propagator.h"
 
-#include "sim/RK4Solver.h"
-#include "model/Rocket.h"
-#include "utils/Logger.h"
 #include "QtRocket.h"
+#include "model/Rocket.h"
+#include "sim/RK4Solver.h"
+#include "utils/Logger.h"
 
-#include <utility>
-#include <chrono>
-#include <sstream>
 
 namespace sim {
 

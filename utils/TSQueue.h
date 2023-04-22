@@ -1,10 +1,16 @@
 #ifndef TSQUEUE_H
 #define TSQUEUE_H
 
-#include <mutex>
-#include <memory>
-#include <queue>
+/// \cond
+// C headers
+// C++ headers
 #include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <queue>
+
+// 3rd party headers
+/// \endcond
 
 /**
  * @brief The TSQueue class is a very basic thread-safe queue

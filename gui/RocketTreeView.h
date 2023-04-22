@@ -1,7 +1,14 @@
 #ifndef ROCKETTREEVIEW_H
 #define ROCKETTREEVIEW_H
 
+/// \cond
+// C headers
+// C++ headers
+// 3rd party headers
 #include <QTreeView>
+/// \endcond
+
+// qtrocket headers
 
 /**
  * @brief RocketTreeView basically just renames QTreeView with a specific

@@ -1,6 +1,15 @@
+
+/// \cond
+// C headers
+// C++ headers
+#include <cstdint>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
 #include "ThreadPool.h"
 
-#include <cstdint>
 
 ThreadPool::ThreadPool()
    : done(false),

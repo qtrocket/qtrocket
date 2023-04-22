@@ -1,6 +1,7 @@
 #ifndef SIM_GRAVITYMODEL_H
 #define SIM_GRAVITYMODEL_H
 
+// qtrocket headers
 #include "utils/Triplet.h"
 
 namespace sim

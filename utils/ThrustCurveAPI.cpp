@@ -1,6 +1,13 @@
-#include "ThrustCurveAPI.h"
 
+/// \cond
+// C headers
+// C++ headers
+// 3rd party headers
 #include <json/json.h>
+/// \endcond
+
+// qtrocket headers
+#include "utils/ThrustCurveAPI.h"
 #include "utils/Logger.h"
 
 namespace utils

@@ -1,12 +1,18 @@
-#include "QtRocket.h"
-#include "gui/MainWindow.h"
 
+/// \cond
+// C headers
+// C++ headers
+#include <thread>
+
+// 3rd party headers
 #include <QApplication>
 #include <QLocale>
 #include <QTranslator>
+/// \endcond
 
-#include <thread>
-
+// qtrocket headers
+#include "QtRocket.h"
+#include "gui/MainWindow.h"
 #include "sim/ConstantAtmosphere.h"
 #include "sim/ConstantGravityModel.h"
 

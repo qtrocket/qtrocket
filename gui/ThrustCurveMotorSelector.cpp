@@ -1,3 +1,5 @@
+
+// qtrocket headers
 #include "ThrustCurveMotorSelector.h"
 #include "ui_ThrustCurveMotorSelector.h"
 
