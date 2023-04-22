@@ -18,6 +18,7 @@ SOURCES += \
     gui/MainWindow.cpp \
     model/MotorCase.cpp \
     model/MotorModel.cpp \
+    model/MotorModelDatabase.cpp \
     model/Rocket.cpp \
     model/Thrustcurve.cpp \
     sim/ConstantGravityModel.cpp \
@@ -46,6 +47,7 @@ HEADERS += \
     gui/qcustomplot.h \
     model/MotorCase.h \
     model/MotorModel.h \
+    model/MotorModelDatabase.h \
     model/Rocket.h \
     model/Thrustcurve.h \
     sim/AtmosphericModel.h \
