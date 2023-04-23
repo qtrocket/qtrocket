@@ -77,11 +77,15 @@ public:
    enum class MOTORMANUFACTURER
    {
        AEROTECH,
-       CESARONI,
-       LOKI,
        AMW,
-       ESTES,
        APOGEE,
+       CESARONI,
+       CONTRAIL,
+       ESTES,
+       HYPERTEK,
+       KLIMA,
+       LOKI,
+       QUEST,
        UNKNOWN
    };
 
@@ -138,6 +142,11 @@ public:
             return std::string("OOP");
       }
 
+      /**
+       * @brief toEnum returns AVAILABILITY enum from string name
+       * @param name Name of enum
+       * @return AVAILABILITY enum corresponding to name
+       */
       static AVAILABILITY toEnum(const std::string& name)
       {
          if(name == "regular")
@@ -182,6 +191,12 @@ public:
          else // UNK - Unknown
             return std::string("Unkown");
       }
+
+      /**
+       * @brief toEnum returns CERTORG enum corresponding to name
+       * @param name Name of enumeration
+       * @return enumeration value corresponding to name
+       */
       static CERTORG toEnum(const std::string& name)
       {
          if(name == "AMRS")
@@ -229,6 +244,12 @@ public:
          else
             return std::string("Hybrid");
       }
+
+      /**
+       * @brief toEnum returns enumeration corresponding to name
+       * @param name Name of enumeration
+       * @return enumeration corresponding to name
+       */
       static MOTORTYPE toEnum(const std::string& name)
       {
          if(name == "SU" ||
@@ -278,26 +299,51 @@ public:
             return std::string("Loki");
          case MOTORMANUFACTURER::APOGEE:
             return std::string("Apogee");
+         case MOTORMANUFACTURER::CONTRAIL:
+            return std::string("Contrail");
+         case MOTORMANUFACTURER::HYPERTEK:
+            return std::string("Hypertek");
+         case MOTORMANUFACTURER::KLIMA:
+            return std::string("Klima");
+         case MOTORMANUFACTURER::QUEST:
+            return std::string("Quest");
          case MOTORMANUFACTURER::UNKNOWN:
          default:
             return std::string("Unknown");
          }
       }
+
+      /**
+       * @brief toEnum returns MOTORMANUFACTURER enum value corresponding to a name
+       * @param name Name of enumeration
+       * @return enumeration corresponding to name
+       */
       static MOTORMANUFACTURER toEnum(const std::string& name)
       {
          if(name == "AeroTech" ||
              name == "Aerotech")
             return MOTORMANUFACTURER::AEROTECH;
-         else if(name == "AMW")
+         else if(name == "AMW" ||
+                 name == "Animal Motor Works")
             return MOTORMANUFACTURER::AMW;
-         else if(name == "Cesaroni")
+         else if(name == "Cesaroni" ||
+                 name == "Cesaroni Technology Inc.")
             return MOTORMANUFACTURER::CESARONI;
-         else if(name == "Estes")
+         else if(name == "Estes" ||
+                 name == "Estes Industries, Inc.")
             return MOTORMANUFACTURER::ESTES;
          else if(name == "Loki")
             return MOTORMANUFACTURER::LOKI;
          else if(name == "Apogee")
             return MOTORMANUFACTURER::APOGEE;
+         else if(name == "Contrail")
+            return MOTORMANUFACTURER::CONTRAIL;
+         else if(name == "Hypertek")
+            return MOTORMANUFACTURER::HYPERTEK;
+         else if(name == "Klima")
+            return MOTORMANUFACTURER::QUEST;
+         else if(name == "Quest")
+            return MOTORMANUFACTURER::KLIMA;
          else
             return MOTORMANUFACTURER::UNKNOWN;
       }

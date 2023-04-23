@@ -7,8 +7,6 @@
 #include <vector>
 
 // 3rd party headers
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
 /// \endcond
 
 class ThrustCurve
@@ -59,27 +57,14 @@ public:
    void setIgnitionTime(double t);
 
    /**
- * TODO: Get rid of this. This is for temporary testing
- */
+    * TODO: Get rid of this. This is for temporary testing
+    */
    void setThrustCurveVector(const std::vector<std::pair<double, double>>& v);
 
-
 private:
-   // We're using boost::serialize for data storage and retrieval
-   friend class boost::serialization::access;
-   template<class Archive>
-   void serialize(Archive& ar, const unsigned int version);
-
    std::vector<std::pair<double, double>> thrustCurve;
    double maxTime{0.0};
    double ignitionTime{0.0};
 };
-
-template<class Archive>
-void ThrustCurve::serialize(Archive& ar, const unsigned int version)
-{
-   ar & maxTime;
-   ar & thrustCurve;
-}
 
 #endif // MODEL_THRUSTCURVE_H
