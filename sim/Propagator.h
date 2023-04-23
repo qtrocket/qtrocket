@@ -74,7 +74,6 @@ private:
    std::unique_ptr<sim::DESolver> integrator;
 
    Rocket* rocket;
-   QtRocket* qtrocket;
 
    std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};

@@ -94,24 +94,30 @@
   <widget class="QWidget" name="formLayoutWidget_2">
    <property name="geometry">
     <rect>
-     <x>170</x>
-     <y>260</y>
-     <width>160</width>
+     <x>140</x>
+     <y>240</y>
+     <width>221</width>
      <height>41</height>
     </rect>
    </property>
    <layout class="QFormLayout" name="formLayout_2">
-    <item row="0" column="0">
-     <widget class="QPushButton" name="pushButton_2">
-      <property name="text">
-       <string>Download</string>
-      </property>
-     </widget>
-    </item>
     <item row="0" column="1">
      <widget class="QComboBox" name="motorSelection"/>
     </item>
    </layout>
+  </widget>
+  <widget class="QPushButton" name="setMotor">
+   <property name="geometry">
+    <rect>
+     <x>200</x>
+     <y>290</y>
+     <width>80</width>
+     <height>25</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>setMotor</string>
+   </property>
   </widget>
  </widget>
  <customwidgets>

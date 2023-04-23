@@ -75,10 +75,15 @@ QtRocket::QtRocket()
    running = false;
 
    atmosphere =
-        std::make_shared<sim::ConstantAtmosphere>();
+      std::make_shared<sim::ConstantAtmosphere>();
 
    gravity =
-        std::make_shared<sim::ConstantGravityModel>();
+      std::make_shared<sim::ConstantGravityModel>();
+
+
+   rocket =
+      std::make_shared<Rocket>();
+
 }
 
 int QtRocket::run(int argc, char* argv[])

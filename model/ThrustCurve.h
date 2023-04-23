@@ -26,24 +26,9 @@ public:
    ThrustCurve(ThrustCurve&&) = default;
    ~ThrustCurve();
 
-   ThrustCurve& operator=(const ThrustCurve& rhs)
-   {
-      if(this != &rhs)
-      {
-         thrustCurve = rhs.thrustCurve;
-         maxTime = rhs.maxTime;
-         ignitionTime = rhs.ignitionTime;
-      }
-      return *this;
-   }
+   ThrustCurve& operator=(const ThrustCurve& rhs) = default;
 
-   ThrustCurve& operator=(ThrustCurve&& rhs)
-   {
-      thrustCurve = std::move(rhs.thrustCurve);
-      maxTime = std::move(rhs.maxTime);
-      ignitionTime = std::move(rhs.ignitionTime);
-      return *this;
-   }
+   ThrustCurve& operator=(ThrustCurve&& rhs) = default;
 
    /**
     * Assuming that the thrust is one dimensional. Seems reasonable, but just

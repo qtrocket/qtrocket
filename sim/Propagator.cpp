@@ -23,8 +23,7 @@ namespace sim {
 
 Propagator::Propagator(Rocket* r)
    : integrator(),
-     rocket(r),
-     qtrocket(QtRocket::getInstance())
+     rocket(r)
 
 {
 
@@ -45,9 +44,9 @@ Propagator::Propagator(Rocket* r)
       /* dvx/dt */ [this](double, const std::vector<double>& ) -> double { return getForceX() / getMass(); },
       /* dvy/dt */ [this](double, const std::vector<double>& ) -> double { return getForceY() / getMass(); },
       /* dvz/dt */ [this](double, const std::vector<double>& ) -> double { return getForceZ() / getMass(); },
-       /* dpitch/dt    */ [this](double, const std::vector<double>& s) -> double { return s[9]; },
-       /* dyaw/dt      */ [this](double, const std::vector<double>& s) -> double { return s[10]; },
-       /* droll/dt     */ [this](double, const std::vector<double>& s) -> double { return s[11]; },
+       /* dpitch/dt    */ [](double, const std::vector<double>& s) -> double { return s[9]; },
+       /* dyaw/dt      */ [](double, const std::vector<double>& s) -> double { return s[10]; },
+       /* droll/dt     */ [](double, const std::vector<double>& s) -> double { return s[11]; },
        /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { (getTorqueP() - s[7] * s[8] * (getIroll() - getIyaw())) / getIpitch(); },
        /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { (getTorqueQ() - s[6] * s[9] * (getIpitch() - getIroll())) / getIyaw(); },
       /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { (getTorqueR() - s[6] * s[7] * (getIyaw() - getIpitch())) / getIroll(); }));
@@ -97,16 +96,19 @@ double Propagator::getMass()
 
 double Propagator::getForceX()
 {
+    QtRocket* qtrocket = QtRocket::getInstance();
     return - qtrocket->getAtmosphereModel()->getDensity(currentState[3])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
 }
 
 double Propagator::getForceY()
 {
+    QtRocket* qtrocket = QtRocket::getInstance();
     return -qtrocket->getAtmosphereModel()->getDensity(currentState[3]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
 }
 
 double Propagator::getForceZ()
 {
+    QtRocket* qtrocket = QtRocket::getInstance();
     double gravity = (qtrocket->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2])).x3;
     double airDrag = -qtrocket->getAtmosphereModel()->getDensity(currentState[3]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
     double thrust  = rocket->getThrust(currentTime);

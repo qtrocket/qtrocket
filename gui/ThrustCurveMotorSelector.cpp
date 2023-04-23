@@ -1,7 +1,15 @@
 
+/// \cond
+// C headers
+// C++ headers
+#include <algorithm>
+// 3rd party headers
+/// \endcond
+
 // qtrocket headers
 #include "ThrustCurveMotorSelector.h"
 #include "ui_ThrustCurveMotorSelector.h"
+#include "QtRocket.h"
 
 ThrustCurveMotorSelector::ThrustCurveMotorSelector(QWidget *parent) :
    QDialog(parent),
@@ -57,11 +65,31 @@ void ThrustCurveMotorSelector::on_searchButton_clicked()
    c.addCriteria("impulseClass", impulseClass);
 
    std::vector<model::MotorModel> motors = tcApi->searchMotors(c);
+   std::copy(std::begin(motors), std::end(motors), std::back_inserter(motorModels));
 
    for(const auto& i : motors)
    {
       ui->motorSelection->addItem(QString::fromStdString(i.commonName));
    }
 
+}
+
+
+void ThrustCurveMotorSelector::on_setMotor_clicked()
+{
+   //asdf
+   std::string commonName = ui->motorSelection->currentText().toStdString();
+
+   // get motor
+
+   model::MotorModel mm = *std::find_if(
+       std::begin(motorModels),
+       std::end(motorModels),
+       [&commonName](const auto& item)
+       {
+           return item.commonName == commonName;
+       });
+
+   QtRocket::getInstance()->getRocket()->setMotorModel(mm);
 }
 
