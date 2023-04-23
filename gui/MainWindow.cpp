@@ -146,8 +146,8 @@ void MainWindow::on_loadRSE_button_clicked()
    const std::vector<model::MotorModel>& motors = loader.getMotors();
    for(const auto& motor : motors)
    {
-      std::cout << "Adding: " << motor.commonName << std::endl;
-      engineSelector->addItem(QString(motor.commonName.c_str()));
+      std::cout << "Adding: " << motor.data.commonName << std::endl;
+      engineSelector->addItem(QString(motor.data.commonName.c_str()));
    }
 }
 

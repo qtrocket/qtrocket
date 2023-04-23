@@ -69,7 +69,7 @@ void ThrustCurveMotorSelector::on_searchButton_clicked()
 
    for(const auto& i : motors)
    {
-      ui->motorSelection->addItem(QString::fromStdString(i.commonName));
+      ui->motorSelection->addItem(QString::fromStdString(i.data.commonName));
    }
 
 }
@@ -87,7 +87,7 @@ void ThrustCurveMotorSelector::on_setMotor_clicked()
        std::end(motorModels),
        [&commonName](const auto& item)
        {
-           return item.commonName == commonName;
+           return item.data.commonName == commonName;
        });
 
    QtRocket::getInstance()->getRocket()->setMotorModel(mm);

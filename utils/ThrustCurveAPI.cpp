@@ -148,7 +148,8 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
              iter != jsonResult["results"].end();
              ++iter)
          {
-            model::MotorModel mm;
+            model::MotorModel motorModel;
+            model::MotorModel::MetaData mm;
             mm.commonName = (*iter)["commonName"].asString();
 
             std::string availability = (*iter)["availability"].asString();
@@ -185,7 +186,8 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
             else
                 mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::HYBRID);
 
-            retVal.push_back(mm);
+            motorModel.moveMetaData(std::move(mm));
+            retVal.push_back(motorModel);
          }
       }
       catch(const std::exception& e)

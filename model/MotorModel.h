@@ -255,11 +255,12 @@ public:
          if(name == "SU" ||
              name == "Single Use")
             return MOTORTYPE::SU;
-         else if(name == "Hybrid")
-            return MOTORTYPE::HYBRID;
          else if(name == "reload" ||
                   name == "Reload")
             return MOTORTYPE::RELOAD;
+         else  // It's a hybrid
+            return MOTORTYPE::HYBRID;
+
       }
    };
 
@@ -349,35 +350,64 @@ public:
       }
    };
 
+
 /// TODO: make these MotorModel members private. Public just for testing
 //private:
 
-   MotorAvailability availability{AVAILABILITY::REGULAR}; /// Motor Availability
-   double avgThrust{0.0}; /// Average thrust in Newtons
-   double burnTime{0.0};  /// Burn time in seconds
-   CertOrg certOrg{CERTORG::UNC}; /// The certification organization, defaults to Uncertified
-   std::string commonName{""}; /// Common name, e.g. A8 or J615
-   // int dataFiles
-   std::vector<int> delays; /// 1000 delay means no ejection charge
-   std::string designation{""}; /// Other name, usually includes prop type, e.g. H110W
-   double diameter{0}; /// motor diameter in mm
-   std::string impulseClass; /// Motor letter, e.g. 'A', 'B', '1/2A', 'M', etc
-   std::string infoUrl{""};  /// TODO: ???
-   double length{0.0}; /// motor length in mm
-   MotorManufacturer manufacturer{MOTORMANUFACTURER::UNKNOWN}; /// Motor Manufacturer
+   struct MetaData
+   {
+      MetaData() = default;
+      ~MetaData() = default;
+      MetaData(const MetaData&) = default;
+      MetaData(MetaData&&) = default;
+      MetaData& operator=(const MetaData&) = default;
+      MetaData& operator=(MetaData&&) = default;
 
-   double maxThrust{0.0}; /// Max thrust in Newtons
-   std::string motorIdTC{""}; /// 24 character hex string used by thrustcurve.org to ID a motor
-   std::string propType{""}; /// Propellant type, e.g. black powder
-   double propWeight{0.0};   /// Propellant weight in grams
-   bool sparky{false};       /// true if the motor is "sparky", false otherwise
-   double totalImpulse{0.0}; /// Total impulse in Newton-seconds
-   double totalWeight{0.0};  /// Total weight in grams
-   MotorType type{MOTORTYPE::SU}; /// Motor type, e.g. single-use, reload, or hybrid
-   std::string lastUpdated{""}; /// Date last updated on ThrustCurve.org
+      MotorAvailability availability{AVAILABILITY::REGULAR}; /// Motor Availability
+      double avgThrust{0.0}; /// Average thrust in Newtons
+      double burnTime{0.0};  /// Burn time in seconds
+      CertOrg certOrg{CERTORG::UNC}; /// The certification organization, defaults to Uncertified
+      std::string commonName{""}; /// Common name, e.g. A8 or J615
+      // int dataFiles
+      std::vector<int> delays; /// 1000 delay means no ejection charge
+      std::string designation{""}; /// Other name, usually includes prop type, e.g. H110W
+      double diameter{0}; /// motor diameter in mm
+      std::string impulseClass; /// Motor letter, e.g. 'A', 'B', '1/2A', 'M', etc
+      std::string infoUrl{""};  /// TODO: ???
+      double length{0.0}; /// motor length in mm
+      MotorManufacturer manufacturer{MOTORMANUFACTURER::UNKNOWN}; /// Motor Manufacturer
+
+      double maxThrust{0.0}; /// Max thrust in Newtons
+      std::string motorIdTC{""}; /// 24 character hex string used by thrustcurve.org to ID a motor
+      std::string propType{""}; /// Propellant type, e.g. black powder
+      double propWeight{0.0};   /// Propellant weight in grams
+      bool sparky{false};       /// true if the motor is "sparky", false otherwise
+      double totalImpulse{0.0}; /// Total impulse in Newton-seconds
+      double totalWeight{0.0};  /// Total weight in grams
+      MotorType type{MOTORTYPE::SU}; /// Motor type, e.g. single-use, reload, or hybrid
+      std::string lastUpdated{""}; /// Date last updated on ThrustCurve.org
+   };
+
+   double getMass(double simTime) const;
+   double getThrust(double simTime);
+
+   void setMetaData(const MetaData& md);
+   void moveMetaData(MetaData&& md);
+
+   void startMotor(double startTime) { ignitionOccurred = true; ignitionTime = startTime; }
+
 
    // Thrust parameters
+   MetaData data;
+private:
+   bool ignitionOccurred{false};
+   double emptyMass;
+   double isp;
+   double maxTime;
+   double ignitionTime;
    ThrustCurve thrust; /// The measured motor thrust curve
+
+   std::vector<std::pair<double, double>> massCurve;
    
 };
 

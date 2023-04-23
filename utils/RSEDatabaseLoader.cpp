@@ -35,7 +35,7 @@ RSEDatabaseLoader::~RSEDatabaseLoader()
 
 void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
 {
-   model::MotorModel mm;
+   model::MotorModel::MetaData mm;
    mm.availability = model::MotorModel::MotorAvailability(model::MotorModel::AVAILABILITY::REGULAR);
    mm.avgThrust = v.get<double>("<xmlattr>.avgThrust", 0.0);
    mm.burnTime  = v.get<double>("<xmlattr>.burn-time", 0.0);
@@ -70,7 +70,9 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
       thrustData.push_back(std::make_pair(tdata, fdata));
    }
 
-   motors.emplace_back(std::move(mm));
+   model::MotorModel motorModel;
+   motorModel.moveMetaData(std::move(mm));
+   motors.emplace_back(std::move(motorModel));
 }
 
 

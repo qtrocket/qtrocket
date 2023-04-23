@@ -37,6 +37,7 @@ SOURCES += \
     utils/ThreadPool.cpp \
     utils/ThrustCurveAPI.cpp \
     utils/math/Quaternion.cpp \
+    utils/math/UtilityMathFunctions.cpp \
     utils/math/Vector3.cpp
 
 HEADERS += \
@@ -75,6 +76,7 @@ HEADERS += \
     utils/Triplet.h \
     utils/math/Constants.h \
     utils/math/Quaternion.h \
+    utils/math/UtilityMathFunctions.h \
     utils/math/Vector3.h
 
 FORMS += \

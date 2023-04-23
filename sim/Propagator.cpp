@@ -47,9 +47,9 @@ Propagator::Propagator(Rocket* r)
        /* dpitch/dt    */ [](double, const std::vector<double>& s) -> double { return s[9]; },
        /* dyaw/dt      */ [](double, const std::vector<double>& s) -> double { return s[10]; },
        /* droll/dt     */ [](double, const std::vector<double>& s) -> double { return s[11]; },
-       /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { (getTorqueP() - s[7] * s[8] * (getIroll() - getIyaw())) / getIpitch(); },
-       /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { (getTorqueQ() - s[6] * s[9] * (getIpitch() - getIroll())) / getIyaw(); },
-      /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { (getTorqueR() - s[6] * s[7] * (getIyaw() - getIpitch())) / getIroll(); }));
+       /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { return (getTorqueP() - s[7] * s[8] * (getIroll() - getIyaw())) / getIpitch(); },
+       /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueQ() - s[6] * s[9] * (getIpitch() - getIroll())) / getIyaw(); },
+      /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueR() - s[6] * s[7] * (getIyaw() - getIpitch())) / getIroll(); }));
 
 
    integrator->setTimeStep(timeStep);

@@ -41,6 +41,8 @@ public:
 
    void setIgnitionTime(double t);
 
+   double getMaxTime() const { return maxTime; }
+
    /**
     * TODO: Get rid of this. This is for temporary testing
     */
