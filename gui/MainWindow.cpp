@@ -19,6 +19,7 @@
 #include "gui/AnalysisWindow.h"
 #include "gui/MainWindow.h"
 #include "gui/ThrustCurveMotorSelector.h"
+#include "gui/SimulationOptions.h"
 #include "model/Rocket.h"
 #include "utils/RSEDatabaseLoader.h"
 
@@ -157,6 +158,17 @@ void MainWindow::on_getTCMotorData_clicked()
    ThrustCurveMotorSelector window;
    window.setModal(false);
    window.exec();
+
+}
+
+
+void MainWindow::on_actionSimulation_Options_triggered()
+{
+   if(!simOptionsWindow)
+   {
+      simOptionsWindow = new SimulationOptions(this);
+   }
+   simOptionsWindow->show();
 
 }
 

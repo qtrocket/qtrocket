@@ -11,6 +11,8 @@
 // qtrocket headers
 #include "QtRocket.h"
 
+#include "gui/SimulationOptions.h"
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -43,8 +45,12 @@ private slots:
 
    void on_getTCMotorData_clicked();
 
-private:
+   void on_actionSimulation_Options_triggered();
+
+   private:
    Ui::MainWindow* ui;
    QtRocket* qtRocket;
+
+   SimulationOptions* simOptionsWindow{nullptr};
 };
 #endif // MAINWINDOW_H

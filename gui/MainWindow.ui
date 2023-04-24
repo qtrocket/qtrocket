@@ -256,6 +256,7 @@
     <property name="title">
      <string>Edit</string>
     </property>
+    <addaction name="actionSimulation_Options"/>
    </widget>
    <widget class="QMenu" name="menuTools">
     <property name="title">
@@ -331,6 +332,11 @@
    </property>
    <property name="text">
     <string>Save As</string>
+   </property>
+  </action>
+  <action name="actionSimulation_Options">
+   <property name="text">
+    <string>Simulation Options</string>
    </property>
   </action>
  </widget>

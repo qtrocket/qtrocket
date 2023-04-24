@@ -12,6 +12,7 @@ SOURCES += \
     QtRocket.cpp \
     gui/AboutWindow.cpp \
     gui/AnalysisWindow.cpp \
+    gui/SimulationOptions.cpp \
     gui/ThrustCurveMotorSelector.cpp \
     gui/qcustomplot.cpp \
     main.cpp \
@@ -46,6 +47,7 @@ HEADERS += \
     gui/AnalysisWindow.h \
     gui/RocketTreeView.h \
     gui/MainWindow.h \
+    gui/SimulationOptions.h \
     gui/ThrustCurveMotorSelector.h \
     gui/qcustomplot.h \
     model/MotorCase.h \
@@ -83,6 +85,7 @@ FORMS += \
     gui/AboutWindow.ui \
     gui/AnalysisWindow.ui \
     gui/MainWindow.ui \
+    gui/SimulationOptions.ui \
     gui/ThrustCurveMotorSelector.ui
 
 TRANSLATIONS += \
