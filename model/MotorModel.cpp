@@ -1,5 +1,14 @@
+
+/// \cond
+// C headers
+// C++ headers
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
 #include "model/MotorModel.h"
 #include "utils/math/Constants.h"
+#include "utils/math/UtilityMathFunctions.h"
 
 namespace model
 {
@@ -33,7 +42,7 @@ double MotorModel::getMass(double simTime) const
          // If thrustTime is equal to a data point that we have, then just return
          // the mass at that time. Otherwise it fell between two points and we
          // will interpolate
-         if(i->first == thrustTime)
+         if(utils::math::floatingPointEqual(i->first, thrustTime))
          {
             // return empty mass + remaining propellant mass
             return emptyMass + i->second;
@@ -53,6 +62,7 @@ double MotorModel::getMass(double simTime) const
       return currentMass;
 
    }
+   // motor has burned out
    else
    {
       return emptyMass;
