@@ -11,7 +11,7 @@
 // qtrocket headers
 #include "QtRocket.h"
 
-#include "gui/SimulationOptions.h"
+#include "gui/SimOptionsWindow.h"
 
 
 QT_BEGIN_NAMESPACE
@@ -51,6 +51,6 @@ private slots:
    Ui::MainWindow* ui;
    QtRocket* qtRocket;
 
-   SimulationOptions* simOptionsWindow{nullptr};
+   SimOptionsWindow* simOptionsWindow{nullptr};
 };
 #endif // MAINWINDOW_H

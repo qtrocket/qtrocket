@@ -16,6 +16,7 @@
 #include "model/Rocket.h"
 #include "sim/AtmosphericModel.h"
 #include "sim/GravityModel.h"
+#include "sim/SimulationOptions.h"
 #include "utils/Logger.h"
 
 /**
@@ -37,15 +38,16 @@ public:
 
    void runSim();
 
-   std::shared_ptr<sim::GravityModel> getGravityModel() { return gravity; }
-   std::shared_ptr<sim::AtmosphericModel> getAtmosphereModel() { return atmosphere; }
-
+   std::shared_ptr<sim::GravityModel> getGravityModel() { return simOptions->getGravityModel(); }
+   std::shared_ptr<sim::AtmosphericModel> getAtmosphereModel() { return simOptions->getAtmosphericModel(); }
+   double getTimeStep() { return simOptions->getTimeStep(); }
+   std::shared_ptr<Rocket> getRocket() { return rocket; }
 
    void addMotorModels(std::vector<model::MotorModel>& m);
 
    void addRocket(std::shared_ptr<Rocket> r) { rocket = r; }
 
-   std::shared_ptr<Rocket> getRocket() { return rocket; }
+   void setSimulationOptions(std::shared_ptr<sim::SimulationOptions> options) { simOptions = options; }
 
 private:
    QtRocket();
@@ -63,9 +65,8 @@ private:
    utils::Logger* logger;
 
    std::shared_ptr<Rocket> rocket;
-   std::shared_ptr<sim::AtmosphericModel> atmosphere;
-   std::shared_ptr<sim::GravityModel> gravity;
 
+   std::shared_ptr<sim::SimulationOptions> simOptions;
 
 };
 

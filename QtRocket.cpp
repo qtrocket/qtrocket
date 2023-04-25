@@ -74,12 +74,9 @@ QtRocket::QtRocket()
    logger = utils::Logger::getInstance();
    running = false;
 
-   atmosphere =
-      std::make_shared<sim::ConstantAtmosphere>();
-
-   gravity =
-      std::make_shared<sim::ConstantGravityModel>();
-
+   // Need to set some sane defaults for Simulation Options
+   // The default constructor for SimulationOptions will do that for us, so just use that
+   setSimulationOptions(std::make_shared<sim::SimulationOptions>());
 
    rocket =
       std::make_shared<Rocket>();

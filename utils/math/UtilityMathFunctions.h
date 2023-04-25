@@ -19,7 +19,7 @@ namespace math
  *        places to ignore
  *
  * This is derived from the example on cppreference.com: https://en.cppreference.com/w/cpp/types/numeric_limits/epsilon
- * The default ulp of 8 with a numeric_limits<double>::epsilon() of ~2e-16, so ulp of 8 yields  12
+ * The default ulp of 4 with a numeric_limits<double>::epsilon() of ~2e-16, so ulp of 4 yields 12
  * significant figures. A ulp of 10 yields 6 significant figures.
  * @param a the first double to compare
  * @param b the second double to compare

@@ -12,7 +12,7 @@ SOURCES += \
     QtRocket.cpp \
     gui/AboutWindow.cpp \
     gui/AnalysisWindow.cpp \
-    gui/SimulationOptions.cpp \
+    gui/SimOptionsWindow.cpp \
     gui/ThrustCurveMotorSelector.cpp \
     gui/qcustomplot.cpp \
     main.cpp \
@@ -47,7 +47,7 @@ HEADERS += \
     gui/AnalysisWindow.h \
     gui/RocketTreeView.h \
     gui/MainWindow.h \
-    gui/SimulationOptions.h \
+    gui/SimOptionsWindow.h \
     gui/ThrustCurveMotorSelector.h \
     gui/qcustomplot.h \
     model/MotorCase.h \
@@ -63,6 +63,7 @@ HEADERS += \
     sim/GravityModel.h \
     sim/Propagator.h \
     sim/RK4Solver.h \
+    sim/SimulationOptions.h \
     sim/SphericalGeoidModel.h \
     sim/SphericalGravityModel.h \
     sim/StateData.h \
@@ -85,7 +86,7 @@ FORMS += \
     gui/AboutWindow.ui \
     gui/AnalysisWindow.ui \
     gui/MainWindow.ui \
-    gui/SimulationOptions.ui \
+    gui/SimOptionsWindow.ui \
     gui/ThrustCurveMotorSelector.ui
 
 TRANSLATIONS += \

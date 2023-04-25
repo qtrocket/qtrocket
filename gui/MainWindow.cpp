@@ -19,7 +19,7 @@
 #include "gui/AnalysisWindow.h"
 #include "gui/MainWindow.h"
 #include "gui/ThrustCurveMotorSelector.h"
-#include "gui/SimulationOptions.h"
+#include "gui/SimOptionsWindow.h"
 #include "model/Rocket.h"
 #include "utils/RSEDatabaseLoader.h"
 
@@ -102,32 +102,6 @@ void MainWindow::on_testButton2_clicked()
    aWindow.setModal(false);
    aWindow.exec();
 
-   /*
-   const std::vector<std::pair<double, std::vector<double>>>& res = rocket.getStates();
-   for(const auto& i : res)
-   {
-      std::cout << i.first << ": " << "(" << i.second[0] << ", " << i.second[1] << ", " << i.second[2] << ")\n";
-   }
-   auto& plot = ui->plotWindow;
-   // generate some data:
-   QVector<double> tData(res.size()), zData(res.size());
-   for (int i = 0; i < tData.size(); ++i)
-   {
-     tData[i] = res[i].first;
-     zData[i] = res[i].second[2];
-   }
-   // create graph and assign data to it:
-   plot->addGraph();
-   plot->graph(0)->setData(tData, zData);
-   // give the axes some labels:
-   plot->xAxis->setLabel("time");
-   plot->yAxis->setLabel("Z");
-   // set axes ranges, so we see all data:
-   plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
-   plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
-   plot->replot();
-   */
-
 }
 
 void MainWindow::on_loadRSE_button_clicked()
@@ -135,7 +109,7 @@ void MainWindow::on_loadRSE_button_clicked()
    QString rseFile = QFileDialog::getOpenFileName(this,
                                                   tr("Import RSE Database File"),
                                                   "/home",
-                                                  tr("RSE Files (*.rse)"));
+                                                  tr("Rocksim Engine Files (*.rse)"));
 
    utils::RSEDatabaseLoader loader(rseFile.toStdString());
 
@@ -166,7 +140,7 @@ void MainWindow::on_actionSimulation_Options_triggered()
 {
    if(!simOptionsWindow)
    {
-      simOptionsWindow = new SimulationOptions(this);
+      simOptionsWindow = new SimOptionsWindow(this);
    }
    simOptionsWindow->show();
 

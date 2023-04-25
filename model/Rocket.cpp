@@ -1,14 +1,14 @@
 #include "Rocket.h"
+#include "QtRocket.h"
 
 Rocket::Rocket() : propagator(this)
 {
-   propagator.setTimeStep(0.01);
-   //propagator.set
 
 }
 
 void Rocket::launch()
 {
+   propagator.setTimeStep(QtRocket::getInstance()->getTimeStep());
    propagator.runUntilTerminate();
 }
 
@@ -19,6 +19,7 @@ void Rocket::setMotorModel(const model::MotorModel& motor)
 
 bool Rocket::terminateCondition(const std::pair<double, std::vector<double>>& cond)
 {
+   // Terminate propagation when the z coordinate drops below zero
     if(cond.second[2] < 0)
         return true;
     else
