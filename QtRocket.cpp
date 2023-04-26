@@ -13,9 +13,6 @@
 // qtrocket headers
 #include "QtRocket.h"
 #include "gui/MainWindow.h"
-#include "sim/ConstantAtmosphere.h"
-#include "sim/ConstantGravityModel.h"
-
 
 // Initialize static member data
 QtRocket* QtRocket::instance = nullptr;

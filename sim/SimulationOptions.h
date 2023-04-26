@@ -33,9 +33,9 @@ class SimulationOptions
 public:
     SimulationOptions()
     {
-        //setTimeStep(0.01);
-        //setGravityModel("Constant Gravity");
-        //setAtmosphereModel("Constant Atmosphere");
+        setTimeStep(0.01);
+        setGravityModel("Constant Gravity");
+        setAtmosphereModel("Constant Atmosphere");
     }
     ~SimulationOptions() = default;
     SimulationOptions(const SimulationOptions&) = delete;
@@ -79,16 +79,20 @@ public:
         if(model == "Constant Atmosphere")
         {
             atmosphereModel = model;
-            atmosphereModels[gravityModel].reset(new sim::ConstantAtmosphere);
+            atmosphereModels[atmosphereModel].reset(new sim::ConstantAtmosphere);
         }
         else if(model == "US Standard 1976")
         {
             atmosphereModel = model;
-            atmosphereModels[gravityModel].reset(new sim::USStandardAtmosphere);
+            atmosphereModels[atmosphereModel].reset(new sim::USStandardAtmosphere);
         }
     }
 
-    std::shared_ptr<sim::AtmosphericModel> getAtmosphericModel() { return atmosphereModels[atmosphereModel]; }
+    std::shared_ptr<sim::AtmosphericModel> getAtmosphericModel()
+    {
+        auto retVal = atmosphereModels[atmosphereModel];
+        return retVal;
+    }
     std::shared_ptr<sim::GravityModel> getGravityModel() { return gravityModels[gravityModel]; }
     double getTimeStep() { return timeStep; }
 

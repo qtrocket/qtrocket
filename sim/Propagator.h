@@ -51,6 +51,8 @@ public:
 
     const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return states; }
 
+    void clearStates() { states.clear(); }
+
     void setTimeStep(double ts) { timeStep = ts; }
 
     void setSaveStats(bool s) { saveStates = s; }

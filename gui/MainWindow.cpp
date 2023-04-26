@@ -90,9 +90,8 @@ void MainWindow::on_testButton2_clicked()
 
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
    double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
-   std::shared_ptr<Rocket> rocket = std::make_shared<Rocket>();
-   QtRocket::getInstance()->addRocket(rocket);
    std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   auto rocket = QtRocket::getInstance()->getRocket();
    rocket->setInitialState(initialState);
    rocket->setMass(mass);
    rocket->setDragCoefficient(dragCoeff);
@@ -111,14 +110,14 @@ void MainWindow::on_loadRSE_button_clicked()
                                                   "/home",
                                                   tr("Rocksim Engine Files (*.rse)"));
 
-   utils::RSEDatabaseLoader loader(rseFile.toStdString());
+   rseDatabase.reset(new utils::RSEDatabaseLoader(rseFile.toStdString()));
 
    ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
 
    QComboBox* engineSelector =
          ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
 
-   const std::vector<model::MotorModel>& motors = loader.getMotors();
+   const std::vector<model::MotorModel>& motors = rseDatabase->getMotors();
    for(const auto& motor : motors)
    {
       std::cout << "Adding: " << motor.data.commonName << std::endl;
@@ -143,6 +142,16 @@ void MainWindow::on_actionSimulation_Options_triggered()
       simOptionsWindow = new SimOptionsWindow(this);
    }
    simOptionsWindow->show();
+
+}
+
+
+void MainWindow::on_setMotor_clicked()
+{
+   QString motorName = ui->engineSelectorComboBox->currentText();
+   model::MotorModel mm = rseDatabase->getMotorModelByName(motorName.toStdString());
+   QtRocket::getInstance()->getRocket()->setMotorModel(mm);
+
 
 }
 

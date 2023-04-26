@@ -55,12 +55,6 @@ void ThrustCurve::setIgnitionTime(double t)
 double ThrustCurve::getThrust(double t)
 {
    // calculate t relative to the start time of the motor
-   static bool burnout{false};
-   if(!burnout && t >= (maxTime + ignitionTime))
-   {
-      burnout = true;
-      utils::Logger::getInstance()->info("Motor burnout at time: " + std::to_string(t));
-   }
    t -= ignitionTime;
    if(t < 0.0 || t > maxTime)
    {

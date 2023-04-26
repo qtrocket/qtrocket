@@ -3,6 +3,7 @@
 // C headers
 // C++ headers
 #include <iostream>
+#include <algorithm>
 #include <cmath>
 
 // 3rd party headers
@@ -12,6 +13,7 @@
 // qtrocket headers
 #include "utils/RSEDatabaseLoader.h"
 #include "QtRocket.h"
+#include "Logger.h"
 
 namespace utils {
 
@@ -32,6 +34,19 @@ RSEDatabaseLoader::RSEDatabaseLoader(const std::string& filename)
 
 RSEDatabaseLoader::~RSEDatabaseLoader()
 {}
+
+model::MotorModel RSEDatabaseLoader::getMotorModelByName(const std::string &name)
+{
+
+   auto mm = std::find_if(motors.begin(), motors.end(),
+                                        [&name](const auto& i) { return name == i.data.commonName; });
+   if(mm == motors.end())
+   {
+      Logger::getInstance()->error("Unable to locate " + name + " in RSE database");
+      return model::MotorModel();
+   }
+   return *mm;
+}
 
 void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
 {
@@ -70,7 +85,9 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
       thrustData.push_back(std::make_pair(tdata, fdata));
    }
 
+   ThrustCurve tc(thrustData);
    model::MotorModel motorModel;
+   motorModel.addThrustCurve(tc);
    motorModel.moveMetaData(std::move(mm));
    motors.emplace_back(std::move(motorModel));
 }

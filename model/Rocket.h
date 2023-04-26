@@ -114,7 +114,6 @@ private:
    double mass; /// @todo get rid of this, should be dynamically computed, but is the current rocket mass
 
    model::MotorModel mm; /// Current Motor Model
-   ThrustCurve tc; /// @todo get rid of this, should be returned from the MotorModel
 
 };
 
