@@ -52,6 +52,7 @@ public:
     const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return states; }
 
     void clearStates() { states.clear(); }
+    void setCurrentTime(double t) { currentTime = t; }
 
     void setTimeStep(double ts) { timeStep = ts; }
 

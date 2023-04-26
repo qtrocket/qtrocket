@@ -20,7 +20,6 @@ SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
     ui->setupUi(this);
 
     // populate the combo boxes
-    QtRocket* qtrocket = QtRocket::getInstance();
 
     std::shared_ptr<sim::SimulationOptions> options(new sim::SimulationOptions);
     std::vector<std::string> atmosphereModels = options->getAvailableAtmosphereModels();
