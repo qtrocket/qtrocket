@@ -9,6 +9,7 @@
 #include "model/MotorModel.h"
 #include "utils/math/Constants.h"
 #include "utils/math/UtilityMathFunctions.h"
+#include "utils/Logger.h"
 
 namespace model
 {
@@ -67,6 +68,22 @@ double MotorModel::getMass(double simTime) const
    {
       return emptyMass;
    }
+}
+
+double MotorModel::getThrust(double simTime)
+{
+
+   if(simTime > thrust.getMaxTime() + ignitionTime)
+   {
+      if(!burnOutOccurred)
+      {
+         utils::Logger::getInstance()->info("motor burnout occurred: " + std::to_string(simTime));
+         burnOutOccurred = true;
+      }
+      return 0.0;
+   }
+   utils::Logger::getInstance()->info("simTime: " + std::to_string(simTime) + ": thrust: " + std::to_string(thrust.getThrust(simTime)));
+   return thrust.getThrust(simTime);
 }
 
 void MotorModel::setMetaData(const MetaData& md)

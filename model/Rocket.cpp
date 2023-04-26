@@ -9,6 +9,9 @@ Rocket::Rocket() : propagator(this)
 void Rocket::launch()
 {
    propagator.setTimeStep(QtRocket::getInstance()->getTimeStep());
+    propagator.clearStates();
+   propagator.setCurrentTime(0.0);
+    mm.startMotor(0.0);
    propagator.runUntilTerminate();
 }
 
@@ -28,10 +31,5 @@ bool Rocket::terminateCondition(const std::pair<double, std::vector<double>>& co
 
 double Rocket::getThrust(double t)
 {
-   return tc.getThrust(t);
-}
-
-void Rocket::setThrustCurve(const ThrustCurve& curve)
-{
-   tc = curve;
+   return mm.getThrust(t);
 }

@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -42,6 +43,22 @@ public:
     SimulationOptions& operator=(const SimulationOptions&) = delete;
     SimulationOptions& operator=(SimulationOptions&&) = delete;
 
+    std::vector<std::string> getAvailableGravityModels()
+    {
+        std::vector<std::string> retVal(gravityModels.size());
+        std::transform(gravityModels.begin(), gravityModels.end(), std::back_inserter(retVal),
+                  [](auto& i) { return i.first; });
+        return retVal;
+    }
+
+    std::vector<std::string> getAvailableAtmosphereModels()
+    {
+        std::vector<std::string> retVal(atmosphereModels.size());
+        std::transform(atmosphereModels.begin(), atmosphereModels.end(), std::back_inserter(retVal),
+                  [](auto& i) { return i.first; });
+        return retVal;
+    }
+
     void setTimeStep(double t) { timeStep = t; }
     void setGravityModel(const std::string& model)
     {
@@ -62,16 +79,20 @@ public:
         if(model == "Constant Atmosphere")
         {
             atmosphereModel = model;
-            atmosphereModels[gravityModel].reset(new sim::ConstantAtmosphere);
+            atmosphereModels[atmosphereModel].reset(new sim::ConstantAtmosphere);
         }
         else if(model == "US Standard 1976")
         {
             atmosphereModel = model;
-            atmosphereModels[gravityModel].reset(new sim::USStandardAtmosphere);
+            atmosphereModels[atmosphereModel].reset(new sim::USStandardAtmosphere);
         }
     }
 
-    std::shared_ptr<sim::AtmosphericModel> getAtmosphericModel() { return atmosphereModels[atmosphereModel]; }
+    std::shared_ptr<sim::AtmosphericModel> getAtmosphericModel()
+    {
+        auto retVal = atmosphereModels[atmosphereModel];
+        return retVal;
+    }
     std::shared_ptr<sim::GravityModel> getGravityModel() { return gravityModels[gravityModel]; }
     double getTimeStep() { return timeStep; }
 

@@ -2,6 +2,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <cmath>
 #include <chrono>
 #include <iostream>
 #include <sstream>
@@ -97,20 +98,20 @@ double Propagator::getMass()
 double Propagator::getForceX()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return - qtrocket->getAtmosphereModel()->getDensity(currentState[3])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
+    return (currentState[3] >= 0 ? -1.0 : 1.0) *  qtrocket->getAtmosphereModel()->getDensity(currentState[2])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
 }
 
 double Propagator::getForceY()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return -qtrocket->getAtmosphereModel()->getDensity(currentState[3]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
+    return (currentState[4] >= 0 ? -1.0 : 1.0) * qtrocket->getAtmosphereModel()->getDensity(currentState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
 }
 
 double Propagator::getForceZ()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
     double gravity = (qtrocket->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2])).x3;
-    double airDrag = -qtrocket->getAtmosphereModel()->getDensity(currentState[3]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
+    double airDrag = (currentState[5] >= 0 ? -1.0 : 1.0) * qtrocket->getAtmosphereModel()->getDensity(currentState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
     double thrust  = rocket->getThrust(currentTime);
     return gravity + airDrag + thrust;
 }

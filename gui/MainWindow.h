@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <memory>
 // 3rd Party headers
 #include <QMainWindow>
 /// \endcond
@@ -12,6 +13,7 @@
 #include "QtRocket.h"
 
 #include "gui/SimOptionsWindow.h"
+#include "utils/RSEDatabaseLoader.h"
 
 
 QT_BEGIN_NAMESPACE
@@ -47,10 +49,13 @@ private slots:
 
    void on_actionSimulation_Options_triggered();
 
+   void on_setMotor_clicked();
+
    private:
    Ui::MainWindow* ui;
    QtRocket* qtRocket;
 
    SimOptionsWindow* simOptionsWindow{nullptr};
+   std::unique_ptr<utils::RSEDatabaseLoader> rseDatabase;
 };
 #endif // MAINWINDOW_H

@@ -396,11 +396,13 @@ public:
 
    void startMotor(double startTime) { ignitionOccurred = true; ignitionTime = startTime; }
 
+   void addThrustCurve(const ThrustCurve& tc) { thrust = tc; }
 
    // Thrust parameters
    MetaData data;
 private:
    bool ignitionOccurred{false};
+    bool burnOutOccurred{false};
    double emptyMass;
    double isp;
    double maxTime;
