@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -32,15 +33,31 @@ class SimulationOptions
 public:
     SimulationOptions()
     {
-        setTimeStep(0.01);
-        setGravityModel("Constant Gravity");
-        setAtmosphereModel("Constant Atmosphere");
+        //setTimeStep(0.01);
+        //setGravityModel("Constant Gravity");
+        //setAtmosphereModel("Constant Atmosphere");
     }
     ~SimulationOptions() = default;
     SimulationOptions(const SimulationOptions&) = delete;
     SimulationOptions(SimulationOptions&&) = delete;
     SimulationOptions& operator=(const SimulationOptions&) = delete;
     SimulationOptions& operator=(SimulationOptions&&) = delete;
+
+    std::vector<std::string> getAvailableGravityModels()
+    {
+        std::vector<std::string> retVal(gravityModels.size());
+        std::transform(gravityModels.begin(), gravityModels.end(), std::back_inserter(retVal),
+                  [](auto& i) { return i.first; });
+        return retVal;
+    }
+
+    std::vector<std::string> getAvailableAtmosphereModels()
+    {
+        std::vector<std::string> retVal(atmosphereModels.size());
+        std::transform(atmosphereModels.begin(), atmosphereModels.end(), std::back_inserter(retVal),
+                  [](auto& i) { return i.first; });
+        return retVal;
+    }
 
     void setTimeStep(double t) { timeStep = t; }
     void setGravityModel(const std::string& model)

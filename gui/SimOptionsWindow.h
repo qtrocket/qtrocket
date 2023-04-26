@@ -15,6 +15,11 @@ public:
     explicit SimOptionsWindow(QWidget *parent = nullptr);
     ~SimOptionsWindow();
 
+private slots:
+    void on_buttonBox_rejected();
+
+    void on_buttonBox_accepted();
+
 private:
     Ui::SimOptionsWindow *ui;
 };
