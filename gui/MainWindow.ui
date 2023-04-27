@@ -61,29 +61,7 @@
         <verstretch>0</verstretch>
        </sizepolicy>
       </property>
-      <widget class="QPushButton" name="testButton1">
-       <property name="enabled">
-        <bool>false</bool>
-       </property>
-       <property name="geometry">
-        <rect>
-         <x>30</x>
-         <y>20</y>
-         <width>80</width>
-         <height>25</height>
-        </rect>
-       </property>
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-       <property name="text">
-        <string>TestButton1</string>
-       </property>
-      </widget>
-      <widget class="QPushButton" name="testButton2">
+      <widget class="QPushButton" name="calculateTrajectory_btn">
        <property name="geometry">
         <rect>
          <x>240</x>
@@ -201,7 +179,7 @@
        </property>
        <layout class="QGridLayout" name="gridLayout_2">
         <item row="0" column="0">
-         <widget class="QPushButton" name="loadRSE_button">
+         <widget class="QPushButton" name="loadRSE_btn">
           <property name="text">
            <string>Load RSE Database File</string>
           </property>
@@ -218,7 +196,7 @@
          <widget class="QComboBox" name="engineSelectorComboBox"/>
         </item>
         <item row="1" column="1">
-         <widget class="QPushButton" name="setMotor">
+         <widget class="QPushButton" name="setMotor_btn">
           <property name="text">
            <string>Set Motor</string>
           </property>
@@ -226,7 +204,7 @@
         </item>
        </layout>
       </widget>
-      <widget class="QPushButton" name="getTCMotorData">
+      <widget class="QPushButton" name="getTCMotorData_btn">
        <property name="geometry">
         <rect>
          <x>240</x>
@@ -298,6 +276,9 @@
    </property>
   </action>
   <action name="actionNew">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="icon">
     <iconset theme="document-new">
      <normaloff>.</normaloff>.</iconset>
@@ -307,6 +288,9 @@
    </property>
   </action>
   <action name="actionOpen">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="icon">
     <iconset theme="document-open">
      <normaloff>.</normaloff>.</iconset>
@@ -316,6 +300,9 @@
    </property>
   </action>
   <action name="actionSave">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="icon">
     <iconset theme="document-save">
      <normaloff>.</normaloff>.</iconset>
@@ -325,6 +312,9 @@
    </property>
   </action>
   <action name="actionClose">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="text">
     <string>Close</string>
    </property>
@@ -339,6 +329,9 @@
    </property>
   </action>
   <action name="actionSave_As">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="icon">
     <iconset theme="document-save-as">
      <normaloff>.</normaloff>.</iconset>

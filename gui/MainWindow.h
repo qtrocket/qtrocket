@@ -37,19 +37,19 @@ public:
 
 private slots:
 
-   void on_actionAbout_triggered();
+   void onMenu_Help_About_triggered();
 
-   void on_testButton1_clicked();
+   void onButton_calculateTrajectory_clicked();
 
-   void on_testButton2_clicked();
+   void onButton_loadRSE_button_clicked();
 
-   void on_loadRSE_button_clicked();
+   void onButton_getTCMotorData_clicked();
 
-   void on_getTCMotorData_clicked();
+   void onMenu_Edit_SimulationOptions_triggered();
 
-   void on_actionSimulation_Options_triggered();
+   void onButton_setMotor_clicked();
 
-   void on_setMotor_clicked();
+   void onMenu_File_Quit_triggered();
 
    private:
    Ui::MainWindow* ui;

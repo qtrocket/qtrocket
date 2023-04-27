@@ -31,6 +31,54 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
    qtRocket(_qtRocket)
 {
    ui->setupUi(this);
+
+   ////////////////////////////////
+   // Menu signal/slot connections
+   ////////////////////////////////
+
+   // File Menu Actions
+   connect(ui->actionQuit,
+           SIGNAL(triggered()),
+           this,
+           SLOT(onMenu_File_Quit_triggered()));
+
+   // Edit Menu Actions
+   connect(ui->actionSimulation_Options,
+           SIGNAL(triggered()),
+           this,
+           SLOT(onMenu_Edit_SimulationOptions_triggered()));
+
+   // Tools Menu Actions
+
+   // Help Menu Actions
+   connect(ui->actionAbout,
+           SIGNAL(triggered()),
+           this,
+           SLOT(onMenu_Help_About_triggered()));
+
+   ////////////////////////////////
+   // Button signal/slot connections
+   ////////////////////////////////
+   connect(ui->calculateTrajectory_btn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_calculateTrajectory_clicked()));
+
+   connect(ui->loadRSE_btn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_loadRSE_button_clicked()));
+
+   connect(ui->setMotor_btn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_setMotor_clicked()));
+
+   connect(ui->getTCMotorData_btn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_getTCMotorData_clicked()));
+
 }
 
 MainWindow::~MainWindow()
@@ -39,7 +87,7 @@ MainWindow::~MainWindow()
 }
 
 
-void MainWindow::on_actionAbout_triggered()
+void MainWindow::onMenu_Help_About_triggered()
 {
    AboutWindow about;
    about.setModal(true);
@@ -48,32 +96,7 @@ void MainWindow::on_actionAbout_triggered()
 }
 
 
-void MainWindow::on_testButton1_clicked()
-{
-   auto& plot = ui->plotWindow;
-   // generate some data:
-   QVector<double> x(101), y(101); // initialize with entries 0..100
-   for (int i=0; i<101; ++i)
-   {
-     x[i] = i/50.0 - 1; // x goes from -1 to 1
-     y[i] = x[i]*x[i]; // let's plot a quadratic function
-   }
-   // create graph and assign data to it:
-   plot->addGraph();
-   plot->graph(0)->setData(x, y);
-   // give the axes some labels:
-   plot->xAxis->setLabel("x");
-   plot->yAxis->setLabel("y");
-   // set axes ranges, so we see all data:
-   plot->xAxis->setRange(-1, 1);
-   plot->yAxis->setRange(0, 1);
-   plot->replot();
-
-   utils::RSEDatabaseLoader("Aerotech.rse");
-}
-
-
-void MainWindow::on_testButton2_clicked()
+void MainWindow::onButton_calculateTrajectory_clicked()
 {
     // Get the initial conditions
    double initialVelocity =
@@ -103,30 +126,33 @@ void MainWindow::on_testButton2_clicked()
 
 }
 
-void MainWindow::on_loadRSE_button_clicked()
+void MainWindow::onButton_loadRSE_button_clicked()
 {
    QString rseFile = QFileDialog::getOpenFileName(this,
                                                   tr("Import RSE Database File"),
                                                   "/home",
                                                   tr("Rocksim Engine Files (*.rse)"));
 
-   rseDatabase.reset(new utils::RSEDatabaseLoader(rseFile.toStdString()));
-
-   ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
-
-   QComboBox* engineSelector =
-         ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
-
-   const std::vector<model::MotorModel>& motors = rseDatabase->getMotors();
-   for(const auto& motor : motors)
+   if(!rseFile.isEmpty())
    {
-      std::cout << "Adding: " << motor.data.commonName << std::endl;
-      engineSelector->addItem(QString(motor.data.commonName.c_str()));
+      rseDatabase.reset(new utils::RSEDatabaseLoader(rseFile.toStdString()));
+
+      ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
+
+      QComboBox* engineSelector =
+            ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
+
+      const std::vector<model::MotorModel>& motors = rseDatabase->getMotors();
+      for(const auto& motor : motors)
+      {
+         std::cout << "Adding: " << motor.data.commonName << std::endl;
+         engineSelector->addItem(QString(motor.data.commonName.c_str()));
+      }
    }
 }
 
 
-void MainWindow::on_getTCMotorData_clicked()
+void MainWindow::onButton_getTCMotorData_clicked()
 {
    ThrustCurveMotorSelector window;
    window.setModal(false);
@@ -135,7 +161,7 @@ void MainWindow::on_getTCMotorData_clicked()
 }
 
 
-void MainWindow::on_actionSimulation_Options_triggered()
+void MainWindow::onMenu_Edit_SimulationOptions_triggered()
 {
    if(!simOptionsWindow)
    {
@@ -146,7 +172,7 @@ void MainWindow::on_actionSimulation_Options_triggered()
 }
 
 
-void MainWindow::on_setMotor_clicked()
+void MainWindow::onButton_setMotor_clicked()
 {
    QString motorName = ui->engineSelectorComboBox->currentText();
    model::MotorModel mm = rseDatabase->getMotorModelByName(motorName.toStdString());
@@ -155,3 +181,7 @@ void MainWindow::on_setMotor_clicked()
 
 }
 
+void MainWindow::onMenu_File_Quit_triggered()
+{
+   this->close();
+}
