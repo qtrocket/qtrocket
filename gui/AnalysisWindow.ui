@@ -16,11 +16,66 @@
   <widget class="QCustomPlot" name="plotWidget" native="true">
    <property name="geometry">
     <rect>
-     <x>19</x>
+     <x>149</x>
      <y>29</y>
-     <width>961</width>
-     <height>671</height>
+     <width>831</width>
+     <height>541</height>
     </rect>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="plotAltitudeBtn">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>50</y>
+     <width>121</width>
+     <height>36</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Plot Altitude</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="plotVelocityBtn">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>110</y>
+     <width>121</width>
+     <height>36</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Plot Velocity</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="plotAtmosphereBtn">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>170</y>
+     <width>121</width>
+     <height>36</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Plot Atmosphere</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="plotMotorCurveBtn">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>230</y>
+     <width>121</width>
+     <height>36</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Motor Curve</string>
    </property>
   </widget>
  </widget>
@@ -33,5 +88,25 @@
   </customwidget>
  </customwidgets>
  <resources/>
- <connections/>
+ <connections>
+  <connection>
+   <sender>plotAltitudeBtn</sender>
+   <signal>clicked()</signal>
+   <receiver>AnalysisWindow</receiver>
+   <slot>plotAltitude()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>78</x>
+     <y>61</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>88</x>
+     <y>17</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <slots>
+  <slot>plotAltitude()</slot>
+ </slots>
 </ui>

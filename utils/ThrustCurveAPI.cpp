@@ -14,7 +14,7 @@ namespace utils
 {
 
 ThrustCurveAPI::ThrustCurveAPI()
-   : hostname("https://www.thrustcurve.org/api/v1/"),
+   : hostname("https://www.thrustcurve.org/"),
      curlConnection()
 {
 
@@ -29,13 +29,53 @@ ThrustCurveAPI::~ThrustCurveAPI()
 model::MotorModel ThrustCurveAPI::getMotorData(const std::string& motorId)
 {
    std::stringstream endpoint;
-   endpoint << hostname << "download.json?motorId=" << motorId << "&data=samples";
+   endpoint << hostname << "api/v1/download.json?motorId=" << motorId << "&data=samples";
    std::vector<std::string> extraHeaders = {};
 
    std::string res = curlConnection.get(endpoint.str(), extraHeaders);
-
-   /// TODO: fix this
    model::MotorModel mm;
+
+   if(!res.empty())
+   {
+      try
+      {
+         Json::Reader reader;
+         Json::Value jsonResult;
+         reader.parse(res, jsonResult);
+
+         std::vector<std::pair<double, double>> samples;
+         for(Json::ValueConstIterator iter = jsonResult["results"].begin();
+             iter != jsonResult["results"].end();
+             ++iter)
+         {
+            // if there are more than 1 items in the results list, we only want the RASP data
+            // Otherwise just take whatever is there
+            if(std::next(iter) != jsonResult["results"].end())
+            {
+               if( (*iter)["format"].asString() != "RASP")
+                  continue;
+            }
+            for(Json::ValueConstIterator samplesIter = (*iter)["samples"].begin();
+                samplesIter != (*iter)["samples"].end();
+                ++samplesIter)
+            {
+               samples.push_back(std::make_pair((*samplesIter)["time"].asDouble(),
+                                                (*samplesIter)["thrust"].asDouble()));
+
+            }
+         }
+         ThrustCurve tc(samples);
+         mm.addThrustCurve(tc);
+      }
+      catch(const std::exception& e)
+      {
+         std::string err("Unable to parse JSON from Thrustcurve motor data request. Error: ");
+         err += e.what();
+
+         Logger::getInstance()->error(err);
+      }
+   }
+
    return mm;
 }
 
@@ -43,7 +83,7 @@ ThrustcurveMetadata ThrustCurveAPI::getMetadata()
 {
 
    std::string endpoint = hostname;
-   endpoint += "metadata.json";
+   endpoint += "api/v1/metadata.json";
    std::string result = curlConnection.get(endpoint, extraHeaders);
    ThrustcurveMetadata ret;
 
@@ -123,7 +163,7 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
 {
    std::vector<model::MotorModel> retVal;
    std::string endpoint = hostname;
-   endpoint += "search.json?";
+   endpoint += "api/v1/search.json?";
    for(const auto& i : c.criteria)
    {
       endpoint += i.first;

@@ -90,6 +90,34 @@ void ThrustCurveMotorSelector::on_setMotor_clicked()
            return item.data.commonName == commonName;
        });
 
+   ThrustCurve tc = tcApi->getMotorData(mm.data.motorIdTC).getThrustCurve();
+   mm.addThrustCurve(tc);
    QtRocket::getInstance()->getRocket()->setMotorModel(mm);
+
+   const std::vector<std::pair<double, double>>& res = tc.getThrustCurveData();
+   auto& plot = ui->plot;
+   plot->clearGraphs();
+   plot->setInteraction(QCP::iRangeDrag, true);
+   plot->setInteraction(QCP::iRangeZoom, true);
+
+   // generate some data:
+   QVector<double> tData(res.size());
+   QVector<double> fData(res.size());
+   for (int i = 0; i < tData.size(); ++i)
+   {
+     tData[i] = res[i].first;
+     fData[i] = res[i].second;
+   }
+   // create graph and assign data to it:
+   plot->addGraph();
+   plot->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 5));
+   plot->graph(0)->setData(tData, fData);
+   // give the axes some labels:
+   plot->xAxis->setLabel("time");
+   plot->yAxis->setLabel("Thrust (N)");
+   // set axes ranges, so we see all data:
+   plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
+   plot->yAxis->setRange(*std::min_element(std::begin(fData), std::end(fData)), *std::max_element(std::begin(fData), std::end(fData)));
+   plot->replot();
 }
 

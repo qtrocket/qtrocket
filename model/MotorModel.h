@@ -398,6 +398,8 @@ public:
 
    void addThrustCurve(const ThrustCurve& tc) { thrust = tc; }
 
+   const ThrustCurve& getThrustCurve() const { return thrust; }
+
    // Thrust parameters
    MetaData data;
 private:

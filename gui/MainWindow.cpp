@@ -151,7 +151,7 @@ void MainWindow::on_setMotor_clicked()
    QString motorName = ui->engineSelectorComboBox->currentText();
    model::MotorModel mm = rseDatabase->getMotorModelByName(motorName.toStdString());
    QtRocket::getInstance()->getRocket()->setMotorModel(mm);
-
+   QtRocket::getInstance()->addMotorModels(rseDatabase->getMotors());
 
 }
 
