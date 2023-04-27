@@ -82,17 +82,16 @@ public:
    double getThrust(double t);
 
    /**
-    * @brief setThrustCurve sets the current thrust curve
-    * @param curve
-    * @todo Remove this
-    */
-   void setThrustCurve(const ThrustCurve& curve);
-
-   /**
     * @brief setMotorModel
     * @param motor
     */
    void setMotorModel(const model::MotorModel& motor);
+
+   /**
+    * @brief Returns the current motor model.
+    * @return The current motor model
+    */
+   const model::MotorModel& getCurrentMotorModel() const { return mm; }
 
    /**
     * @brief terminateCondition returns true or false, whether the passed-in time/state matches the terminate condition

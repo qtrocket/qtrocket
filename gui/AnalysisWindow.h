@@ -36,6 +36,13 @@ public:
    explicit AnalysisWindow(QWidget *parent = nullptr);
    ~AnalysisWindow();
 
+private slots:
+
+   void plotAltitude();
+   //void plotAtmosphere();
+   void plotVelocity();
+   void plotMotorCurveBtn();
+
 private:
    Ui::AnalysisWindow *ui;
 };

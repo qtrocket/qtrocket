@@ -38,7 +38,7 @@ build/
 docs/doxygen/*
 
 # IDE
-.vscode/qtrocket.pro.user
+.vscode/
 qtrocket.pro.user
 .qmake.stash
 

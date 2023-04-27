@@ -45,6 +45,8 @@ public:
 
    void addMotorModels(std::vector<model::MotorModel>& m);
 
+   const std::vector<model::MotorModel>& getMotorModels() const { return motorModels; }
+
    void addRocket(std::shared_ptr<Rocket> r) { rocket = r; }
 
    void setSimulationOptions(std::shared_ptr<sim::SimulationOptions> options) { simOptions = options; }

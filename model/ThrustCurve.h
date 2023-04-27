@@ -48,6 +48,8 @@ public:
     */
    void setThrustCurveVector(const std::vector<std::pair<double, double>>& v);
 
+   const std::vector<std::pair<double, double>> getThrustCurveData() const { return thrustCurve; }
+
 private:
    std::vector<std::pair<double, double>> thrustCurve;
    double maxTime{0.0};
