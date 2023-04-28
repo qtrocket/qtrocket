@@ -14,11 +14,17 @@ AnalysisWindow::AnalysisWindow(QWidget *parent) :
    this->hide();
    this->show();
 
-   connect(ui->plotAltitudeBtn, SIGNAL(clicked()), this, SLOT(plotAltitude()));
-   //connect(ui->plotAtmosphereBtn, SIGNAL(clicked()), this, SLOT(plotAtmosphere()));
-   connect(ui->plotVelocityBtn, SIGNAL(clicked()), this, SLOT(plotVelocity()));
-   connect(ui->plotMotorCurveBtn, SIGNAL(clicked()), this, SLOT(plotMotorCurveBtn()));
-
+   connect(ui->plotAltitudeBtn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_plotAltitude_clicked()));
+   connect(ui->plotVelocityBtn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_plotVelocity_clicked()));
+   connect(ui->plotMotorCurveBtn,
+           SIGNAL(clicked()),this,
+           SLOT(onButton_plotMotorCurve_clicked()));
 
 }
 
@@ -27,7 +33,7 @@ AnalysisWindow::~AnalysisWindow()
    delete ui;
 }
 
-void AnalysisWindow::plotAltitude()
+void AnalysisWindow::onButton_plotAltitude_clicked()
 {
    std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
    const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
@@ -54,7 +60,7 @@ void AnalysisWindow::plotAltitude()
    plot->replot();
 }
 
-void AnalysisWindow::plotVelocity()
+void AnalysisWindow::onButton_plotVelocity_clicked()
 {
    std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
    const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
@@ -83,7 +89,7 @@ void AnalysisWindow::plotVelocity()
 
 }
 
-void AnalysisWindow::plotMotorCurveBtn()
+void AnalysisWindow::onButton_plotMotorCurve_clicked()
 {
    std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
    model::MotorModel motor = rocket->getCurrentMotorModel();

@@ -29,7 +29,7 @@ public:
    ~AboutWindow();
 
 private slots:
-   void on_pushButton_clicked();
+   void onButton_okButton_clicked();
 
 private:
    Ui::AboutWindow *ui;

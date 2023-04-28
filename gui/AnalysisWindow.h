@@ -38,10 +38,9 @@ public:
 
 private slots:
 
-   void plotAltitude();
-   //void plotAtmosphere();
-   void plotVelocity();
-   void plotMotorCurveBtn();
+   void onButton_plotAltitude_clicked();
+   void onButton_plotVelocity_clicked();
+   void onButton_plotMotorCurve_clicked();
 
 private:
    Ui::AnalysisWindow *ui;

@@ -19,6 +19,16 @@ SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
+    connect(ui->buttonBox,
+            SIGNAL(rejected()),
+            this,
+            SLOT(on_buttonBox_rejected()));
+
+    connect(ui->buttonBox,
+            SIGNAL(accepted()),
+            this,
+            SLOT(on_buttonBox_accepted()));
+
     // populate the combo boxes
 
     std::shared_ptr<sim::SimulationOptions> options(new sim::SimulationOptions);

@@ -30,11 +30,11 @@ public:
    ~ThrustCurveMotorSelector();
 
 private slots:
-   void on_getMetadata_clicked();
+   void onButton_getMetadata_clicked();
 
-   void on_searchButton_clicked();
+   void onButton_searchButton_clicked();
 
-   void on_setMotor_clicked();
+   void onButton_setMotor_clicked();
 
    private:
    Ui::ThrustCurveMotorSelector *ui;

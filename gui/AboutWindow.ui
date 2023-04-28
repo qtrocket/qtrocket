@@ -29,7 +29,7 @@
     <string>Copyright (c) 2023 by Travis Hunter</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="pushButton">
+  <widget class="QPushButton" name="okButton">
    <property name="geometry">
     <rect>
      <x>250</x>

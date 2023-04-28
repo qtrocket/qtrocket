@@ -17,6 +17,23 @@ ThrustCurveMotorSelector::ThrustCurveMotorSelector(QWidget *parent) :
    tcApi(new utils::ThrustCurveAPI)
 {
    ui->setupUi(this);
+
+   connect(ui->getMetadata,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_getMetadata_clicked()));
+   
+   connect(ui->searchButton,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_searchButton_clicked()));
+   
+   connect(ui->setMotor,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_setMotor_clicked()));
+
+
    this->setWindowModality(Qt::NonModal);
    this->hide();
    this->show();
@@ -27,7 +44,7 @@ ThrustCurveMotorSelector::~ThrustCurveMotorSelector()
    delete ui;
 }
 
-void ThrustCurveMotorSelector::on_getMetadata_clicked()
+void ThrustCurveMotorSelector::onButton_getMetadata_clicked()
 {
    // When the user clicks "Get Metadata", we want to pull in Metadata from thrustcurve.org
    // and populate the Manufacturer, Diameter, and Impulse Class combo boxes
@@ -50,7 +67,7 @@ void ThrustCurveMotorSelector::on_getMetadata_clicked()
 }
 
 
-void ThrustCurveMotorSelector::on_searchButton_clicked()
+void ThrustCurveMotorSelector::onButton_searchButton_clicked()
 {
 
    //double diameter = ui->diameter->
@@ -75,7 +92,7 @@ void ThrustCurveMotorSelector::on_searchButton_clicked()
 }
 
 
-void ThrustCurveMotorSelector::on_setMotor_clicked()
+void ThrustCurveMotorSelector::onButton_setMotor_clicked()
 {
    //asdf
    std::string commonName = ui->motorSelection->currentText().toStdString();
