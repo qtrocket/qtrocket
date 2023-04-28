@@ -61,5 +61,3 @@ motor's thrust curve will be displayed in the plot.
 ## Known Issues
 * It doesn't do much
    * I know, but it's just a little fella and it's still growing ;)
-* Get Thrustcurve Motor Data doesn't actually set the rocket motor
-   * That will be fixed shortly. In the meantime, use the included AeroTech rocksim engine file.
