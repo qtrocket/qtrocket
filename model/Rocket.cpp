@@ -8,10 +8,9 @@ Rocket::Rocket() : propagator(this)
 
 void Rocket::launch()
 {
-   propagator.setTimeStep(QtRocket::getInstance()->getTimeStep());
-    propagator.clearStates();
+   propagator.clearStates();
    propagator.setCurrentTime(0.0);
-    mm.startMotor(0.0);
+   mm.startMotor(0.0);
    propagator.runUntilTerminate();
 }
 

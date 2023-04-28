@@ -7,6 +7,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <utility>
 
 // 3rd party headers
 /// \endcond
@@ -16,8 +17,10 @@
 #include "model/Rocket.h"
 #include "sim/AtmosphericModel.h"
 #include "sim/GravityModel.h"
-#include "sim/SimulationOptions.h"
+#include "sim/Environment.h"
+#include "sim/Propagator.h"
 #include "utils/Logger.h"
+#include "utils/MotorModelDatabase.h"
 
 /**
  * @brief The QtRocket class is the master controller for the QtRocket application.
@@ -38,18 +41,20 @@ public:
 
    void runSim();
 
-   std::shared_ptr<sim::GravityModel> getGravityModel() { return simOptions->getGravityModel(); }
-   std::shared_ptr<sim::AtmosphericModel> getAtmosphereModel() { return simOptions->getAtmosphericModel(); }
-   double getTimeStep() { return simOptions->getTimeStep(); }
-   std::shared_ptr<Rocket> getRocket() { return rocket; }
+
+   std::shared_ptr<sim::Environment> getEnvironment() { return environment; }
+   void setTimeStep(double t) { rocket.second->setTimeStep(t); }
+   std::shared_ptr<Rocket> getRocket() { return rocket.first; }
+
+   std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
    void addMotorModels(std::vector<model::MotorModel>& m);
 
    const std::vector<model::MotorModel>& getMotorModels() const { return motorModels; }
 
-   void addRocket(std::shared_ptr<Rocket> r) { rocket = r; }
+   void addRocket(std::shared_ptr<Rocket> r) { rocket.first = r; }
 
-   void setSimulationOptions(std::shared_ptr<sim::SimulationOptions> options) { simOptions = options; }
+   void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }
 
 private:
    QtRocket();
@@ -66,9 +71,10 @@ private:
 
    utils::Logger* logger;
 
-   std::shared_ptr<Rocket> rocket;
+   std::pair<std::shared_ptr<Rocket>, std::shared_ptr<sim::Propagator>> rocket;
 
-   std::shared_ptr<sim::SimulationOptions> simOptions;
+   std::shared_ptr<sim::Environment> environment;
+   std::shared_ptr<utils::MotorModelDatabase> motorDatabase;
 
 };
 

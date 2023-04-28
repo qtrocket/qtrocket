@@ -1,47 +1,44 @@
-#ifndef SIMULATIONOPTIONS_H
-#define SIMULATIONOPTIONS_H
-
+#ifndef SIM_ENVIRONMENT_H
+#define SIM_ENVIRONMENT_H
 /// \cond
 // C headers
 // C++ headers
 #include <algorithm>
 #include <map>
 #include <memory>
-#include <string>
 #include <vector>
-
 // 3rd party headers
 /// \endcond
 
 // qtrocket headers
-#include "sim/GravityModel.h"
-#include "sim/SphericalGravityModel.h"
 #include "sim/ConstantGravityModel.h"
+#include "sim/SphericalGravityModel.h"
 
-#include "sim/AtmosphericModel.h"
 #include "sim/ConstantAtmosphere.h"
 #include "sim/USStandardAtmosphere.h"
+#include "sim/GeoidModel.h"
 
 namespace sim
 {
 
 /**
- * @brief The SimulationOptions class holds the available simulation options and environmental models
+ * @brief Holds simulation environment information, such as the gravity model, atmosphere model,
+ *        Geoid model
+ * 
  */
-class SimulationOptions
+class Environment
 {
 public:
-    SimulationOptions()
+    Environment()
     {
-        setTimeStep(0.01);
         setGravityModel("Constant Gravity");
         setAtmosphereModel("Constant Atmosphere");
     }
-    ~SimulationOptions() = default;
-    SimulationOptions(const SimulationOptions&) = delete;
-    SimulationOptions(SimulationOptions&&) = delete;
-    SimulationOptions& operator=(const SimulationOptions&) = delete;
-    SimulationOptions& operator=(SimulationOptions&&) = delete;
+    ~Environment() = default;
+    Environment(const Environment&) = delete;
+    Environment(Environment&&) = delete;
+    Environment& operator=(const Environment&) = delete;
+    Environment& operator=(Environment&&) = delete;
 
     std::vector<std::string> getAvailableGravityModels()
     {
@@ -59,7 +56,6 @@ public:
         return retVal;
     }
 
-    void setTimeStep(double t) { timeStep = t; }
     void setGravityModel(const std::string& model)
     {
         if(model == "Constant Gravity")
@@ -94,7 +90,6 @@ public:
         return retVal;
     }
     std::shared_ptr<sim::GravityModel> getGravityModel() { return gravityModels[gravityModel]; }
-    double getTimeStep() { return timeStep; }
 
 private:
 
@@ -106,12 +101,11 @@ private:
         {"Constant Gravity", std::shared_ptr<sim::GravityModel>()},
         {"Spherical Gravity", std::shared_ptr<sim::GravityModel>()}};
 
-    double timeStep{0.01};
-
     std::string gravityModel{"Constant Gravity"}; /// Constant Gravity Model is the default
     std::string atmosphereModel{"Constant Atmosphere"}; /// Constant Atmosphere Model is the default
 };
 
-}
+} // namespace sim
 
-#endif // SIMULATIONOPTIONS_H
+
+#endif // SIM_ENVIRONMENT_H

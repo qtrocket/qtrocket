@@ -11,7 +11,7 @@
 #include "SimOptionsWindow.h"
 #include "ui_SimOptionsWindow.h"
 
-#include "sim/SimulationOptions.h"
+#include "sim/Environment.h"
 
 SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -31,7 +31,7 @@ SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
 
     // populate the combo boxes
 
-    std::shared_ptr<sim::SimulationOptions> options(new sim::SimulationOptions);
+    std::shared_ptr<sim::Environment> options(new sim::Environment);
     std::vector<std::string> atmosphereModels = options->getAvailableAtmosphereModels();
     std::vector<std::string> gravityModels = options->getAvailableGravityModels();
 
@@ -60,12 +60,12 @@ void SimOptionsWindow::on_buttonBox_accepted()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
 
-    std::shared_ptr<sim::SimulationOptions> options(new sim::SimulationOptions);
+    std::shared_ptr<sim::Environment> environment(new sim::Environment);
 
-    options->setTimeStep(ui->timeStep->text().toDouble());
-    options->setGravityModel(ui->gravityModelCombo->currentText().toStdString());
-    options->setAtmosphereModel(ui->atmosphereModelCombo->currentText().toStdString());
-    qtrocket->setSimulationOptions(options);
+    qtrocket->setTimeStep(ui->timeStep->text().toDouble());
+    environment->setGravityModel(ui->gravityModelCombo->currentText().toStdString());
+    environment->setAtmosphereModel(ui->atmosphereModelCombo->currentText().toStdString());
+    qtrocket->setEnvironment(environment);
 
     this->close();
 

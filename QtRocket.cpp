@@ -71,11 +71,11 @@ QtRocket::QtRocket()
    logger = utils::Logger::getInstance();
    running = false;
 
-   // Need to set some sane defaults for Simulation Options
-   // The default constructor for SimulationOptions will do that for us, so just use that
-   setSimulationOptions(std::make_shared<sim::SimulationOptions>());
+   // Need to set some sane defaults for the Environment
+   // The default constructor for Environment will do that for us, so just use that
+   setEnvironment(std::make_shared<sim::Environment>());
 
-   rocket =
+   rocket.first =
       std::make_shared<Rocket>();
 
 }

@@ -56,13 +56,13 @@ set(PROJECT_SOURCES
         sim/ConstantGravityModel.cpp
         sim/ConstantGravityModel.h
         sim/DESolver.h
+        sim/Environment.h
         sim/GeoidModel.h
         sim/GravityModel.cpp
         sim/GravityModel.h
         sim/Propagator.cpp
         sim/Propagator.h
         sim/RK4Solver.h
-        sim/SimulationOptions.h
         sim/SphericalGeoidModel.cpp
         sim/SphericalGeoidModel.h
         sim/SphericalGravityModel.cpp
@@ -79,6 +79,8 @@ set(PROJECT_SOURCES
         utils/CurlConnection.h
         utils/Logger.cpp
         utils/Logger.h
+        utils/MotorModelDatabase.cpp
+        utils/MotorModelDatabase.h
         utils/RSEDatabaseLoader.cpp
         utils/RSEDatabaseLoader.h
         utils/ThreadPool.cpp
