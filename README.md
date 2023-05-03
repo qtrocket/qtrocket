@@ -10,8 +10,9 @@ There are already open source rocket simulators out there (e.g. OpenRocket), but
 take on that idea. For one, this is written in C++ and OpenRocket is written in Java, but more 
 importantly, I hope to engineer this in a way that is as modular as possible from the standpoint
 of the parts, components, and concepts involved in modeling a rocket. That way, this can serve not
-only as a model rocket design program, but a platform for people to learn about how rockets fly,
-and might serve as a learning platform not just for me, but for others as well.
+only as a model rocket design program, but a platform for people to learn about how rockets fly by
+building and integrating their own test parts and models easily. This way QtRocket may serve as a
+learning platform not just for me, but for others as well.
 
 ### Why Release An Unfinished Product?
 Well, first of all it isn't actually *released* yet. But it is public because I'm always interested in getting any feedback others may have. I'm doing this to learn as well, and if you have any
@@ -20,7 +21,7 @@ pointers, I'd love to hear them! And if you want to contribute, well, please do!
 ## External Build Dependencies
 * Boost libraries. On Windows this is hardcoded to v1.82.0, but only because I'm not sure how dependencies work on Windows
 * Qt6 (You can download it for free for Open Source use here: https://www.qt.io/download)
-* Other dependencies are handles within the CMake build system
+* Other dependencies are handled within the CMake build system
 * Maybe something else I'm forgetting about? If you find something not listed that isn't a standard install, let me know
 
 ## How To Use It
@@ -55,6 +56,7 @@ And, plot the thrust curve of the motor you selected.
 
 ## Thrustcurve.org integration
 There is another feature, in that qtrocket integrates with the excellent online motor database thrustcurve.org. From the main window, click "Get Thrustcurve Motor Data". A new window will open:
+
 ![Alt text](resources/screenshots/ThrustCurveWindow.png)
 
 In order to use it, you first must click "Get Metadata". Then you can select the manufacturer, motor diameter, and impulse class.
