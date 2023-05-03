@@ -17,6 +17,12 @@ and might serve as a learning platform not just for me, but for others as well.
 Well, first of all it isn't actually *released* yet. But it is public because I'm always interested in getting any feedback others may have. I'm doing this to learn as well, and if you have any
 pointers, I'd love to hear them! And if you want to contribute, well, please do! Let's talk :)
 
+## External Build Dependencies
+* Boost libraries. On Windows this is hardcoded to v1.82.0, but only because I'm not sure how dependencies work on Windows
+* Qt6 (You can download it for free for Open Source use here: https://www.qt.io/download)
+* Other dependencies are handles within the CMake build system
+* Maybe something else I'm forgetting about? If you find something not listed that isn't a standard install, let me know
+
 ## How To Use It
 First, it's still in the very early stages of development, but it *can* propagate objects through
 an atomosphere with a given coefficient of drag, mass, and motor.
