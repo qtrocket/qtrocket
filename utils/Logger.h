@@ -22,10 +22,10 @@ class Logger
 public:
    enum LogLevel
    {
-      ERROR,
-      WARN,
-      INFO,
-      DEBUG
+      ERROR_,
+      WARN_,
+      INFO_,
+      DEBUG_
    };
 
    static Logger* getInstance();
@@ -44,10 +44,10 @@ public:
    std::function<void(std::string_view)> info;
    std::function<void(std::string_view)> debug;
    */
-   inline void error(std::string_view msg) { log(msg, ERROR); }
-   inline void warn(std::string_view msg)  { log(msg, WARN); }
-   inline void info(std::string_view msg)  { log(msg, INFO); }
-   inline void debug(std::string_view msg) { log(msg, DEBUG); }
+   inline void error(std::string_view msg) { log(msg, ERROR_); }
+   inline void warn(std::string_view msg)  { log(msg, WARN_); }
+   inline void info(std::string_view msg)  { log(msg, INFO_); }
+   inline void debug(std::string_view msg) { log(msg, DEBUG_); }
 
    void log(std::ostream& o, const std::string& msg);
 

@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <iterator>
 // 3rd party headers
 /// \endcond
 

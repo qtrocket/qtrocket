@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
 
    // Instantiate logger
    utils::Logger* logger = utils::Logger::getInstance();
-   logger->setLogLevel(utils::Logger::DEBUG);
+   logger->setLogLevel(utils::Logger::DEBUG_);
    // instantiate QtRocket
    QtRocket* qtrocket = QtRocket::getInstance();
 
