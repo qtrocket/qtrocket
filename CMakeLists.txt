@@ -9,10 +9,37 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+
+# fmtlib dependency
+FetchContent_Declare(fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt
+    GIT_TAG        9.1.0)
+FetchContent_MakeAvailable(fmt)
+
+# jsoncpp dependency
+FetchContent_Declare(jsoncpp
+    GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp
+    GIT_TAG        1.9.5)
+FetchContent_MakeAvailable(jsoncpp)
+
+# curl dependency
+FetchContent_Declare(CURL
+    GIT_REPOSITORY https://github.com/curl/curl
+    GIT_TAG        curl-8_0_1)
+FetchContent_MakeAvailable(CURL)
+
+if(WIN32)
+  set(CMAKE_PREFIX_PATH $ENV{QTDIR})
+  include_directories("C:\\boost\\boost_1_82_0\\")
+#  find_package(Qt6Core REQUIRED)
+#  find_package(Qt6Widgets REQUIRED)
+endif()
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
-find_package(CURL)
-find_package(fmt)
+find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
+#find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
+#find_package(CURL)
+#find_package(fmt)
 
 set(TS_FILES qtrocket_en_US.ts)
 
@@ -124,10 +151,11 @@ else()
         )
     endif()
 
-    qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
+    #qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-target_link_libraries(qtrocket PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${Qt_VERSION_MAJOR}::PrintSupport curl jsoncpp fmt::fmt-header-only)
+#target_link_libraries(qtrocket PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${Qt_VERSION_MAJOR}::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
+target_link_libraries(qtrocket PRIVATE Qt6::Widgets Qt6::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com
