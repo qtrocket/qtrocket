@@ -2,12 +2,6 @@ cmake_minimum_required(VERSION 3.16)
 
 project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
@@ -21,13 +15,32 @@ FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(jsoncpp
     GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp
     GIT_TAG        1.9.5)
+set(JSONCPP_WITH_TESTS OFF)
+set(JSONCPP_WITH_EXAMPLE OFF)
+set(JSONCPP_WITH_PKGCONFIG_SUPPORT OFF)
+set(JSONCPP_BUILD_SHARED_LIBS OFF)
+set(JSONCPP_BUILD_OBJECT_LIBS OFF)
+set(JSONCPP_BUILD_STATIC_LIBS ON)
 FetchContent_MakeAvailable(jsoncpp)
 
 # curl dependency
 FetchContent_Declare(CURL
     GIT_REPOSITORY https://github.com/curl/curl
     GIT_TAG        curl-8_0_1)
+set(BUILD_CURL_EXE OFF)
+set(BUILD_SHARED_LIBS OFF)
+set(HTTP_ONLY ON)
+set(SSL_ENABLED ON)
 FetchContent_MakeAvailable(CURL)
+
+
+
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
   set(CMAKE_PREFIX_PATH $ENV{QTDIR})
