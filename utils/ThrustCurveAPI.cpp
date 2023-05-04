@@ -4,6 +4,7 @@
 // C++ headers
 // 3rd party headers
 #include <json/json.h>
+#include <optional>
 /// \endcond
 
 // qtrocket headers
@@ -25,6 +26,58 @@ ThrustCurveAPI::~ThrustCurveAPI()
 
 }
 
+std::optional<ThrustCurve> ThrustCurveAPI::getThrustCurve(const std::string& id)
+{
+   std::stringstream endpoint;
+   endpoint << hostname << "api/v1/download.json?motorId=" << id << "&data=samples";
+   std::vector<std::string> extraHeaders = {};
+
+   std::string res = curlConnection.get(endpoint.str(), extraHeaders);
+   model::MotorModel mm;
+
+   if(!res.empty())
+   {
+      try
+      {
+         Json::Reader reader;
+         Json::Value jsonResult;
+         reader.parse(res, jsonResult);
+
+         std::vector<std::pair<double, double>> samples;
+         for(Json::ValueConstIterator iter = jsonResult["results"].begin();
+             iter != jsonResult["results"].end();
+             ++iter)
+         {
+            // if there are more than 1 items in the results list, we only want the RASP data
+            // Otherwise just take whatever is there
+            if(std::next(iter) != jsonResult["results"].end())
+            {
+               if( (*iter)["format"].asString() != "RASP")
+                  continue;
+            }
+            for(Json::ValueConstIterator samplesIter = (*iter)["samples"].begin();
+                samplesIter != (*iter)["samples"].end();
+                ++samplesIter)
+            {
+               samples.push_back(std::make_pair((*samplesIter)["time"].asDouble(),
+                                                (*samplesIter)["thrust"].asDouble()));
+
+            }
+         }
+         return ThrustCurve(samples);
+      }
+      catch(const std::exception& e)
+      {
+         std::string err("Unable to parse JSON from Thrustcurve motor data request. Error: ");
+         err += e.what();
+
+         Logger::getInstance()->error(err);
+      }
+   }
+
+   return std::nullopt;
+
+}
 
 model::MotorModel ThrustCurveAPI::getMotorData(const std::string& motorId)
 {
@@ -227,6 +280,11 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
                 mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::HYBRID);
 
             motorModel.moveMetaData(std::move(mm));
+            auto tc = getThrustCurve(mm.motorIdTC);
+            if(tc)
+            {
+                motorModel.addThrustCurve(*tc);
+            }
             retVal.push_back(motorModel);
          }
       }

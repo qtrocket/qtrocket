@@ -4,6 +4,8 @@
 /// \cond
 // C headers
 // C++ headers
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
 // 3rd party headers
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
