@@ -89,6 +89,17 @@ double MotorModel::getThrust(double simTime)
 void MotorModel::setMetaData(const MetaData& md)
 {
    data = md;
+   computeMassCurve();
+}
+
+void MotorModel::moveMetaData(MetaData&& md)
+{
+   data = std::move(md);
+   computeMassCurve();
+}
+
+void MotorModel::computeMassCurve()
+{
    emptyMass = data.totalWeight - data.propWeight;
 
    // Calculate the Isp for the motor, as we'll need this for the computing the mass flow rate.
@@ -115,13 +126,5 @@ void MotorModel::setMetaData(const MetaData& md)
       propMass -= thrust.getThrust(t + i*timeStep) * timeStep * data.propWeight / data.totalImpulse;
    }
    massCurve.push_back(std::make_pair(data.burnTime, 0.0));
-
-
-
-}
-
-void MotorModel::moveMetaData(MetaData&& md)
-{
-   data = std::move(md);
 }
 } // namespace model

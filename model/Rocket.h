@@ -50,7 +50,7 @@ public:
     * @brief getMass returns the current mass of the rocket. This is the sum of all components' masses
     * @return total current mass of the Rocket
     */
-   double getMass() const { return mass; }
+   double getMass(double simTime) const { return mass + mm.getMass(simTime); }
 
    /**
     * @brief setMass sets the current total mass of the Rocket

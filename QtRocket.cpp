@@ -12,6 +12,7 @@
 
 // qtrocket headers
 #include "QtRocket.h"
+#include "utils/Logger.h"
 #include "gui/MainWindow.h"
 
 // Initialize static member data
@@ -23,6 +24,8 @@ bool QtRocket::initialized = false;
 // The gui worker thread
 void guiWorker(int argc, char* argv[], int& ret)
 {
+   utils::Logger* logger = utils::Logger::getInstance();
+   logger->info("Starting QApplication");
    QApplication a(argc, argv);
    a.setWindowIcon(QIcon(":/qtrocket.png"));
 
@@ -42,6 +45,7 @@ void guiWorker(int argc, char* argv[], int& ret)
 
    // Go!
    MainWindow w(QtRocket::getInstance());
+   logger->info("Showing MainWindow");
    w.show();
    ret = a.exec();
 
@@ -61,6 +65,7 @@ void QtRocket::init()
    std::lock_guard<std::mutex> lck(mtx);
    if(!initialized)
    {
+      utils::Logger::getInstance()->info("Instantiating new QtRocket");
       instance = new QtRocket();
       initialized = true;
    }

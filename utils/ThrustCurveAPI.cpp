@@ -14,7 +14,7 @@ namespace utils
 {
 
 ThrustCurveAPI::ThrustCurveAPI()
-   : hostname("http://www.thrustcurve.org/"),
+   : hostname("https://www.thrustcurve.org/"),
      curlConnection()
 {
 

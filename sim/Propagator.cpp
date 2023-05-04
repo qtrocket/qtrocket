@@ -92,7 +92,7 @@ void Propagator::runUntilTerminate()
 
 double Propagator::getMass()
 {
-    return rocket->getMass();
+    return rocket->getMass(currentTime);
 }
 
 double Propagator::getForceX()

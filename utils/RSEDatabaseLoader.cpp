@@ -71,7 +71,8 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
    mm.length = v.get<double>("<xmlattr>.len", 0.0);
    mm.manufacturer = model::MotorModel::MotorManufacturer::toEnum(v.get<std::string>("<xmlattr>.mfg", ""));
    mm.maxThrust = v.get<double>("<xmlattr>.peakThrust", 0.0);
-   mm.propWeight = v.get<double>("<xmlattr>.propWt", 0.0);
+   mm.totalWeight = v.get<double>("<xmlattr>.initWt", 0.0) / 1000.0; // convert g -> kg
+   mm.propWeight = v.get<double>("<xmlattr>.propWt", 0.0) / 1000.0;  // convert g -> kg
    mm.totalImpulse = v.get<double>("<xmlattr>.Itot", 0.0);
 
    mm.type = model::MotorModel::MotorType::toEnum(v.get<std::string>("<xmlattr>.Type"));

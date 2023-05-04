@@ -31,6 +31,9 @@ set(BUILD_CURL_EXE OFF)
 set(BUILD_SHARED_LIBS OFF)
 set(HTTP_ONLY ON)
 set(SSL_ENABLED ON)
+if(WIN32)
+   set(CURL_USE_SCHANNEL ON)
+endif()
 FetchContent_MakeAvailable(CURL)
 
 

@@ -412,6 +412,8 @@ private:
    ThrustCurve thrust; /// The measured motor thrust curve
 
    std::vector<std::pair<double, double>> massCurve;
+
+   void computeMassCurve();
    
 };
 
