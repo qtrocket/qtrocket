@@ -49,6 +49,10 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
            SLOT(onMenu_Edit_SimulationOptions_triggered()));
 
    // Tools Menu Actions
+   connect(ui->actionSaveMotorDatabase,
+           SIGNAL(triggered()),
+           this,
+           SLOT(onMenu_Tools_SaveMotorDatabase()));
 
    // Help Menu Actions
    connect(ui->actionAbout,
@@ -93,6 +97,11 @@ void MainWindow::onMenu_Help_About_triggered()
    about.setModal(true);
    about.exec();
 
+}
+
+void MainWindow::onMenu_Tools_SaveMotorDatabase()
+{
+   qtRocket->getMotorDatabase()->saveMotorDatabase("qtrocket_motors.qmd");
 }
 
 

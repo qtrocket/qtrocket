@@ -134,7 +134,7 @@ public:
        * @brief str Returns a string representation of AVAILABILITY enum
        * @return string representation
        */
-      std::string str()
+      std::string str() const
       {
          if(availability == AVAILABILITY::REGULAR)
             return std::string("regular");
@@ -176,7 +176,7 @@ public:
        * @brief str Returns a string representation of CERTORG enum
        * @return string representation
        */
-      std::string str()
+      std::string str() const
       {
          if(org == CERTORG::AMRS)
             return std::string("Austrialian Model Rocket Society Inc.");
@@ -235,7 +235,7 @@ public:
        * @brief str Returns a string representation of MOTORTYPE enum
        * @return string representation
        */
-      std::string str()
+      std::string str() const
       {
          if(type == MOTORTYPE::SU)
             return std::string("Single Use");
@@ -253,10 +253,12 @@ public:
       static MOTORTYPE toEnum(const std::string& name)
       {
          if(name == "SU" ||
-             name == "Single Use")
+             name == "Single Use" ||
+             name == "single-use")
             return MOTORTYPE::SU;
          else if(name == "reload" ||
-                  name == "Reload")
+                  name == "Reload" || 
+                  name == "reloadable")
             return MOTORTYPE::RELOAD;
          else  // It's a hybrid
             return MOTORTYPE::HYBRID;
@@ -284,7 +286,7 @@ public:
        * @brief str Returns a string representation of MOTORMANUFACTURER enum
        * @return string representation
        */
-      std::string str()
+      std::string str() const
       {
          switch(manufacturer)
          {

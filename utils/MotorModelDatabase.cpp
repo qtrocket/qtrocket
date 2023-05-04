@@ -5,6 +5,8 @@
 // C headers
 // C++ headers
 // 3rd party headers
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
 /// \endcond
 
 // qtrocket project headers
@@ -61,6 +63,77 @@ std::optional<model::MotorModel> MotorModelDatabase::getMotorModel(const std::st
       Logger::getInstance()->debug("Retrieved " + name + " from MotorModel database");
       return motorModelMap[name];
    }
+}
+
+void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
+{
+
+/*
+
+<MotorDatabase>
+  <version>1.0</version>
+  <MotorModels>
+    <model name="XYZ">
+      <totalWeight>10.0</totalWeight>
+      <totalImpulse>123.4</totalImpulse>
+    </model>
+  </MotorModels>
+</MotorDatabase>
+
+*/
+
+   namespace pt = boost::property_tree;
+
+   // top-level tree
+   pt::ptree tree;
+   tree.put("QtRocketMotorDatabase.<xmlattr>.version", "0.1");
+   for(const auto& i : motorModelMap)
+   {
+      pt::ptree motor;
+      const auto& m = i.second;
+      motor.put("<xmlattr>.name", m.data.commonName);
+      motor.put("availability", m.data.availability.str());
+      motor.put("avgThrust", m.data.avgThrust);
+      motor.put("burnTime", m.data.burnTime);
+      motor.put("certOrg", m.data.certOrg.str());
+      motor.put("commonName", m.data.commonName);
+      motor.put("designation", m.data.designation);
+      motor.put("diameter", m.data.diameter);
+      motor.put("impulseClass", m.data.impulseClass);
+      motor.put("infoUrl", m.data.infoUrl);
+      motor.put("length", m.data.length);
+      motor.put("manufacturer", m.data.manufacturer.str());
+      motor.put("maxThrust", m.data.maxThrust);
+      motor.put("motorIdTC", m.data.motorIdTC);
+      motor.put("propType", m.data.propType);
+      motor.put("sparky", m.data.sparky ? "true" : "false");
+      motor.put("totalImpulse", m.data.totalImpulse);
+      motor.put("totalWeight", m.data.totalWeight);
+      motor.put("type", m.data.type.str());
+      motor.put("lastUpdated", m.data.lastUpdated);
+
+      // thrust data
+      {
+         pt::ptree tc;
+         std::vector<std::pair<double, double>> thrust = m.getThrustCurve().getThrustCurveData();
+         for(const auto& j : thrust)
+         {
+            pt::ptree thrustNode;
+            thrustNode.put("<xmlattr>.time", j.first);
+            thrustNode.put("<xmlattr>.force", j.second);
+            tc.add_child("thrust", thrustNode);
+         }
+         motor.add_child("thrustCurve", tc);
+      }
+      tree.add_child("QtRocketMotorDatabase.MotorModels.motor", motor);
+   }
+   pt::xml_writer_settings<std::string> settings(' ', 2);
+   pt::write_xml(filename, tree, std::locale(), settings);
+}
+
+void MotorModelDatabase::loadMotorDatabase(const std::string& filename)
+{
+
 }
 
 } // namespace utils

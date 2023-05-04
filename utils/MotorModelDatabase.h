@@ -59,6 +59,9 @@ public:
     * @return std::optional<model::MotorModel> 
     */
    std::optional<model::MotorModel> getMotorModel(const std::string& name);
+
+   void saveMotorDatabase(const std::string& filename);
+   void loadMotorDatabase(const std::string& filename);
 private:
 
    // The "database" is really just a map. :)

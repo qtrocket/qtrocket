@@ -83,6 +83,8 @@ QtRocket::QtRocket()
    rocket.first =
       std::make_shared<Rocket>();
 
+   motorDatabase = std::make_shared<utils::MotorModelDatabase>();
+
 }
 
 int QtRocket::run(int argc, char* argv[])
@@ -105,5 +107,6 @@ void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
    {
       motorModels.push_back(i);
    }
+   motorDatabase->addMotorModels(motorModels);
    // TODO: Now clear any duplicates?
 }

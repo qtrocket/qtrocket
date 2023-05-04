@@ -51,6 +51,8 @@ private slots:
 
    void onMenu_File_Quit_triggered();
 
+   void onMenu_Tools_SaveMotorDatabase();
+
    private:
    Ui::MainWindow* ui;
    QtRocket* qtRocket;

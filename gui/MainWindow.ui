@@ -253,6 +253,7 @@
     <property name="title">
      <string>Tools</string>
     </property>
+    <addaction name="actionSaveMotorDatabase"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -343,6 +344,11 @@
   <action name="actionSimulation_Options">
    <property name="text">
     <string>Simulation Options</string>
+   </property>
+  </action>
+  <action name="actionSaveMotorDatabase">
+   <property name="text">
+    <string>Save Motor Database</string>
    </property>
   </action>
  </widget>
