@@ -50,8 +50,6 @@ public:
 
    void addMotorModels(std::vector<model::MotorModel>& m);
 
-   const std::vector<model::MotorModel>& getMotorModels() const { return motorModels; }
-
    void addRocket(std::shared_ptr<Rocket> r) { rocket.first = r; }
 
    void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }
@@ -65,9 +63,6 @@ private:
    static bool initialized;
    static std::mutex mtx;
    static QtRocket* instance;
-
-   // Motor "database(s)"
-   std::vector<model::MotorModel> motorModels;
 
    utils::Logger* logger;
 

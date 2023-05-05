@@ -107,6 +107,8 @@ public:
    void setName(const std::string& n) { name = n; }
 private:
 
+
+   std::vector<double> bodyFrameState{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::string name; /// Rocket name
    sim::Propagator propagator; /// propagator
    double dragCoeff; /// @todo get rid of this, should be dynamically calculated

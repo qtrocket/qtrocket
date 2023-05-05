@@ -103,10 +103,6 @@ int QtRocket::run(int argc, char* argv[])
 
 void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
 {
-   for(const auto& i : m)
-   {
-      motorModels.push_back(i);
-   }
-   motorDatabase->addMotorModels(motorModels);
+   motorDatabase->addMotorModels(m);
    // TODO: Now clear any duplicates?
 }
