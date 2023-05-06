@@ -19,6 +19,15 @@
 
 namespace sim {
 
+/**
+ * @brief Runge-Kutta 4th order coupled ODE solver.
+ * @note This was written outside of the context of QtRocket, and it is very generic. There are
+ *       some features of this solver that are note used by QtRocket, for example, it can solve
+ *       and arbitrarily large system of coupled ODEs, but QtRocket only makes use of a system
+ *       of size 6 (x, y, z, xDot, yDot, zDot) at a time. 
+ * 
+ * @tparam Ts 
+ */
 template<typename... Ts>
 class RK4Solver : public DESolver
 {
@@ -34,7 +43,7 @@ public:
 
    void setTimeStep(double inTs) override { dt = inTs;  halfDT = dt / 2.0; }
 
-   void step(double t, const std::vector<double>& curVal, std::vector<double>& res) override
+   void step(const std::vector<double>& curVal, std::vector<double>& res, double t = 0.0) override
    {
       if(dt == std::numeric_limits<double>::quiet_NaN())
       {
@@ -44,7 +53,7 @@ public:
 
       for(size_t i = 0; i < len; ++i)
       {
-         k1[i] = odes[i](t, curVal);
+         k1[i] = odes[i](curVal, t);
       }
       // compute k2 values. This involves stepping the current values forward a half-step
       // based on k1, so we do the stepping first
@@ -54,7 +63,7 @@ public:
       }
       for(size_t i = 0; i < len; ++i)
       {
-         k2[i] = odes[i](t + halfDT, temp);
+         k2[i] = odes[i](temp, t + halfDT);
       }
       // repeat for k3
       for(size_t i = 0; i < len; ++i)
@@ -63,7 +72,7 @@ public:
       }
       for(size_t i = 0; i < len; ++i)
       {
-         k3[i] = odes[i](t + halfDT, temp);
+         k3[i] = odes[i](temp, t + halfDT);
       }
 
       // now k4
@@ -73,7 +82,7 @@ public:
       }
       for(size_t i = 0; i < len; ++i)
       {
-         k4[i] = odes[i](t + dt, temp);
+         k4[i] = odes[i](temp, t + dt);
       }
 
       // now compute the result
@@ -85,7 +94,7 @@ public:
    }
 
 private:
-   std::vector<std::function<double(double, const std::vector<double>&)>> odes;
+   std::vector<std::function<double(const std::vector<double>&, double)>> odes;
 
    static constexpr size_t len = sizeof...(Ts);
    double k1[len];

@@ -74,12 +74,13 @@ private:
 
 //private:
 
-   std::unique_ptr<sim::DESolver> integrator;
+   std::unique_ptr<sim::DESolver> linearIntegrator;
+   //std::unique_ptr<sim::DESolver> orientationIntegrator;
 
    Rocket* rocket;
 
-   std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};

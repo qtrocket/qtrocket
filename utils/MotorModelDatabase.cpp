@@ -98,6 +98,7 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
       motor.put("type", m.data.type.str());
       motor.put("lastUpdated", m.data.lastUpdated);
 
+      // delays tag is in the form of a csv string
       std::stringstream delays;
       for (std::size_t i = 0; i < m.data.delays.size() - 1; ++i)
       {

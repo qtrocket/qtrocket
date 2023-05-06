@@ -83,6 +83,7 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
            this,
            SLOT(onButton_getTCMotorData_clicked()));
 
+   ui->calculateTrajectory_btn->setDisabled(true);
 }
 
 MainWindow::~MainWindow()
@@ -186,7 +187,13 @@ void MainWindow::onButton_setMotor_clicked()
    QString motorName = ui->engineSelectorComboBox->currentText();
    model::MotorModel mm = rseDatabase->getMotorModelByName(motorName.toStdString());
    QtRocket::getInstance()->getRocket()->setMotorModel(mm);
-   QtRocket::getInstance()->addMotorModels(rseDatabase->getMotors());
+
+   // Now that we have a motor selected, we can enable the calculateTrajectory button
+   ui->calculateTrajectory_btn->setDisabled(false);
+
+   /// TODO: Figure out if this is the right place to populate the motor database
+   /// or from RSEDatabaseLoader where it currently is populated.
+   //QtRocket::getInstance()->addMotorModels(rseDatabase->getMotors());
 
 }
 

@@ -36,6 +36,11 @@ if(WIN32)
 endif()
 FetchContent_MakeAvailable(CURL)
 
+# eigen dependency
+FetchContent_Declare(eigen
+   GIT_REPOSITORY https://gitlab.com/libeigen/eigen
+   GIT_TAG 3.4.0)
+FetchContent_MakeAvailable(eigen)
 
 
 set(CMAKE_AUTOUIC ON)
@@ -84,8 +89,6 @@ set(PROJECT_SOURCES
         gui/ThrustCurveMotorSelector.ui
         gui/qcustomplot.cpp
         gui/qcustomplot.h
-        model/MotorCase.cpp
-        model/MotorCase.h
         model/MotorModel.cpp
         model/MotorModel.h
         model/MotorModelDatabase.cpp
@@ -96,12 +99,10 @@ set(PROJECT_SOURCES
         model/ThrustCurve.h
         sim/AtmosphericModel.h
         sim/ConstantAtmosphere.h
-        sim/ConstantGravityModel.cpp
         sim/ConstantGravityModel.h
         sim/DESolver.h
         sim/Environment.h
         sim/GeoidModel.h
-        sim/GravityModel.cpp
         sim/GravityModel.h
         sim/Propagator.cpp
         sim/Propagator.h
@@ -110,7 +111,6 @@ set(PROJECT_SOURCES
         sim/SphericalGeoidModel.h
         sim/SphericalGravityModel.cpp
         sim/SphericalGravityModel.h
-        sim/StateData.cpp
         sim/StateData.h
         sim/USStandardAtmosphere.cpp
         sim/USStandardAtmosphere.h
@@ -130,15 +130,10 @@ set(PROJECT_SOURCES
         utils/ThreadPool.h
         utils/ThrustCurveAPI.cpp
         utils/ThrustCurveAPI.h
-        utils/Triplet.h
         utils/TSQueue.h
         utils/math/Constants.h
-        utils/math/Quaternion.cpp
-        utils/math/Quaternion.h
-        utils/math/UtilityMathFunctions.cpp
+        utils/math/MathTypes.h
         utils/math/UtilityMathFunctions.h
-        utils/math/Vector3.cpp
-        utils/math/Vector3.h
         ${TS_FILES}
 )
 
@@ -171,7 +166,7 @@ else()
 endif()
 
 #target_link_libraries(qtrocket PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${Qt_VERSION_MAJOR}::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
-target_link_libraries(qtrocket PRIVATE Qt6::Widgets Qt6::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
+target_link_libraries(qtrocket PRIVATE Qt6::Widgets Qt6::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only eigen)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

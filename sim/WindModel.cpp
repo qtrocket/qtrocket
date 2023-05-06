@@ -13,9 +13,9 @@ WindModel::~WindModel()
 {
 }
 
-TripletD WindModel::getWindSpeed(double /* x */, double /* y */ , double /* z */)
+Vector3 WindModel::getWindSpeed(double /* x */, double /* y */ , double /* z */)
 {
-   return TripletD(0.0, 0.0, 0.0);
+   return Vector3(0.0, 0.0, 0.0);
 }
 
 } // namespace sim

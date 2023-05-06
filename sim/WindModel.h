@@ -2,7 +2,7 @@
 #define SIM_WINDMODEL_H
 
 // qtrocket headers
-#include "utils/Triplet.h"
+#include "utils/math/MathTypes.h"
 
 namespace sim
 {
@@ -13,7 +13,7 @@ public:
    WindModel();
    virtual ~WindModel();
 
-   virtual TripletD getWindSpeed(double x, double y, double z);
+   virtual Vector3 getWindSpeed(double x, double y, double z);
 
 };
 

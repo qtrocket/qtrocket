@@ -2,8 +2,7 @@
 #define STATEDATA_H
 
 // qtrocket headers
-#include "utils/math/Vector3.h"
-#include "utils/math/Quaternion.h"
+#include "utils/math/MathTypes.h"
 
 /**
  * @brief The StateData class holds physical state data. Things such as position, velocity,
@@ -13,17 +12,18 @@
 class StateData
 {
 public:
-   StateData();
+   StateData() {}
+   ~StateData() {}
 
+/// TODO: Put these behind an interface
+// private:
+   Vector3 position{0.0, 0.0, 0.0};
+   Vector3 velocity{0.0, 0.0, 0.0};
 
-private:
-   math::Vector3 position{0.0, 0.0, 0.0};
-   math::Vector3 velocity{0.0, 0.0, 0.0};
+   Quaternion orientation{0.0, 0.0, 0.0, 0.0}; /// (scalar, vector)
+   Quaternion orientationRate{0.0, 0.0, 0.0, 0.0}; /// (scalar, vector)
 
-   math::Quaternion orientation{0.0, 0.0, 0.0, 0.0}; // roll, pitch, yaw
-   math::Quaternion orientationRate{0.0, 0.0, 0.0, 0.0}; // roll-rate, pitch-rate, yaw-rate
-   // Necessary?
-   //math::Vector3 orientationAccel;
+   Matrix3 dcm{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 
    // This is an array because the integrator expects it
    double data[6];

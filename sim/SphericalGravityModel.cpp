@@ -25,7 +25,7 @@ SphericalGravityModel::~SphericalGravityModel()
 
 }
 
-TripletD SphericalGravityModel::getAccel(double x, double y, double z)
+Vector3 SphericalGravityModel::getAccel(double x, double y, double z)
 {
    // Convert x, y, z from meters to km. This is to avoid potential precision losses
    // with using the earth's gravitation parameter in meters (14 digit number).
@@ -43,7 +43,7 @@ TripletD SphericalGravityModel::getAccel(double x, double y, double z)
    double ay = accelFactor * y_km * 1000.0;
    double az = accelFactor * z_km * 1000.0;
 
-   return TripletD(ax, ay, az);
+   return Vector3(ax, ay, az);
 }
 
 

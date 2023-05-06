@@ -23,7 +23,8 @@
 namespace sim {
 
 Propagator::Propagator(Rocket* r)
-   : integrator(),
+   : linearIntegrator(),
+     //orientationIntegrator(),
      rocket(r)
 
 {
@@ -37,23 +38,25 @@ Propagator::Propagator(Rocket* r)
    // and pass it a freshly allocated RK4Solver pointer
 
    // The state vector has components of the form:
-   // (x, y, z, xdot, ydot, zdot, pitch, yaw, roll, pitchRate, yawRate, rollRate)
-   integrator.reset(new RK4Solver(
-      /* dx/dt  */ [](double, const std::vector<double>& s) -> double {return s[3]; },
-      /* dy/dt  */ [](double, const std::vector<double>& s) -> double {return s[4]; },
-      /* dz/dt  */ [](double, const std::vector<double>& s) -> double {return s[5]; },
-      /* dvx/dt */ [this](double, const std::vector<double>& ) -> double { return getForceX() / getMass(); },
-      /* dvy/dt */ [this](double, const std::vector<double>& ) -> double { return getForceY() / getMass(); },
-      /* dvz/dt */ [this](double, const std::vector<double>& ) -> double { return getForceZ() / getMass(); },
-       /* dpitch/dt    */ [](double, const std::vector<double>& s) -> double { return s[9]; },
-       /* dyaw/dt      */ [](double, const std::vector<double>& s) -> double { return s[10]; },
-       /* droll/dt     */ [](double, const std::vector<double>& s) -> double { return s[11]; },
-       /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { return (getTorqueP() - s[7] * s[8] * (getIroll() - getIyaw())) / getIpitch(); },
-       /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueQ() - s[6] * s[9] * (getIpitch() - getIroll())) / getIyaw(); },
-      /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueR() - s[6] * s[7] * (getIyaw() - getIpitch())) / getIroll(); }));
+   linearIntegrator.reset(new RK4Solver(
+      /* dx/dt  */ [](const std::vector<double>& s, double) -> double {return s[3]; },
+      /* dy/dt  */ [](const std::vector<double>& s, double) -> double {return s[4]; },
+      /* dz/dt  */ [](const std::vector<double>& s, double) -> double {return s[5]; },
+      /* dvx/dt */ [this](const std::vector<double>&, double ) -> double { return getForceX() / getMass(); },
+      /* dvy/dt */ [this](const std::vector<double>&, double ) -> double { return getForceY() / getMass(); },
+      /* dvz/dt */ [this](const std::vector<double>&, double ) -> double { return getForceZ() / getMass(); }));
+   linearIntegrator->setTimeStep(timeStep);
+   
+//   orientationIntegrator.reset(new RK4Solver(
+//       /* dpitch/dt    */ [](double, const std::vector<double>& s) -> double { return s[3]; },
+//       /* dyaw/dt      */ [](double, const std::vector<double>& s) -> double { return s[4]; },
+//       /* droll/dt     */ [](double, const std::vector<double>& s) -> double { return s[5]; },
+//       /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { return (getTorqueP() - s[1] * s[2] * (getIroll() - getIyaw())) / getIpitch(); },
+//       /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueQ() - s[0] * s[2] * (getIpitch() - getIroll())) / getIyaw(); },
+//      /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueR() - s[0] * s[1] * (getIyaw() - getIpitch())) / getIroll(); }));
 
+//   orientationIntegrator->setTimeStep(timeStep);
 
-   integrator->setTimeStep(timeStep);
    saveStates = true;
 }
 
@@ -69,7 +72,7 @@ void Propagator::runUntilTerminate()
    while(true)
    {
       // tempRes gets overwritten
-      integrator->step(currentTime, currentState, tempRes);
+      linearIntegrator->step(currentState, tempRes);
 
       std::swap(currentState, tempRes);
       if(saveStates)
@@ -110,7 +113,7 @@ double Propagator::getForceY()
 double Propagator::getForceZ()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2])).x3;
+    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2]))[2];
     double airDrag = (currentState[5] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
     double thrust  = rocket->getThrust(currentTime);
     return gravity + airDrag + thrust;

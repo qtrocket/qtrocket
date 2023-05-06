@@ -3,18 +3,21 @@
 
 // qtrocket headers
 #include "sim/GravityModel.h"
-#include "utils/Triplet.h"
+#include "utils/math/MathTypes.h"
 
 namespace sim {
 
 class ConstantGravityModel : public GravityModel
 {
 public:
-    ConstantGravityModel();
+   ConstantGravityModel() {}
 
-    virtual ~ConstantGravityModel() {}
+   virtual ~ConstantGravityModel() {}
 
-    TripletD getAccel(double, double, double) override { return TripletD(0.0, 0.0, -9.8); }
+   Vector3 getAccel(double, double, double) override
+   {
+      return Vector3(0.0, 0.0, -9.8);
+   }
 };
 
 } // namespace sim

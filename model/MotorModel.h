@@ -406,7 +406,7 @@ public:
    MetaData data;
 private:
    bool ignitionOccurred{false};
-    bool burnOutOccurred{false};
+   bool burnOutOccurred{false};
    double emptyMass;
    double isp;
    double maxTime;

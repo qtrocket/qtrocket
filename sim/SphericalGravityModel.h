@@ -2,7 +2,7 @@
 #define SIM_SPHERICALGRAVITYMODEL_H
 
 // qtrocket headers
-#include "GravityModel.h"
+#include "sim/GravityModel.h"
 
 namespace sim
 {
@@ -13,7 +13,7 @@ public:
    SphericalGravityModel();
    virtual ~SphericalGravityModel();
 
-   TripletD getAccel(double x, double y, double z) override;
+   Vector3 getAccel(double x, double y, double z) override;
 };
 
 } // namespace sim
