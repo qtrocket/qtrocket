@@ -82,6 +82,9 @@ QtRocket::QtRocket()
 
    rocket.first =
       std::make_shared<Rocket>();
+   
+   rocket.second =
+      std::make_shared<sim::Propagator>(rocket.first);
 
    motorDatabase = std::make_shared<utils::MotorModelDatabase>();
 
@@ -99,6 +102,19 @@ int QtRocket::run(int argc, char* argv[])
       return ret;
    }
    return 0;
+}
+
+void QtRocket::launchRocket()
+{
+   // initialize the propagator
+   rocket.second->clearStates();
+   rocket.second->setCurrentTime(0.0);
+
+   // start the rocket motor
+   rocket.first->launch();
+
+   // run the propagator until it terminates
+   rocket.second->runUntilTerminate();
 }
 
 void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)

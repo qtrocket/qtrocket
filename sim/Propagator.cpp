@@ -22,7 +22,7 @@
 
 namespace sim {
 
-Propagator::Propagator(Rocket* r)
+Propagator::Propagator(std::shared_ptr<Rocket> r)
    : linearIntegrator(),
      //orientationIntegrator(),
      rocket(r)

@@ -24,7 +24,7 @@ namespace sim
 class Propagator
 {
 public:
-    Propagator(Rocket* r);
+    Propagator(std::shared_ptr<Rocket> r);
     ~Propagator();
 
     void setInitialState(const std::vector<double>& initialState)
@@ -77,7 +77,8 @@ private:
    std::unique_ptr<sim::DESolver> linearIntegrator;
    //std::unique_ptr<sim::DESolver> orientationIntegrator;
 
-   Rocket* rocket;
+   std::shared_ptr<Rocket> rocket;
+
 
    std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};

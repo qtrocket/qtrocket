@@ -25,6 +25,9 @@ public:
 
    Matrix3 dcm{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 
+   /// Euler angles are yaw-pitch-roll, and (3-2-1) order
+   Vector3 eulerAngles{0.0, 0.0, 0.0};
+
    // This is an array because the integrator expects it
    double data[6];
 

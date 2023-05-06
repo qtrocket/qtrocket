@@ -35,8 +35,8 @@ AnalysisWindow::~AnalysisWindow()
 
 void AnalysisWindow::onButton_plotAltitude_clicked()
 {
-   std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
-   const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
+   QtRocket* qtRocket = QtRocket::getInstance();
+   const std::vector<std::pair<double, std::vector<double>>>& res = qtRocket->getStates();
    auto& plot = ui->plotWidget;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);
@@ -62,8 +62,8 @@ void AnalysisWindow::onButton_plotAltitude_clicked()
 
 void AnalysisWindow::onButton_plotVelocity_clicked()
 {
-   std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
-   const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
+   QtRocket* qtRocket = QtRocket::getInstance();
+   const std::vector<std::pair<double, std::vector<double>>>& res = qtRocket->getStates();
    auto& plot = ui->plotWidget;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);

@@ -35,18 +35,6 @@ public:
    void launch();
 
    /**
-    * @brief getStates returns a vector of time/state pairs generated during launch()
-    * @return vector of pairs of doubles, where the first value is a time and the second a state vector
-    */
-   const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return propagator.getStates(); }
-
-   /**
-    * @brief setInitialState sets the initial state of the Rocket.
-    * @param initState initial state vector (x, y, z, xDot, yDot, zDot, pitch, yaw, roll, pitchDot, yawDot, rollDot)
-    */
-   void setInitialState(const std::vector<double>& initState) { propagator.setInitialState(initState); }
-
-   /**
     * @brief getMass returns the current mass of the rocket. This is the sum of all components' masses
     * @return total current mass of the Rocket
     */
@@ -105,12 +93,14 @@ public:
     * @param n name to set the Rocket
     */
    void setName(const std::string& n) { name = n; }
+
+
+
 private:
 
 
    std::vector<double> bodyFrameState{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::string name; /// Rocket name
-   sim::Propagator propagator; /// propagator
    double dragCoeff; /// @todo get rid of this, should be dynamically calculated
    double mass; /// @todo get rid of this, should be dynamically computed, but is the current rocket mass
 

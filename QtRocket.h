@@ -54,6 +54,19 @@ public:
 
    void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }
 
+   void launchRocket();
+   /**
+    * @brief getStates returns a vector of time/state pairs generated during launch()
+    * @return vector of pairs of doubles, where the first value is a time and the second a state vector
+    */
+   const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return rocket.second->getStates(); }
+
+   /**
+    * @brief setInitialState sets the initial state of the Rocket.
+    * @param initState initial state vector (x, y, z, xDot, yDot, zDot, pitch, yaw, roll, pitchDot, yawDot, rollDot)
+    */
+   void setInitialState(const std::vector<double>& initState) { rocket.second->setInitialState(initState); }
+
 private:
    QtRocket();
 
