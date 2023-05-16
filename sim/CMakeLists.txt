@@ -22,3 +22,5 @@ add_library(sim
 target_link_libraries(sim PRIVATE
    utils)
 
+# Unit tests
+add_subdirectory(tests)

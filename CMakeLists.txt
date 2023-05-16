@@ -5,6 +5,15 @@ project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
 include(FetchContent)
 
+# Google Test framework
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest
+    GIT_TAG        v1.13.0)
+if(WIN32)
+   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+endif()
+FetchContent_MakeAvailable(googletest)
+
 # fmtlib dependency
 FetchContent_Declare(fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt
