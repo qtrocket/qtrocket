@@ -7,6 +7,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
+# Google Test framework
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest
+    GIT_TAG        v1.13.0)
+if(WIN32)
+   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+endif()
+FetchContent_MakeAvailable(googletest)
+
 # fmtlib dependency
 FetchContent_Declare(fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt
@@ -91,52 +100,6 @@ set(PROJECT_SOURCES
         gui/ThrustCurveMotorSelector.ui
         gui/qcustomplot.cpp
         gui/qcustomplot.h
-        model/MotorModel.cpp
-        model/MotorModel.h
-        model/MotorModelDatabase.cpp
-        model/MotorModelDatabase.h
-        model/Rocket.cpp
-        model/Rocket.h
-        model/ThrustCurve.cpp
-        model/ThrustCurve.h
-        sim/AtmosphericModel.h
-        sim/ConstantAtmosphere.h
-        sim/ConstantGravityModel.h
-        sim/DESolver.h
-        sim/Environment.h
-        sim/GeoidModel.h
-        sim/GravityModel.h
-        sim/Propagator.cpp
-        sim/Propagator.h
-        sim/RK4Solver.h
-        sim/SphericalGeoidModel.cpp
-        sim/SphericalGeoidModel.h
-        sim/SphericalGravityModel.cpp
-        sim/SphericalGravityModel.h
-        sim/StateData.h
-        sim/TestRK4Solver.h
-        sim/USStandardAtmosphere.cpp
-        sim/USStandardAtmosphere.h
-        sim/WindModel.cpp
-        sim/WindModel.h
-        utils/BinMap.cpp
-        utils/BinMap.h
-        utils/CurlConnection.cpp
-        utils/CurlConnection.h
-        utils/Logger.cpp
-        utils/Logger.h
-        utils/MotorModelDatabase.cpp
-        utils/MotorModelDatabase.h
-        utils/RSEDatabaseLoader.cpp
-        utils/RSEDatabaseLoader.h
-        utils/ThreadPool.cpp
-        utils/ThreadPool.h
-        utils/ThrustCurveAPI.cpp
-        utils/ThrustCurveAPI.h
-        utils/TSQueue.h
-        utils/math/Constants.h
-        utils/math/MathTypes.h
-        utils/math/UtilityMathFunctions.h
         ${TS_FILES}
 )
 
@@ -167,7 +130,24 @@ else()
 
 endif()
 
-target_link_libraries(qtrocket PRIVATE Qt6::Widgets Qt6::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only eigen)
+add_subdirectory(utils)
+add_subdirectory(sim)
+add_subdirectory(model)
+
+#target_link_libraries(qtrocket PRIVATE 
+#   Qt6::Widgets
+#   Qt6::PrintSupport
+#   libcurl
+#   jsoncpp_static
+#   fmt::fmt-header-only
+#   eigen)
+
+target_link_libraries(qtrocket PRIVATE 
+   Qt6::Widgets
+   Qt6::PrintSupport
+   utils
+   sim
+   model)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

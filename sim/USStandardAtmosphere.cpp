@@ -10,6 +10,7 @@
 // qtrocket headers
 #include "sim/USStandardAtmosphere.h"
 #include "utils/math/Constants.h"
+#include "utils/math/UtilityMathFunctions.h"
 
 using namespace utils::math;
 
@@ -35,13 +36,13 @@ utils::BinMap initTemps()
 utils::BinMap initLapseRates()
 {
    utils::BinMap map;
-   map.insert(std::make_pair(0.0, 0.0065));
+   map.insert(std::make_pair(0.0, -0.0065));
    map.insert(std::make_pair(11000.0, 0.0));
-   map.insert(std::make_pair(20000.0, -0.001));
-   map.insert(std::make_pair(32000.0, -0.0028));
+   map.insert(std::make_pair(20000.0, 0.001));
+   map.insert(std::make_pair(32000.0, 0.0028));
    map.insert(std::make_pair(47000.0, 0.0));
-   map.insert(std::make_pair(51000.0, 0.0028));
-   map.insert(std::make_pair(71000.0, 0.002));
+   map.insert(std::make_pair(51000.0, -0.0028));
+   map.insert(std::make_pair(71000.0, -0.002));
 
    return map;
 }
@@ -78,7 +79,7 @@ USStandardAtmosphere::~USStandardAtmosphere()
 
 double USStandardAtmosphere::getDensity(double altitude)
 {
-   if(temperatureLapseRate[altitude] == 0.0)
+   if(utils::math::floatingPointEqual(temperatureLapseRate[altitude], 0.0))
    {
       return standardDensity[altitude] * std::exp((-Constants::g0 * Constants::airMolarMass * (altitude - standardDensity.getBinBase(altitude)))
                                                   / (Constants::Rstar * standardTemperature[altitude]));
@@ -86,11 +87,10 @@ double USStandardAtmosphere::getDensity(double altitude)
    }
    else
    {
-      double base = standardTemperature[altitude] /
-         (standardTemperature[altitude] + temperatureLapseRate[altitude] * (altitude - standardDensity.getBinBase(altitude)));
+      double base = (standardTemperature[altitude] - temperatureLapseRate[altitude] * (altitude - standardDensity.getBinBase(altitude))) / standardTemperature[altitude];
       
-      double exponent = 1 + (Constants::g0 * Constants::airMolarMass) /
-         (Constants::Rstar * temperatureLapseRate[altitude]);
+      double exponent = (Constants::g0 * Constants::airMolarMass) /
+         (Constants::Rstar * temperatureLapseRate[altitude]) - 1.0;
 
       return standardDensity[altitude] * std::pow(base, exponent);
 
