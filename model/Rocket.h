@@ -15,6 +15,7 @@
 #include "model/ThrustCurve.h"
 #include "model/MotorModel.h"
 #include "sim/Propagator.h"
+#include "utils/math/MathTypes.h"
 
 /**
  * @brief The Rocket class holds all rocket components
@@ -86,7 +87,7 @@ public:
     * @param cond time/state pair
     * @return true if the passed-in time/state satisfies the terminate condition
     */
-   bool terminateCondition(const std::pair<double, std::vector<double>>& cond);
+   bool terminateCondition(const std::pair<double, Vector6>& cond);
 
    /**
     * @brief setName sets the rocket name
@@ -98,8 +99,6 @@ public:
 
 private:
 
-
-   std::vector<double> bodyFrameState{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::string name; /// Rocket name
    double dragCoeff; /// @todo get rid of this, should be dynamically calculated
    double mass; /// @todo get rid of this, should be dynamically computed, but is the current rocket mass

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
@@ -42,13 +44,13 @@ FetchContent_Declare(eigen
    GIT_TAG 3.4.0)
 FetchContent_MakeAvailable(eigen)
 
+# Add qtrocket subdirectories. These are components that will be linked in 
+
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
   set(CMAKE_PREFIX_PATH $ENV{QTDIR})
@@ -112,6 +114,7 @@ set(PROJECT_SOURCES
         sim/SphericalGravityModel.cpp
         sim/SphericalGravityModel.h
         sim/StateData.h
+        sim/TestRK4Solver.h
         sim/USStandardAtmosphere.cpp
         sim/USStandardAtmosphere.h
         sim/WindModel.cpp
@@ -162,10 +165,8 @@ else()
         )
     endif()
 
-    #qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-#target_link_libraries(qtrocket PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${Qt_VERSION_MAJOR}::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
 target_link_libraries(qtrocket PRIVATE Qt6::Widgets Qt6::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only eigen)
 
 set_target_properties(qtrocket PROPERTIES

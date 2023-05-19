@@ -59,7 +59,7 @@ public:
     * @brief getStates returns a vector of time/state pairs generated during launch()
     * @return vector of pairs of doubles, where the first value is a time and the second a state vector
     */
-   const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return rocket.second->getStates(); }
+   const std::vector<std::pair<double, Vector6>>& getStates() const { return rocket.second->getStates(); }
 
    /**
     * @brief setInitialState sets the initial state of the Rocket.

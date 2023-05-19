@@ -9,9 +9,13 @@
 // 3rd party headers
 /// \endcond
 
+// qtrocket headers
+#include "utils/math/MathTypes.h"
+
 namespace sim
 {
 
+template<typename T>
 class DESolver
 {
 public:
@@ -29,7 +33,7 @@ public:
     *          the RK4 solver independently as a general tool, this interface is needed
     *          here unfortunately.
     */
-   virtual void step(const std::vector<double>& curVal, std::vector<double>& res, double t = 0.0) = 0;
+   virtual std::pair<T, T> step(T& state, T& rate) = 0;
 };
 
 } // namespace sim

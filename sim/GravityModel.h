@@ -14,7 +14,7 @@ public:
    virtual ~GravityModel() {}
 
    virtual Vector3 getAccel(double x, double y, double z) = 0;
-   Vector3 getAccel(const Vector3& t) { return this->getAccel(t[0], t[1], t[2]); }
+   Vector3 getAccel(const Vector3& t) { return this->getAccel(t.x(), t.y(), t.z()); }
 };
 
 } // namespace sim

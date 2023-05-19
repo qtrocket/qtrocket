@@ -12,6 +12,8 @@
 
 // qtrocket headers
 #include "sim/DESolver.h"
+#include "utils/math/MathTypes.h"
+#include "sim/StateData.h"
 
 
 // Forward declare
@@ -29,17 +31,16 @@ public:
 
     void setInitialState(const std::vector<double>& initialState)
     {
-       currentState.resize(initialState.size());
        for(std::size_t i = 0; i < initialState.size(); ++i)
        {
-           currentState[i] = initialState[i];
+           currentBodyState[i] = initialState[i];
        }
 
     }
 
-    const std::vector<double>& getCurrentState() const
+    const Vector6& getCurrentState() const
     {
-       return currentState;
+       return currentBodyState;
     }
 
     void runUntilTerminate();
@@ -49,43 +50,56 @@ public:
        saveStates = s;
     }
 
-    const std::vector<std::pair<double, std::vector<double>>>& getStates() const { return states; }
+    const std::vector<std::pair<double, Vector6>>& getStates() const { return states; }
 
     void clearStates() { states.clear(); }
     void setCurrentTime(double t) { currentTime = t; }
-
     void setTimeStep(double ts) { timeStep = ts; }
-
     void setSaveStats(bool s) { saveStates = s; }
 
 private:
-    double getMass();
-    double getForceX();
-    double getForceY();
-    double getForceZ();
+   double getMass();
+   double getForceX();
+   double getForceY();
+   double getForceZ();
 
-    double getTorqueP();
-    double getTorqueQ();
-    double getTorqueR();
+   double getTorqueP();
+   double getTorqueQ();
+   double getTorqueR();
 
-    double getIpitch() { return 1.0; }
-    double getIyaw()   { return 1.0; }
-    double getIroll()  { return 1.0; }
+   double getIpitch() { return 1.0; }
+   double getIyaw()   { return 1.0; }
+   double getIroll()  { return 1.0; }
 
-//private:
-
-   std::unique_ptr<sim::DESolver> linearIntegrator;
-   //std::unique_ptr<sim::DESolver> orientationIntegrator;
+   std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
+   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<Rocket> rocket;
 
+   StateData worldFrameState;
+   //StateData bodyFrameState;
+   Vector3 currentBodyPosition{0.0, 0.0, 0.0};
+   Vector3 currentBodyVelocity{0.0, 0.0, 0.0};
+   Vector3 nextBodyPosition{0.0, 0.0, 0.0};
+   Vector3 nextBodyVelocity{0.0, 0.0, 0.0};
 
-   std::vector<double> currentState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   std::vector<double> tempRes{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   std::vector<double> currentWorldState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+   Vector3 currentGravity{0.0, 0.0, 0.0};
+   Vector3 currentWindSpeed{0.0, 0.0, 0.0};
+   
+
+   // orientation vectors in the form (yawDot, pitchDot, rollDot, q1, q2, q3, q4)
+   Quaternion currentOrientation{0.0, 0.0, 0.0, 0.0};
+   Quaternion currentOrientationRate{0.0, 0.0, 0.0, 0.0};
+   Quaternion nextOrientation{0.0, 0.0, 0.0, 0.0};
+   Quaternion nextOrientationRate{0.0, 0.0, 0.0, 0.0};
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};
-   std::vector<std::pair<double, std::vector<double>>> states;
+   std::vector<std::pair<double, Vector6>> states;
+
+   Vector3 getCurrentGravity();
 };
 
 } // namespace sim

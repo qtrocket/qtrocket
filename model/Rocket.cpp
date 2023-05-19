@@ -1,3 +1,5 @@
+
+// qtrocket headers
 #include "Rocket.h"
 #include "QtRocket.h"
 
@@ -16,7 +18,7 @@ void Rocket::setMotorModel(const model::MotorModel& motor)
    mm = motor;
 }
 
-bool Rocket::terminateCondition(const std::pair<double, std::vector<double>>& cond)
+bool Rocket::terminateCondition(const std::pair<double, Vector6>& cond)
 {
    // Terminate propagation when the z coordinate drops below zero
     if(cond.second[2] < 0)

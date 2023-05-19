@@ -24,9 +24,10 @@ namespace sim {
 
 Propagator::Propagator(std::shared_ptr<Rocket> r)
    : linearIntegrator(),
-     //orientationIntegrator(),
-     rocket(r)
-
+     orientationIntegrator(),
+     rocket(r),
+     currentBodyState(),
+     worldFrameState()
 {
 
 
@@ -38,23 +39,78 @@ Propagator::Propagator(std::shared_ptr<Rocket> r)
    // and pass it a freshly allocated RK4Solver pointer
 
    // The state vector has components of the form:
-   linearIntegrator.reset(new RK4Solver(
-      /* dx/dt  */ [](const std::vector<double>& s, double) -> double {return s[3]; },
-      /* dy/dt  */ [](const std::vector<double>& s, double) -> double {return s[4]; },
-      /* dz/dt  */ [](const std::vector<double>& s, double) -> double {return s[5]; },
-      /* dvx/dt */ [this](const std::vector<double>&, double ) -> double { return getForceX() / getMass(); },
-      /* dvy/dt */ [this](const std::vector<double>&, double ) -> double { return getForceY() / getMass(); },
-      /* dvz/dt */ [this](const std::vector<double>&, double ) -> double { return getForceZ() / getMass(); }));
+
+   // Linear velocity and acceleration
+   std::function<std::pair<Vector3, Vector3>(Vector3&, Vector3&)> linearODE = [this](Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
+   {
+      Vector3 dPosition;
+      Vector3 dVelocity;
+      // dx/dt
+      dPosition[0] = rate[0];
+
+      // dy/dt
+      dPosition[1] = rate[1];
+
+      // dz/dt
+      dPosition[2] = rate[2];
+
+      // dvx/dt
+      dVelocity[0] = getForceX() / getMass();
+
+      // dvy/dt
+      dVelocity[1] = getForceY() / getMass();
+
+      // dvz/dt
+      dVelocity[2] = getForceZ() / getMass();
+
+      return std::make_pair(dPosition, dVelocity);
+
+   };
+
+   linearIntegrator.reset(new RK4Solver<Vector6>(linearODE));
    linearIntegrator->setTimeStep(timeStep);
    
+   // This is pure quaternion
+   // This formula is taken from https://www.vectornav.com/resources/inertial-navigation-primer/math-fundamentals/math-attitudetran
+   //
+   // Convention for the quaternions is (vector, scalar). So q4 is scalar term
+   //
+   // q1Dot = 1/2 * [(q4*omega1) - (q3*omega2) + (q2*omega3)]
+   // q2Dot = 1/2 * [(q3*omega1) + (q4*omega2) - (q1*omega3)]
+   // q3Dot = 1/2 * [(-q2*omega1) + (q1*omega2) + (q4*omega3)]
+   // q4Dot = -1/2 *[(q1*omega1) + (q2*omega2) + (q3*omega3)]
+   //
+   // omega1 = yawRate
+   // omega2 = pitchRate
+   // omega3 = rollRate
+   //
 //   orientationIntegrator.reset(new RK4Solver(
-//       /* dpitch/dt    */ [](double, const std::vector<double>& s) -> double { return s[3]; },
-//       /* dyaw/dt      */ [](double, const std::vector<double>& s) -> double { return s[4]; },
-//       /* droll/dt     */ [](double, const std::vector<double>& s) -> double { return s[5]; },
-//       /* dpitchRate/dt */ [this](double, const std::vector<double>& s) -> double { return (getTorqueP() - s[1] * s[2] * (getIroll() - getIyaw())) / getIpitch(); },
-//       /* dyawRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueQ() - s[0] * s[2] * (getIpitch() - getIroll())) / getIyaw(); },
-//      /* drollRate/dt   */ [this](double, const std::vector<double>& s) -> double { return (getTorqueR() - s[0] * s[1] * (getIyaw() - getIpitch())) / getIroll(); }));
-
+//       /* dyawRate/dt    */ [this](const std::vector<double>& s, double) -> double
+//       { return getTorqueP() / getIyaw(); },
+//       /* dpitchRate/dt  */ [this](const std::vector<double>& s, double) -> double
+//       { return getTorqueQ() / getIpitch(); },
+//       /* drollRate/dt   */ [this](const std::vector<double>& s, double) -> double
+//       { return getTorqueR() / getIroll(); },
+//       /* q1Dot */ [](const std::vector<double>& s, double) -> double
+//       {
+//           double retVal = s[6]*s[0] - s[5]*s[1] + s[4]*s[2];
+//           return 0.5 * retVal;
+//       },
+//       /* q2Dot */ [](const std::vector<double>& s, double) -> double
+//       {
+//           double retVal = s[5]*s[0] + s[6]*s[1] - s[3]*s[2];
+//           return 0.5 * retVal;
+//       },
+//       /* q3Dot */ [](const std::vector<double>& s, double) -> double
+//       {
+//           double retVal = -s[4]*s[0] + s[3]*s[1] + s[6]*s[2];
+//           return 0.5 * retVal;
+//       },
+//       /* q4Dot */ [](const std::vector<double>& s, double) -> double
+//       {
+//           double retVal = s[3]*s[0] + s[4]*s[1] + s[5]*s[2];
+//           return -0.5 * retVal;
+//       }));
 //   orientationIntegrator->setTimeStep(timeStep);
 
    saveStates = true;
@@ -71,15 +127,22 @@ void Propagator::runUntilTerminate()
 
    while(true)
    {
-      // tempRes gets overwritten
-      linearIntegrator->step(currentState, tempRes);
 
-      std::swap(currentState, tempRes);
+      // Reset the body frame positions to zero since the origin of the body frame is the CM
+      currentBodyState[0] = 0.0;
+      currentBodyState[1] = 0.0;
+      currentBodyState[2] = 0.0;
+
+      // tempRes gets overwritten
+      tempRes = linearIntegrator->step(currentBodyState);
+
+      std::swap(currentBodyState, tempRes);
+      
       if(saveStates)
       {
-         states.push_back(std::make_pair(currentTime, currentState));
+         states.push_back(std::make_pair(currentTime, currentBodyState));
       }
-      if(rocket->terminateCondition(std::make_pair(currentTime, currentState)))
+      if(rocket->terminateCondition(std::make_pair(currentTime, currentBodyState)))
          break;
 
       currentTime += timeStep;
@@ -101,20 +164,20 @@ double Propagator::getMass()
 double Propagator::getForceX()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentState[3] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState[2])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[3]* currentState[3];
+    return (currentBodyState[3] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentBodyState[2])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentBodyState[3]* currentBodyState[3];
 }
 
 double Propagator::getForceY()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentState[4] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[4]* currentState[4];
+    return (currentBodyState[4] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentBodyState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentBodyState[4]* currentBodyState[4];
 }
 
 double Propagator::getForceZ()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState[0], currentState[1], currentState[2]))[2];
-    double airDrag = (currentState[5] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState[5]* currentState[5];
+    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentBodyState[0], currentBodyState[1], currentBodyState[2]))[2];
+    double airDrag = (currentBodyState[5] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentBodyState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentBodyState[5]* currentBodyState[5];
     double thrust  = rocket->getThrust(currentTime);
     return gravity + airDrag + thrust;
 }
@@ -122,5 +185,29 @@ double Propagator::getForceZ()
 double Propagator::getTorqueP() { return 0.0; }
 double Propagator::getTorqueQ() { return 0.0; }
 double Propagator::getTorqueR() { return 0.0; }
+
+Vector3 Propagator::getCurrentGravity()
+{
+   auto gravityModel = QtRocket::getInstance()->getEnvironment()->getGravityModel();
+   auto gravityAccel = gravityModel->getAccel(currentBodyState[0],
+                                              currentBodyState[1],
+                                              currentBodyState[2]);
+   Vector3 gravityVector{gravityAccel[0],
+                         gravityAccel[1],
+                         gravityAccel[2]};
+   
+
+   Quaternion q{currentOrientation[3],
+                currentOrientation[4],
+                currentOrientation[5],
+                currentOrientation[6]};
+
+   Vector3 res = q * gravityVector;
+   
+
+   return Vector3{0.0, 0.0, 0.0};
+
+
+}
 
 } // namespace sim
