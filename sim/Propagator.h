@@ -12,6 +12,7 @@
 
 // qtrocket headers
 #include "sim/DESolver.h"
+#include "sim/RK4Solver.h"
 #include "utils/math/MathTypes.h"
 #include "sim/StateData.h"
 
@@ -29,18 +30,40 @@ public:
     Propagator(std::shared_ptr<Rocket> r);
     ~Propagator();
 
-    void setInitialState(const std::vector<double>& initialState)
+    void setInitialState(const std::vector<double>& initialState,
+                         const std::vector<double>& initialVelocity,
+                         const std::vector<double>& initialOrientation,
+                         const std::vector<double>& initalOriRate)
     {
        for(std::size_t i = 0; i < initialState.size(); ++i)
        {
-           currentBodyState[i] = initialState[i];
+           currentBodyPosition[i] = initialState[i];
        }
+       for(std::size_t i = 0; i < initialVelocity.size(); ++i)
+       {
+           currentBodyVelocity[i] = initialVelocity[i];
+       }
+       /*
+       for(std::size_t i = 0; i < initialOrientation.size(); ++i)
+       {
+           currentOrientation[i] = initialOrientation[i];
+       }
+       for(std::size_t i = 0; i < initialOriRate.size(); ++i)
+       {
+           currentOrientationRate[i] = initialOriRate[i];
+       }
+       */
 
     }
 
     const Vector6& getCurrentState() const
     {
-       return currentBodyState;
+       std::vector<double> retVal{currentBodyPosition.begin(), currentBodyPosition.end()};
+       for(auto& i : currentBodyVelocity)
+       {
+          retVal.push_back(i);
+       }
+       return retVal;
     }
 
     void runUntilTerminate();
@@ -72,12 +95,12 @@ private:
    double getIroll()  { return 1.0; }
 
    std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
-   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
+//   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<Rocket> rocket;
 
    StateData worldFrameState;
-   //StateData bodyFrameState;
+   StateData bodyFrameState
    Vector3 currentBodyPosition{0.0, 0.0, 0.0};
    Vector3 currentBodyVelocity{0.0, 0.0, 0.0};
    Vector3 nextBodyPosition{0.0, 0.0, 0.0};

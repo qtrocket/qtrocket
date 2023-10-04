@@ -32,6 +32,7 @@ private:
    static utils::BinMap temperatureLapseRate;
    static utils::BinMap standardTemperature;
    static utils::BinMap standardDensity;
+   static utils::BinMap standardPressure;
 
 
 };

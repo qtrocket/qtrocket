@@ -65,7 +65,12 @@ public:
     * @brief setInitialState sets the initial state of the Rocket.
     * @param initState initial state vector (x, y, z, xDot, yDot, zDot, pitch, yaw, roll, pitchDot, yawDot, rollDot)
     */
-   void setInitialState(const std::vector<double>& initState) { rocket.second->setInitialState(initState); }
+   void setInitialState(const std::vector<double>& initialPos,
+                        const std::vector<double>& initialVel,
+                        const std::vector<double>& initialOri,
+                        const std::vector<double>& initialOriRate)
+
+   { rocket.second->setInitialState(initialPos, initialVel, initialOri, initialOriRate); }
 
 private:
    QtRocket();
