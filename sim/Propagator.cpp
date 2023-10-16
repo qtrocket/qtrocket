@@ -67,7 +67,7 @@ Propagator::Propagator(std::shared_ptr<Rocket> r)
 
    };
 
-   linearIntegrator.reset(new RK4Solver<Vector6>(linearODE));
+   linearIntegrator.reset(new RK4Solver<Vector3>(linearODE));
    linearIntegrator->setTimeStep(timeStep);
    
    // This is pure quaternion
@@ -112,6 +112,15 @@ Propagator::Propagator(std::shared_ptr<Rocket> r)
 //           return -0.5 * retVal;
 //       }));
 //   orientationIntegrator->setTimeStep(timeStep);
+
+   std::function<std::pair<Quaternion, Quaternion>(Quaternion&, Quaternion&)> orientationODE =
+   [this](Quaternion& qOri, Quaternion& qRate) -> std::pair<Quaternion, Quaternion>
+   {
+      Quaternion dOri;
+      Quaternion dOriRate;
+
+      Matrix4
+   }
 
    saveStates = true;
 }

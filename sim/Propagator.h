@@ -11,7 +11,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "sim/DESolver.h"
+#include "sim/RK4Solver.h"
 #include "utils/math/MathTypes.h"
 #include "sim/StateData.h"
 
@@ -72,7 +72,7 @@ private:
    double getIroll()  { return 1.0; }
 
    std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
-   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
+//   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<Rocket> rocket;
 
