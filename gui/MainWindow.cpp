@@ -123,7 +123,10 @@ void MainWindow::onButton_calculateTrajectory_clicked()
 
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
    double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
-   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   //std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   StateData initialState;
+   initialState.position = {0.0, 0.0, 0.0};
+   initialState.velocity = {initialVelocityX, 0.0, initialVelocityZ};
    auto rocket = QtRocket::getInstance()->getRocket();
    rocket->setMass(mass);
    rocket->setDragCoefficient(dragCoeff);

@@ -24,10 +24,16 @@ namespace sim {
 
 Propagator::Propagator(std::shared_ptr<Rocket> r)
    : linearIntegrator(),
-     orientationIntegrator(),
+     //orientationIntegrator(),
      rocket(r),
-     currentBodyState(),
-     worldFrameState()
+     currentState(),
+     nextState(),
+     currentGravity(),
+     currentWindSpeed(),
+     saveStates(true),
+     currentTime(0.0),
+     timeStep(0.01),
+     states()
 {
 
 
@@ -113,16 +119,16 @@ Propagator::Propagator(std::shared_ptr<Rocket> r)
 //       }));
 //   orientationIntegrator->setTimeStep(timeStep);
 
-   std::function<std::pair<Quaternion, Quaternion>(Quaternion&, Quaternion&)> orientationODE =
-   [this](Quaternion& qOri, Quaternion& qRate) -> std::pair<Quaternion, Quaternion>
-   {
-      Quaternion dOri;
-      Quaternion dOriRate;
+//  std::function<std::pair<Quaternion, Quaternion>(Quaternion&, Quaternion&)> orientationODE =
+//  [this](Quaternion& qOri, Quaternion& qRate) -> std::pair<Quaternion, Quaternion>
+//  {
+//     Quaternion dOri;
+//     Quaternion dOriRate;
 
-      Matrix4
-   }
+//     Matrix4
+//  }
 
-   saveStates = true;
+  saveStates = true;
 }
 
 Propagator::~Propagator()
@@ -134,27 +140,25 @@ void Propagator::runUntilTerminate()
    std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
    std::chrono::steady_clock::time_point endTime;
 
+   currentState.position = {0.0, 0.0, 0.0};
    while(true)
    {
 
-      // Reset the body frame positions to zero since the origin of the body frame is the CM
-      currentBodyState[0] = 0.0;
-      currentBodyState[1] = 0.0;
-      currentBodyState[2] = 0.0;
-
       // tempRes gets overwritten
-      tempRes = linearIntegrator->step(currentBodyState);
+      std::tie(nextState.position, nextState.velocity) = linearIntegrator->step(currentState.position, currentState.velocity);
 
-      std::swap(currentBodyState, tempRes);
+      //tempRes = linearIntegrator->step(currentBodyState);
+
       
       if(saveStates)
       {
-         states.push_back(std::make_pair(currentTime, currentBodyState));
+         states.push_back(std::make_pair(currentTime, nextState));
       }
-      if(rocket->terminateCondition(std::make_pair(currentTime, currentBodyState)))
+      if(rocket->terminateCondition(std::make_pair(currentTime, currentState)))
          break;
 
       currentTime += timeStep;
+      currentState = nextState;
    }
    endTime = std::chrono::steady_clock::now();
 
@@ -173,20 +177,20 @@ double Propagator::getMass()
 double Propagator::getForceX()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentBodyState[3] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentBodyState[2])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentBodyState[3]* currentBodyState[3];
+    return (currentState.velocity[0] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState.velocity[0]* currentState.velocity[0];
 }
 
 double Propagator::getForceY()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentBodyState[4] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentBodyState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentBodyState[4]* currentBodyState[4];
+    return (currentState.velocity[1] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState.velocity[1]* currentState.velocity[1];
 }
 
 double Propagator::getForceZ()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentBodyState[0], currentBodyState[1], currentBodyState[2]))[2];
-    double airDrag = (currentBodyState[5] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentBodyState[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentBodyState[5]* currentBodyState[5];
+    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState.position[0], currentState.position[1], currentState.position[2]))[2];
+    double airDrag = (currentState.velocity[2] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState.velocity[2]* currentState.velocity[2];
     double thrust  = rocket->getThrust(currentTime);
     return gravity + airDrag + thrust;
 }
@@ -198,18 +202,15 @@ double Propagator::getTorqueR() { return 0.0; }
 Vector3 Propagator::getCurrentGravity()
 {
    auto gravityModel = QtRocket::getInstance()->getEnvironment()->getGravityModel();
-   auto gravityAccel = gravityModel->getAccel(currentBodyState[0],
-                                              currentBodyState[1],
-                                              currentBodyState[2]);
+   auto gravityAccel = gravityModel->getAccel(currentState.position[0],
+                                              currentState.position[1],
+                                              currentState.position[2]);
    Vector3 gravityVector{gravityAccel[0],
                          gravityAccel[1],
                          gravityAccel[2]};
    
 
-   Quaternion q{currentOrientation[3],
-                currentOrientation[4],
-                currentOrientation[5],
-                currentOrientation[6]};
+   Quaternion q = currentState.orientation;
 
    Vector3 res = q * gravityVector;
    

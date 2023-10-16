@@ -235,7 +235,9 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
       {
          Json::Reader reader;
          Json::Value jsonResult;
+Logger::getInstance()->debug("1");
          reader.parse(result, jsonResult);
+Logger::getInstance()->debug("2");
 
          for(Json::ValueConstIterator iter = jsonResult["results"].begin();
              iter != jsonResult["results"].end();
@@ -244,6 +246,7 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
             model::MotorModel motorModel;
             model::MotorModel::MetaData mm;
             mm.commonName = (*iter)["commonName"].asString();
+Logger::getInstance()->debug("3");
 
             std::string availability = (*iter)["availability"].asString();
             if(availability == "regular")
@@ -253,6 +256,7 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
 
             mm.avgThrust = (*iter)["avgThrustN"].asDouble();
             mm.burnTime  = (*iter)["burnTimeS"].asDouble();
+Logger::getInstance()->debug("4");
             // TODO fill in certOrg
             // TODO fill in delays
             mm.designation = (*iter)["designation"].asString();
@@ -279,8 +283,10 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
             else
                 mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::HYBRID);
 
-            motorModel.moveMetaData(std::move(mm));
+Logger::getInstance()->debug("5");
             auto tc = getThrustCurve(mm.motorIdTC);
+            motorModel.moveMetaData(std::move(mm));
+Logger::getInstance()->debug("6");
             if(tc)
             {
                 motorModel.addThrustCurve(*tc);

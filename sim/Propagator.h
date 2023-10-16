@@ -29,18 +29,14 @@ public:
     Propagator(std::shared_ptr<Rocket> r);
     ~Propagator();
 
-    void setInitialState(const std::vector<double>& initialState)
+    void setInitialState(const StateData& initialState)
     {
-       for(std::size_t i = 0; i < initialState.size(); ++i)
-       {
-           currentBodyState[i] = initialState[i];
-       }
-
+           currentState = initialState;
     }
 
-    const Vector6& getCurrentState() const
+    const StateData& getCurrentState() const
     {
-       return currentBodyState;
+       return currentState;
     }
 
     void runUntilTerminate();
@@ -50,7 +46,7 @@ public:
        saveStates = s;
     }
 
-    const std::vector<std::pair<double, Vector6>>& getStates() const { return states; }
+    const std::vector<std::pair<double, StateData>>& getStates() const { return states; }
 
     void clearStates() { states.clear(); }
     void setCurrentTime(double t) { currentTime = t; }
@@ -76,28 +72,16 @@ private:
 
    std::shared_ptr<Rocket> rocket;
 
-   StateData worldFrameState;
-   //StateData bodyFrameState;
-   Vector3 currentBodyPosition{0.0, 0.0, 0.0};
-   Vector3 currentBodyVelocity{0.0, 0.0, 0.0};
-   Vector3 nextBodyPosition{0.0, 0.0, 0.0};
-   Vector3 nextBodyVelocity{0.0, 0.0, 0.0};
-
-   std::vector<double> currentWorldState{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   StateData currentState;
+   StateData nextState;
 
    Vector3 currentGravity{0.0, 0.0, 0.0};
    Vector3 currentWindSpeed{0.0, 0.0, 0.0};
-   
 
-   // orientation vectors in the form (yawDot, pitchDot, rollDot, q1, q2, q3, q4)
-   Quaternion currentOrientation{0.0, 0.0, 0.0, 0.0};
-   Quaternion currentOrientationRate{0.0, 0.0, 0.0, 0.0};
-   Quaternion nextOrientation{0.0, 0.0, 0.0, 0.0};
-   Quaternion nextOrientationRate{0.0, 0.0, 0.0, 0.0};
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};
-   std::vector<std::pair<double, Vector6>> states;
+   std::vector<std::pair<double, StateData>> states;
 
    Vector3 getCurrentGravity();
 };

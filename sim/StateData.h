@@ -22,16 +22,56 @@ public:
    StateData() {}
    ~StateData() {}
 
-   std::vector<double> getPosStdVector()
+   StateData(const StateData&) = default;
+   StateData(StateData&&) = default;
+
+   StateData& operator=(const StateData& rhs)
+   {
+      if(this != &rhs)
+      {
+         position = rhs.position;
+         velocity = rhs.velocity;
+         orientation = rhs.orientation;
+         orientationRate = rhs.orientationRate;
+         dcm = rhs.dcm;
+         eulerAngles = rhs.eulerAngles;
+      }
+      return *this;
+   }
+   StateData& operator=(StateData&& rhs)
+   {
+      if(this != &rhs)
+      {
+         position = std::move(rhs.position);
+         velocity = std::move(rhs.velocity);
+         orientation = std::move(rhs.orientation);
+         orientationRate = std::move(rhs.orientationRate);
+         dcm = std::move(rhs.dcm);
+         eulerAngles = std::move(rhs.eulerAngles);
+      }
+      return *this;
+   }
+
+   std::vector<double> getPosStdVector() const
    {
       return std::vector<double>{position[0], position[1], position[2]};
    }
-   std::vector<double> getVelStdVector()
+   std::vector<double> getVelStdVector() const
    {
       return std::vector<double>{velocity[0], velocity[1], velocity[2]};
    }
 
+
 /// TODO: Put these behind an interface
+   //Vector3 getPosition() const
+   //{
+   //   return position;
+   //}
+
+   //Vector3 getVelocity() const
+   //{
+   //   return velocity;
+   //}
 // private:
 
    // These are 4-vectors so quaternion multiplication works out. The last term (scalar) is always
@@ -50,9 +90,6 @@ public:
    /// pitch - theta
    /// roll  - phi
    Vector3 eulerAngles{0.0, 0.0, 0.0};
-
-   // This is an array because the integrator expects it
-   double data[6];
 
 };
 

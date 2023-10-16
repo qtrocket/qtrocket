@@ -36,7 +36,7 @@ AnalysisWindow::~AnalysisWindow()
 void AnalysisWindow::onButton_plotAltitude_clicked()
 {
    QtRocket* qtRocket = QtRocket::getInstance();
-   const std::vector<std::pair<double, Vector6>>& res = qtRocket->getStates();
+   const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
    auto& plot = ui->plotWidget;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);
@@ -46,7 +46,7 @@ void AnalysisWindow::onButton_plotAltitude_clicked()
    for (int i = 0; i < tData.size(); ++i)
    {
      tData[i] = res[i].first;
-     zData[i] = res[i].second[2];
+     zData[i] = res[i].second.position[2];
    }
    // create graph and assign data to it:
    plot->addGraph();
@@ -63,7 +63,7 @@ void AnalysisWindow::onButton_plotAltitude_clicked()
 void AnalysisWindow::onButton_plotVelocity_clicked()
 {
    QtRocket* qtRocket = QtRocket::getInstance();
-   const std::vector<std::pair<double, Vector6>>& res = qtRocket->getStates();
+   const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
    auto& plot = ui->plotWidget;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);
@@ -74,7 +74,7 @@ void AnalysisWindow::onButton_plotVelocity_clicked()
    for (int i = 0; i < tData.size(); ++i)
    {
      tData[i] = res[i].first;
-     zData[i] = res[i].second[5];
+     zData[i] = res[i].second.velocity[2];
    }
    // create graph and assign data to it:
    plot->addGraph();
