@@ -61,7 +61,7 @@ double BinMap::operator[](double key)
    // Increment it and start searching If we reach the end without finding an existing key
    // greater than our search term, then we've just hit the last bin and return that
    iter++;
-   double retVal = bins.end()->second;
+   double retVal = bins.back().second;
    while(iter !=  bins.end())
    {
       if(key < iter->first)
