@@ -59,12 +59,12 @@ private:
    double getForceY();
    double getForceZ();
 
-   double getTorqueP();
-   double getTorqueQ();
-   double getTorqueR();
+   double getTorqueP(); // yaw
+   double getTorqueQ(); // pitch
+   double getTorqueR(); // roll
 
-   double getIpitch() { return 1.0; }
    double getIyaw()   { return 1.0; }
+   double getIpitch() { return 1.0; }
    double getIroll()  { return 1.0; }
 
    std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
