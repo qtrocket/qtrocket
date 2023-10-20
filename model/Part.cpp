@@ -4,8 +4,30 @@
 namespace model
 {
 
-Part::Part()
-{}
+Part::Part(const std::string& n,
+           const Matrix3& I,
+           double m,
+           const Vector3& centerMass,
+           double l,
+           double inRadTop,
+           double outRadTop,
+           double inRadBottom,
+           double outRadBottom)
+   : parent(nullptr),
+     name(n),
+     inertiaTensor(I),
+     compositeInertiaTensor(I),
+     mass(m),
+     compositeMass(m),
+     cm(centerMass),
+     length(l),
+     innerRadiusTop(inRadTop),
+     outerRadiusTop(outRadTop),
+     innerRadiusBottom(inRadBottom),
+     outerRadiusBottom(outRadBottom),
+     needsRecomputing(false),
+     childParts()
+{ }
 
 Part::~Part()
 {}

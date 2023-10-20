@@ -21,7 +21,16 @@ namespace model
 class Part
 {
 public:
-   Part();
+   Part(const std::string& name,
+        const Matrix3& I,
+        double m,
+        const Vector3& centerMass,
+        double length,
+        double inRadTop,
+        double outRadTop,
+        double inRadBottom,
+        double outRadBottom);
+
    virtual ~Part();
 
    Part(const Part&);

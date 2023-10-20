@@ -5,6 +5,7 @@
 // C headers
 // C++ headers
 #include <string>
+#include <memory>
 
 // 3rd party headers
 /// \endcond
@@ -37,7 +38,12 @@ public:
 
    virtual double getMass(double t) override
    {
-      return topPart.getCompositeMass(t) + mm.getMass(t);
+      if(topPart)
+      {
+         return topPart->getCompositeMass(t) + mm.getMass(t);
+      }
+      else
+         return 0.0;
    }
 
    virtual double getDragCoefficient() override { return 1.0 ;}
@@ -58,7 +64,7 @@ public:
 private:
    std::string name;
 
-   Part topPart;
+   std::shared_ptr<Part> topPart;
 
    model::MotorModel mm;
    Vector3 motorModelPosition; // position of motor cg w.r.t. the stage c.g.

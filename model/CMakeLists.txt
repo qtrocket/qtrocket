@@ -16,3 +16,6 @@ add_library(model
 
 target_link_libraries(model PRIVATE
    utils)
+
+# Unit tests
+add_subdirectory(tests)
