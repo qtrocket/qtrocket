@@ -3,6 +3,7 @@
 
 // qtrocket headers
 #include "AtmosphericModel.h"
+#include "utils/math/Constants.h"
 
 namespace sim {
 
@@ -15,6 +16,10 @@ public:
    double getDensity(double) override { return 1.225; }
    double getPressure(double) override { return 101325.0; }
    double getTemperature(double) override { return 288.15; }
+
+   double getSpeedOfSound(double) override { return 340.294; }
+
+   double getDynamicViscosity(double) override { return 1.78938e-5; }
 };
 
 } // namespace sim

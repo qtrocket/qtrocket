@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <map>
 #include <memory>
 #include <string>
 #include <utility> // std::move
@@ -13,21 +14,32 @@
 
 // qtrocket headers
 #include "model/ThrustCurve.h"
-#include "model/MotorModel.h"
 #include "sim/Propagator.h"
 #include "utils/math/MathTypes.h"
+
+#include "model/Stage.h"
+#include "model/Propagatable.h"
+
+namespace model
+{
 
 /**
  * @brief The Rocket class holds all rocket components
  *
  */
-class Rocket
+class Rocket : public Propagatable
 {
 public:
     /**
     * @brief Rocket class constructor
     */
    Rocket();
+
+   /**
+    * @brief Rocket class destructor
+    * 
+    */
+   virtual ~Rocket() {}
 
     /**
     * @brief launch Propagates the Rocket object until termination,
@@ -36,39 +48,18 @@ public:
    void launch();
 
    /**
-    * @brief getMass returns the current mass of the rocket. This is the sum of all components' masses
-    * @return total current mass of the Rocket
-    */
-   double getMass(double simTime) const { return mass + mm.getMass(simTime); }
-
-   /**
-    * @brief setMass sets the current total mass of the Rocket
-    * @param m total Rocket mass
-    * @todo This should be dynamically computed, not set. Fix this
-    */
-   void setMass(double m) { mass = m;}
-
-   /**
-    * @brief setDragCoefficient sets the current total drag coefficient of the Rocket
-    * @param d drag coefficient
-    * @todo This should be dynamically computed, not set. Fix this
-    */
-   void setDragCoefficient(double d) { dragCoeff = d; }
-
-   /**
-    * @brief getDragCoefficient returns the current drag coefficient
-    *
-    * This is intended to be called by the propagator during propagation.
-    * @return the coefficient of drag
-    */
-   double getDragCoefficient() const { return dragCoeff; }
-
-   /**
     * @brief getThrust returns current motor thrust
     * @param t current simulation time
     * @return thrust in Newtons
     */
    double getThrust(double t);
+
+   /**
+    * @brief getMass returns current rocket 
+    * @param t current simulation time
+    * @return mass in kg
+    */
+   virtual double getMass(double t) override;
 
    /**
     * @brief setMotorModel
@@ -80,14 +71,14 @@ public:
     * @brief Returns the current motor model.
     * @return The current motor model
     */
-   const model::MotorModel& getCurrentMotorModel() const { return mm; }
+   //const model::MotorModel& getCurrentMotorModel() const { return mm; }
 
    /**
     * @brief terminateCondition returns true or false, whether the passed-in time/state matches the terminate condition
     * @param cond time/state pair
     * @return true if the passed-in time/state satisfies the terminate condition
     */
-   bool terminateCondition(const std::pair<double, StateData>& cond);
+   virtual bool terminateCondition(const std::pair<double, StateData>& cond) override;
 
    /**
     * @brief setName sets the rocket name
@@ -95,16 +86,22 @@ public:
     */
    void setName(const std::string& n) { name = n; }
 
+   virtual double getDragCoefficient() override { return 1.0; }
+   virtual void setDragCoefficient(double d) override { }
+   void setMass(double m) { }
 
+   std::shared_ptr<Stage> getCurrentStage() { return currentStage; }
 
 private:
 
    std::string name; /// Rocket name
-   double dragCoeff; /// @todo get rid of this, should be dynamically calculated
-   double mass; /// @todo get rid of this, should be dynamically computed, but is the current rocket mass
 
-   model::MotorModel mm; /// Current Motor Model
+   std::map<unsigned int, std::shared_ptr<Stage>> stages;
+   std::shared_ptr<Stage> currentStage;
+   //model::MotorModel mm; /// Current Motor Model
+
 
 };
 
+} // namespace model
 #endif // ROCKET_H

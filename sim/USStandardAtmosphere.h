@@ -28,6 +28,10 @@ public:
    double getPressure(double altitude) override;
    double getTemperature(double altitude) override;
 
+   double getSpeedOfSound(double altitude) override;
+
+   double getDynamicViscosity(double altitude) override;
+
 private:
    static utils::BinMap temperatureLapseRate;
    static utils::BinMap standardTemperature;

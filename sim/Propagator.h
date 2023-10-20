@@ -14,10 +14,14 @@
 #include "sim/RK4Solver.h"
 #include "utils/math/MathTypes.h"
 #include "sim/StateData.h"
+#include "model/Propagatable.h"
 
 
 // Forward declare
+namespace model
+{
 class Rocket;
+}
 class QtRocket;
 
 namespace sim
@@ -26,7 +30,7 @@ namespace sim
 class Propagator
 {
 public:
-    Propagator(std::shared_ptr<Rocket> r);
+    Propagator(std::shared_ptr<model::Rocket> r);
     ~Propagator();
 
     void setInitialState(const StateData& initialState)
@@ -70,7 +74,7 @@ private:
    std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
-   std::shared_ptr<Rocket> rocket;
+   std::shared_ptr<model::Propagatable> object;
 
    StateData currentState;
    StateData nextState;

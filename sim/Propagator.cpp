@@ -22,10 +22,10 @@
 
 namespace sim {
 
-Propagator::Propagator(std::shared_ptr<Rocket> r)
+Propagator::Propagator(std::shared_ptr<model::Rocket> r)
    : linearIntegrator(),
      //orientationIntegrator(),
-     rocket(r),
+     object(r),
      currentState(),
      nextState(),
      currentGravity(),
@@ -154,7 +154,7 @@ void Propagator::runUntilTerminate()
       {
          states.push_back(std::make_pair(currentTime, nextState));
       }
-      if(rocket->terminateCondition(std::make_pair(currentTime, currentState)))
+      if(object->terminateCondition(std::make_pair(currentTime, currentState)))
          break;
 
       currentTime += timeStep;
@@ -171,27 +171,27 @@ void Propagator::runUntilTerminate()
 
 double Propagator::getMass()
 {
-    return rocket->getMass(currentTime);
+    return object->getMass(currentTime);
 }
 
 double Propagator::getForceX()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentState.velocity[0] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2])/ 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState.velocity[0]* currentState.velocity[0];
+    return (currentState.velocity[0] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2])/ 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[0]* currentState.velocity[0];
 }
 
 double Propagator::getForceY()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentState.velocity[1] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState.velocity[1]* currentState.velocity[1];
+    return (currentState.velocity[1] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[1]* currentState.velocity[1];
 }
 
 double Propagator::getForceZ()
 {
     QtRocket* qtrocket = QtRocket::getInstance();
     double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState.position[0], currentState.position[1], currentState.position[2]))[2];
-    double airDrag = (currentState.velocity[2] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * rocket->getDragCoefficient() * currentState.velocity[2]* currentState.velocity[2];
-    double thrust  = rocket->getThrust(currentTime);
+    double airDrag = (currentState.velocity[2] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[2]* currentState.velocity[2];
+    double thrust  = object->getThrust(currentTime);
     return gravity + airDrag + thrust;
 }
 

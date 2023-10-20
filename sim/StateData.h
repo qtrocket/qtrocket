@@ -74,12 +74,11 @@ public:
    //}
 // private:
 
-   // These are 4-vectors so quaternion multiplication works out. The last term (scalar) is always
-   // zero. I could just use quaternions here, but I want to make it clear that these aren't
-   // rotations, they're vectors
+   // Intended to be used as world state data
    Vector3 position{0.0, 0.0, 0.0};
    Vector3 velocity{0.0, 0.0, 0.0};
 
+   // Orientation of body coordinates w.r.t. world coordinates
    Quaternion orientation{0.0, 0.0, 0.0, 0.0}; /// (vector, scalar)
    Quaternion orientationRate{0.0, 0.0, 0.0, 0.0}; /// (vector, scalar)
 

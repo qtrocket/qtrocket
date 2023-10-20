@@ -3,6 +3,9 @@
 #include "Rocket.h"
 #include "QtRocket.h"
 
+namespace model
+{ 
+
 Rocket::Rocket()
 {
 
@@ -10,12 +13,12 @@ Rocket::Rocket()
 
 void Rocket::launch()
 {
-   mm.startMotor(0.0);
+   currentStage->getMotorModel().startMotor(0.0);
 }
 
 void Rocket::setMotorModel(const model::MotorModel& motor)
 {
-   mm = motor;
+   currentStage->setMotorModel(motor);
 }
 
 bool Rocket::terminateCondition(const std::pair<double, StateData>& cond)
@@ -29,5 +32,17 @@ bool Rocket::terminateCondition(const std::pair<double, StateData>& cond)
 
 double Rocket::getThrust(double t)
 {
-   return mm.getThrust(t);
+   return currentStage->getMotorModel().getThrust(t);
 }
+
+double Rocket::getMass(double t)
+{
+   double totalMass = 0.0;
+   for(const auto& stage : stages)
+   {
+      totalMass += stage.second->getMass(t);
+   }
+   return totalMass;
+}
+
+} // namespace model

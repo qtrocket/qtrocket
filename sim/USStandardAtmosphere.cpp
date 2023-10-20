@@ -80,8 +80,6 @@ utils::BinMap USStandardAtmosphere::standardTemperature(initTemps());
 utils::BinMap USStandardAtmosphere::standardDensity(initDensities());
 utils::BinMap USStandardAtmosphere::standardPressure(initPressures());
 
-
-
 USStandardAtmosphere::USStandardAtmosphere()
 {
 
@@ -119,7 +117,6 @@ double USStandardAtmosphere::getTemperature(double altitude)
    double baseAltitude = standardTemperature.getBinBase(altitude);
    return baseTemp - (altitude - baseAltitude) * temperatureLapseRate[altitude];
 
-   return 0.0;
 }
 double USStandardAtmosphere::getPressure(double altitude)
 {
@@ -141,5 +138,18 @@ double USStandardAtmosphere::getPressure(double altitude)
       return standardPressure[altitude] * std::pow(base, exponent);
    }
 
+}
+
+double USStandardAtmosphere::getSpeedOfSound(double altitude)
+{
+   return std::sqrt( (Constants::gamma * Constants::Rstar * getTemperature(altitude))
+                     /
+                     Constants::airMolarMass);
+}
+
+double USStandardAtmosphere::getDynamicViscosity(double altitude)
+{
+   double temperature = getTemperature(altitude);
+   return (Constants::beta * std::pow(temperature, 1.5)) / ( temperature + Constants::S);
 }
 } // namespace sim

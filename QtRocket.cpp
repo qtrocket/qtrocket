@@ -81,7 +81,7 @@ QtRocket::QtRocket()
    setEnvironment(std::make_shared<sim::Environment>());
 
    rocket.first =
-      std::make_shared<Rocket>();
+      std::make_shared<model::Rocket>();
    
    rocket.second =
       std::make_shared<sim::Propagator>(rocket.first);

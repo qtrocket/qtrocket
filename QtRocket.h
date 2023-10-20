@@ -44,13 +44,13 @@ public:
 
    std::shared_ptr<sim::Environment> getEnvironment() { return environment; }
    void setTimeStep(double t) { rocket.second->setTimeStep(t); }
-   std::shared_ptr<Rocket> getRocket() { return rocket.first; }
+   std::shared_ptr<model::Rocket> getRocket() { return rocket.first; }
 
    std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
    void addMotorModels(std::vector<model::MotorModel>& m);
 
-   void addRocket(std::shared_ptr<Rocket> r) { rocket.first = r; }
+   void addRocket(std::shared_ptr<model::Rocket> r) { rocket.first = r; }
 
    void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }
 
@@ -79,7 +79,7 @@ private:
 
    utils::Logger* logger;
 
-   std::pair<std::shared_ptr<Rocket>, std::shared_ptr<sim::Propagator>> rocket;
+   std::pair<std::shared_ptr<model::Rocket>, std::shared_ptr<sim::Propagator>> rocket;
 
    std::shared_ptr<sim::Environment> environment;
    std::shared_ptr<utils::MotorModelDatabase> motorDatabase;
