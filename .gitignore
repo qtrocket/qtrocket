@@ -40,4 +40,5 @@ docs/doxygen/*
 # IDE
 qtrocket.pro.user
 .qmake.stash
+CMakeLists.txt.user
 

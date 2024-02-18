@@ -18,9 +18,9 @@ namespace sim
 {
 
 // Populate static data
-utils::BinMap initTemps()
+utils::Bin initTemps()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 288.15));
    map.insert(std::make_pair(11000.0, 216.65));
    map.insert(std::make_pair(20000.0, 216.65));
@@ -33,9 +33,9 @@ utils::BinMap initTemps()
 
 }
 
-utils::BinMap initLapseRates()
+utils::Bin initLapseRates()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 0.0065));
    map.insert(std::make_pair(11000.0, 0.0));
    map.insert(std::make_pair(20000.0, -0.001));
@@ -47,9 +47,9 @@ utils::BinMap initLapseRates()
    return map;
 }
 
-utils::BinMap initDensities()
+utils::Bin initDensities()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 1.225));
    map.insert(std::make_pair(11000.0, 0.36391));
    map.insert(std::make_pair(20000.0, 0.08803));
@@ -61,9 +61,9 @@ utils::BinMap initDensities()
    return map;
 }
 
-utils::BinMap initPressures()
+utils::Bin initPressures()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 101325));
    map.insert(std::make_pair(11000.0, 22632.1));
    map.insert(std::make_pair(20000.0, 5474.89));
@@ -75,10 +75,10 @@ utils::BinMap initPressures()
    return map;
 }
 
-utils::BinMap USStandardAtmosphere::temperatureLapseRate(initLapseRates());
-utils::BinMap USStandardAtmosphere::standardTemperature(initTemps());
-utils::BinMap USStandardAtmosphere::standardDensity(initDensities());
-utils::BinMap USStandardAtmosphere::standardPressure(initPressures());
+utils::Bin USStandardAtmosphere::temperatureLapseRate(initLapseRates());
+utils::Bin USStandardAtmosphere::standardTemperature(initTemps());
+utils::Bin USStandardAtmosphere::standardDensity(initDensities());
+utils::Bin USStandardAtmosphere::standardPressure(initPressures());
 
 USStandardAtmosphere::USStandardAtmosphere()
 {

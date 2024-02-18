@@ -11,7 +11,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "BinMap.h"
+#include "Bin.h"
 
 // TODO: Check on the availability of this in Clang.
 // Replace libfmt with format when LLVM libc++ supports it
@@ -20,33 +20,33 @@
 namespace utils
 {
 
-BinMap::BinMap()
+Bin::Bin()
    : bins()
 {
 
 }
 
-BinMap::BinMap(BinMap&& o)
+Bin::Bin(Bin&& o)
    : bins(std::move(o.bins))
 {
 
 }
 
-BinMap::~BinMap()
+Bin::~Bin()
 {
 
 }
 
 // TODO: Very low priority, but if anyone wants to make this more efficient it could be
 // interesting
-void BinMap::insert(const std::pair<double, double>& toInsert)
+void Bin::insert(const std::pair<double, double>& toInsert)
 {
    bins.push_back(toInsert);
    std::sort(bins.begin(), bins.end(),
       [](const auto& a, const auto& b){ return a.first < b.first; });
 }
 
-double BinMap::operator[](double key)
+double Bin::operator[](double key)
 {
    auto iter = bins.begin();
    // If the key is less than the lowest bin value, then it is out of range
@@ -74,7 +74,7 @@ double BinMap::operator[](double key)
    return retVal;
 }
 
-double BinMap::getBinBase(double key)
+double Bin::getBinBase(double key)
 {
    auto iter = bins.begin();
    // If the key is less than the lowest bin value, then it is out of range

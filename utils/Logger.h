@@ -25,7 +25,8 @@ public:
       ERROR_,
       WARN_,
       INFO_,
-      DEBUG_
+      DEBUG_,
+      PERF_
    };
 
    static Logger* getInstance();
@@ -38,16 +39,11 @@ public:
 
    void setLogLevel(const LogLevel& lvl);
    
-   /*
-   std::function<void(std::string_view)> error;
-   std::function<void(std::string_view)> warn;
-   std::function<void(std::string_view)> info;
-   std::function<void(std::string_view)> debug;
-   */
    inline void error(std::string_view msg) { log(msg, ERROR_); }
    inline void warn(std::string_view msg)  { log(msg, WARN_); }
    inline void info(std::string_view msg)  { log(msg, INFO_); }
    inline void debug(std::string_view msg) { log(msg, DEBUG_); }
+   inline void perf(std::string_view msg) { log(msg, PERF_); }
 
    void log(std::ostream& o, const std::string& msg);
 

@@ -13,9 +13,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/ThrustCurve.h"
 #include "sim/Propagator.h"
-#include "utils/math/MathTypes.h"
 
 #include "model/Stage.h"
 #include "model/Propagatable.h"
@@ -52,7 +50,7 @@ public:
     * @param t current simulation time
     * @return thrust in Newtons
     */
-   double getThrust(double t);
+   double getThrust(double t) override;
 
    /**
     * @brief getMass returns current rocket 

@@ -5,7 +5,6 @@
 // C headers
 // C++ headers
 #include <vector>
-#include <utility>
 #include <memory>
 
 // 3rd party headers
@@ -13,7 +12,6 @@
 
 // qtrocket headers
 #include "utils/math/MathTypes.h"
-#include "model/Part.h"
 
 namespace model
 {

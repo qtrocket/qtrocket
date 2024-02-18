@@ -2,7 +2,6 @@
 /// \cond
 // C headers
 // C++ headers
-#include <cmath>
 #include <chrono>
 #include <iostream>
 #include <sstream>

@@ -1,5 +1,5 @@
-#ifndef UTILS_BINMAP_H
-#define UTILS_BINMAP_H
+#ifndef UTILS_BIN_H
+#define UTILS_BIN_H
 
 /// \cond
 // C headers
@@ -22,12 +22,12 @@ namespace utils {
  * @todo Make this class behave more like a proper STL container. Templetize it for one
  *
  */
-class BinMap
+class Bin
 {
 public:
-   BinMap();
-   BinMap(BinMap&& o);
-   ~BinMap();
+   Bin();
+   Bin(Bin&& o);
+   ~Bin();
 
    void insert(const std::pair<double, double>& toInsert);
    double operator[](double key);
@@ -40,4 +40,4 @@ private:
 
 } // namespace utils
 
-#endif // UTILS_BINMAP_H
+#endif // UTILS_BIN_H

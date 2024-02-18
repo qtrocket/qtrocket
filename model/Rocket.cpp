@@ -1,7 +1,6 @@
 
 // qtrocket headers
 #include "Rocket.h"
-#include "QtRocket.h"
 
 namespace model
 { 

@@ -3,7 +3,6 @@
 
 // qtrocket headers
 #include "AtmosphericModel.h"
-#include "utils/math/Constants.h"
 
 namespace sim {
 

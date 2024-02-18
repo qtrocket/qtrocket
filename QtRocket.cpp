@@ -1,4 +1,3 @@
-
 /// \cond
 // C headers
 // C++ headers
@@ -45,7 +44,7 @@ void guiWorker(int argc, char* argv[], int& ret)
 
    // Go!
    MainWindow w(QtRocket::getInstance());
-   logger->info("Showing MainWindow");
+   logger->debug("Showing MainWindow");
    w.show();
    ret = a.exec();
 
@@ -65,7 +64,7 @@ void QtRocket::init()
    std::lock_guard<std::mutex> lck(mtx);
    if(!initialized)
    {
-      utils::Logger::getInstance()->info("Instantiating new QtRocket");
+      utils::Logger::getInstance()->debug("Instantiating new QtRocket");
       instance = new QtRocket();
       initialized = true;
    }
@@ -88,6 +87,13 @@ QtRocket::QtRocket()
 
    motorDatabase = std::make_shared<utils::MotorModelDatabase>();
 
+   logger->debug("Initial states vector size: " + states.capacity() );
+   // Reserve at least 1024 spaces for StateData
+   if(states.capacity() < 1024)
+   {
+       states.reserve(1024);
+   }
+   logger->debug("New states vector size: " + states.capacity() );
 }
 
 int QtRocket::run(int argc, char* argv[])
@@ -121,4 +127,9 @@ void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
 {
    motorDatabase->addMotorModels(m);
    // TODO: Now clear any duplicates?
+}
+
+void QtRocket::appendState(const StateData& state)
+{
+    states.emplace_back(state);
 }

@@ -4,10 +4,8 @@
 /// \cond
 // C headers
 // C++ headers
-#include <cmath>
 #include <functional>
 #include <limits>
-#include <vector>
 
 // 3rd party headers
 

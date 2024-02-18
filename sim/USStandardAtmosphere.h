@@ -3,7 +3,7 @@
 
 // qtrocket headers
 #include "sim/AtmosphericModel.h"
-#include "utils/BinMap.h"
+#include "utils/Bin.h"
 
 namespace sim
 {
@@ -33,10 +33,10 @@ public:
    double getDynamicViscosity(double altitude) override;
 
 private:
-   static utils::BinMap temperatureLapseRate;
-   static utils::BinMap standardTemperature;
-   static utils::BinMap standardDensity;
-   static utils::BinMap standardPressure;
+   static utils::Bin temperatureLapseRate;
+   static utils::Bin standardTemperature;
+   static utils::Bin standardDensity;
+   static utils::Bin standardPressure;
 
 
 };

@@ -1,6 +1,6 @@
 add_library(utils
-        BinMap.cpp
-        BinMap.h
+    Bin.cpp
+        Bin.h
         CurlConnection.cpp
         CurlConnection.h
         Logger.cpp
@@ -17,6 +17,10 @@ add_library(utils
         math/Constants.h
         math/MathTypes.h
         math/UtilityMathFunctions.h)
+
+
+target_include_directories(utils PRIVATE
+    ${Boost_INCLUDE_DIR})
 
 target_link_libraries(utils PUBLIC
    libcurl

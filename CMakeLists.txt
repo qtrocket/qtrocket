@@ -53,6 +53,12 @@ FetchContent_Declare(eigen
    GIT_TAG 3.4.0)
 FetchContent_MakeAvailable(eigen)
 
+# boost dependency
+FetchContent_Declare(Boost
+   GIT_REPOSITORY https://github.com/boostorg/boost
+   GIT_TAG boost-1.82.0)
+FetchContent_MakeAvailable(Boost)
+
 # Add qtrocket subdirectories. These are components that will be linked in 
 
 
@@ -63,7 +69,7 @@ set(CMAKE_AUTORCC ON)
 
 if(WIN32)
   set(CMAKE_PREFIX_PATH $ENV{QTDIR})
-  include_directories("C:\\boost\\boost_1_82_0\\")
+#  include_directories("C:\\boost\\boost_1_82_0\\")
 #  find_package(Qt6Core REQUIRED)
 #  find_package(Qt6Widgets REQUIRED)
 endif()

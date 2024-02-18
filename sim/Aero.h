@@ -4,7 +4,6 @@
 /// \cond
 // C headers
 // C++ headers
-#include <string>
 
 // 3rd party headers
 /// \endcond

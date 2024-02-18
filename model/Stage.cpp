@@ -1,8 +1,6 @@
 /// \cond
 // C headers
 // C++ headers
-#include <memory>
-#include <vector>
 
 // 3rd party headers
 /// \endcond

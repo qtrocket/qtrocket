@@ -15,12 +15,11 @@
 // qtrocket headers
 #include "model/MotorModel.h"
 #include "model/Rocket.h"
-#include "sim/AtmosphericModel.h"
-#include "sim/GravityModel.h"
 #include "sim/Environment.h"
 #include "sim/Propagator.h"
 #include "utils/Logger.h"
 #include "utils/MotorModelDatabase.h"
+#include "utils/math/MathTypes.h"
 
 /**
  * @brief The QtRocket class is the master controller for the QtRocket application.
@@ -67,6 +66,8 @@ public:
     */
    void setInitialState(const StateData& initState) { rocket.second->setInitialState(initState); }
 
+   void appendState(const StateData& state);
+
 private:
    QtRocket();
 
@@ -83,6 +84,15 @@ private:
 
    std::shared_ptr<sim::Environment> environment;
    std::shared_ptr<utils::MotorModelDatabase> motorDatabase;
+
+   // Launch site
+   // ECEF coordinates
+   Vector3 launchSitePosition{0.0, 0.0, 0.0};
+
+   // Table of state data
+   std::vector<StateData> states;
+
+
 
 };
 
