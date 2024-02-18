@@ -87,13 +87,13 @@ QtRocket::QtRocket()
 
    motorDatabase = std::make_shared<utils::MotorModelDatabase>();
 
-   logger->debug("Initial states vector size: " + states.capacity() );
+   logger->debug("Initial states vector size: " + std::to_string(states.capacity()) );
    // Reserve at least 1024 spaces for StateData
    if(states.capacity() < 1024)
    {
        states.reserve(1024);
    }
-   logger->debug("New states vector size: " + states.capacity() );
+   logger->debug("New states vector size: " + std::to_string(states.capacity()) );
 }
 
 int QtRocket::run(int argc, char* argv[])
