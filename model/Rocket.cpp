@@ -7,6 +7,10 @@ namespace model
 
 Rocket::Rocket()
 {
+    // A rocket needs at least one stage. Upon creation, we need to create at least one stage
+    currentStage.reset(new Stage("sustainer"));
+    stages.push_back(currentStage);
+
 
 }
 
@@ -39,7 +43,7 @@ double Rocket::getMass(double t)
    double totalMass = 0.0;
    for(const auto& stage : stages)
    {
-      totalMass += stage.second->getMass(t);
+      totalMass += stage->getMass(t);
    }
    return totalMass;
 }

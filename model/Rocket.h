@@ -4,7 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
-#include <map>
+#include <vector>
 #include <memory>
 #include <string>
 #include <utility> // std::move
@@ -57,7 +57,7 @@ public:
     * @param t current simulation time
     * @return mass in kg
     */
-   virtual double getMass(double t) override;
+   double getMass(double t) override;
 
    /**
     * @brief setMotorModel
@@ -84,8 +84,8 @@ public:
     */
    void setName(const std::string& n) { name = n; }
 
-   virtual double getDragCoefficient() override { return 1.0; }
-   virtual void setDragCoefficient(double d) override { }
+   double getDragCoefficient() override { return 1.0; }
+   void setDragCoefficient(double d) override { }
    void setMass(double m) { }
 
    std::shared_ptr<Stage> getCurrentStage() { return currentStage; }
@@ -94,7 +94,7 @@ private:
 
    std::string name; /// Rocket name
 
-   std::map<unsigned int, std::shared_ptr<Stage>> stages;
+   std::vector<std::shared_ptr<Stage>> stages;
    std::shared_ptr<Stage> currentStage;
    //model::MotorModel mm; /// Current Motor Model
 

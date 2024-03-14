@@ -11,7 +11,8 @@
 namespace model
 {
 
-Stage::Stage()
+Stage::Stage(const std::string& inName)
+    : name(inName)
 {}
 
 Stage::~Stage()

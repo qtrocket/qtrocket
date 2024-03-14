@@ -21,7 +21,7 @@ namespace model
 class Stage : public Propagatable
 {
 public:
-   Stage();
+    Stage(const std::string& inName);
    virtual ~Stage();
 
       /**
