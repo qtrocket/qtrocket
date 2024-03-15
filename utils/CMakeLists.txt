@@ -25,5 +25,4 @@ target_include_directories(utils PRIVATE
 target_link_libraries(utils PUBLIC
    libcurl
    jsoncpp_static
-   fmt::fmt-header-only
    eigen)

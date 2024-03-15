@@ -52,12 +52,7 @@ TEST(PartTest, CreationTests)
    model::Part testPart("testPart",
                         inertia,
                         1.0,
-                        cm,
-                        2.0,
-                        1.0,
-                        1.1,
-                        1.1,
-                        1.0);
+                        cm);
    
    Matrix3 inertia2;
    inertia2 << 1, 0, 0,
@@ -67,12 +62,7 @@ TEST(PartTest, CreationTests)
    model::Part testPart2("testPart2",
                         inertia2,
                         1.0,
-                        cm2,
-                        2.0,
-                        1.0,
-                        1.1,
-                        1.1,
-                        1.0);
+                        cm2);
    Vector3 R{2.0, 2.0, 2.0};
    testPart.addChildPart(testPart2, R);
 

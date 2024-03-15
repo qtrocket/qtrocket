@@ -3,11 +3,10 @@
 // C headers
 // C++ headers
 #include <algorithm>
-#include <sstream>
+#include <format>
 #include <stdexcept>
 
 // 3rd party headers
-#include <fmt/core.h>
 /// \endcond
 
 // qtrocket headers
@@ -56,7 +55,7 @@ double Bin::operator[](double key)
    if(key < iter->first)
    {
       throw std::out_of_range(
-         fmt::format("{} less than lower bound {} of BinMap", key, iter->first));
+         std::format("{} less than lower bound {} of BinMap", key, iter->first));
    }
    // Increment it and start searching If we reach the end without finding an existing key
    // greater than our search term, then we've just hit the last bin and return that
@@ -84,7 +83,7 @@ double Bin::getBinBase(double key)
    if(key < iter->first)
    {
       throw std::out_of_range(
-         fmt::format("{} less than lower bound {} of BinMap", key, iter->first));
+         std::format("{} less than lower bound {} of BinMap", key, iter->first));
    }
    // Increment it and start searching If we reach the end without finding an existing key
    // greater than our search term, then we've just hit the last bin and return that

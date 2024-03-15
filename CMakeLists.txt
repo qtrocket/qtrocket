@@ -17,10 +17,10 @@ endif()
 FetchContent_MakeAvailable(googletest)
 
 # fmtlib dependency
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt
-    GIT_TAG        9.1.0)
-FetchContent_MakeAvailable(fmt)
+#FetchContent_Declare(fmt
+#    GIT_REPOSITORY https://github.com/fmtlib/fmt
+#    GIT_TAG        9.1.0)
+#FetchContent_MakeAvailable(fmt)
 
 # jsoncpp dependency
 FetchContent_Declare(jsoncpp

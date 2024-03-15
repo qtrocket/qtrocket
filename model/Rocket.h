@@ -76,7 +76,7 @@ public:
     * @param cond time/state pair
     * @return true if the passed-in time/state satisfies the terminate condition
     */
-   virtual bool terminateCondition(const std::pair<double, StateData>& cond) override;
+   bool terminateCondition(const std::pair<double, StateData>& cond) override;
 
    /**
     * @brief setName sets the rocket name

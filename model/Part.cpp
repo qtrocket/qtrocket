@@ -7,12 +7,7 @@ namespace model
 Part::Part(const std::string& n,
            const Matrix3& I,
            double m,
-           const Vector3& centerMass,
-           double l,
-           double inRadTop,
-           double outRadTop,
-           double inRadBottom,
-           double outRadBottom)
+           const Vector3& centerMass)
    : parent(nullptr),
      name(n),
      inertiaTensor(I),
@@ -20,11 +15,6 @@ Part::Part(const std::string& n,
      mass(m),
      compositeMass(m),
      cm(centerMass),
-     length(l),
-     innerRadiusTop(inRadTop),
-     outerRadiusTop(outRadTop),
-     innerRadiusBottom(inRadBottom),
-     outerRadiusBottom(outRadBottom),
      needsRecomputing(false),
      childParts()
 { }
@@ -40,11 +30,6 @@ Part::Part(const Part& orig)
      mass(orig.mass),
      compositeMass(orig.compositeMass),
      cm(orig.cm),
-     length(orig.length),
-     innerRadiusTop(orig.innerRadiusTop),
-     outerRadiusTop(orig.outerRadiusTop),
-     innerRadiusBottom(orig.innerRadiusBottom),
-     outerRadiusBottom(orig.outerRadiusBottom),
      needsRecomputing(orig.needsRecomputing),
      childParts()
 {
@@ -64,7 +49,6 @@ Part::Part(const Part& orig)
    }
 
 }
-
 
 double Part::getChildMasses(double t)
 {

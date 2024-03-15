@@ -22,16 +22,42 @@ public:
    Part(const std::string& name,
         const Matrix3& I,
         double m,
-        const Vector3& centerMass,
-        double length,
-        double inRadTop,
-        double outRadTop,
-        double inRadBottom,
-        double outRadBottom);
+        const Vector3& centerMass);
 
    virtual ~Part();
 
    Part(const Part&);
+
+   Part& operator=(Part other)
+   {
+       if(this != &other)
+       {
+           std::swap(parent, other.parent);
+           std::swap(name, other.name);
+           std::swap(inertiaTensor, other.inertiaTensor);
+           std::swap(compositeInertiaTensor, other.compositeInertiaTensor);
+           std::swap(mass, other.mass);
+           std::swap(compositeMass, other.compositeMass);
+           std::swap(cm, other.cm);
+           std::swap(needsRecomputing, other.needsRecomputing);
+           std::swap(childParts, other.childParts);
+       }
+       return *this;
+   }
+   Part& operator=(Part&& other)
+   {
+       parent = std::move(other.parent);
+       name = std::move(other.name);
+       inertiaTensor  = std::move(other.inertiaTensor);
+       compositeInertiaTensor  = std::move(other.compositeInertiaTensor);
+       mass  = std::move(other.mass);
+       compositeMass  = std::move(other.compositeMass);
+       cm  = std::move(other.cm);
+       needsRecomputing  = std::move(other.needsRecomputing);
+       childParts  = std::move(other.childParts);
+
+       return *this;
+   }
 
    void setMass(double m) { mass = m; }
 
@@ -41,11 +67,6 @@ public:
    void setCm(const Vector3& x) { cm = x; }
    // Special version of setCM that assumes the cm lies along the body x-axis
    void setCm(double x) { cm = {x, 0.0, 0.0}; }
-
-   void setLength(double l) { length = l; }
-
-   void setInnerRadius(double r) { innerRadiusTop = r; innerRadiusBottom = r; }
-   void setOuterRadius(double r) { outerRadiusTop = r; outerRadiusBottom = r; }
 
    double getMass(double t)
    {
@@ -100,14 +121,6 @@ private:
    double compositeMass; // The mass of this part along with all attached parts
 
    Vector3 cm; // center of mass wrt middle of component
-
-   double length;
-   
-   double innerRadiusTop;
-   double outerRadiusTop;
-
-   double innerRadiusBottom;
-   double outerRadiusBottom;
 
    bool needsRecomputing{false};
 
