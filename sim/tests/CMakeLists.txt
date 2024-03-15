@@ -1,4 +1,3 @@
-enable_testing()
 
 add_executable(sim_tests
    USStandardAtmosphereTests.cpp
@@ -12,5 +11,5 @@ target_link_libraries(sim_tests
 include(GoogleTest)
 gtest_discover_tests(sim_tests)
 
-add_test(sim_tests sim_tests)
+add_test(NAME qtrocket_sim_tests COMMAND sim_tests)
 

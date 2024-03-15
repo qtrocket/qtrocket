@@ -5,6 +5,8 @@ project(qtrocket VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+enable_testing()
+
 include(FetchContent)
 
 # Google Test framework
@@ -48,10 +50,10 @@ endif()
 FetchContent_MakeAvailable(CURL)
 
 # eigen dependency
-FetchContent_Declare(eigen
+FetchContent_Declare(Eigen
    GIT_REPOSITORY https://gitlab.com/libeigen/eigen
    GIT_TAG 3.4.0)
-FetchContent_MakeAvailable(eigen)
+FetchContent_MakeAvailable(Eigen)
 
 # boost dependency
 
