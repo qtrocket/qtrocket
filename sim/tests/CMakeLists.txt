@@ -12,3 +12,5 @@ target_link_libraries(sim_tests
 include(GoogleTest)
 gtest_discover_tests(sim_tests)
 
+add_test(sim_tests sim_tests)
+

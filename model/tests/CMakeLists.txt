@@ -13,3 +13,5 @@ target_link_libraries(model_tests PRIVATE
 include(GoogleTest)
 gtest_discover_tests(model_tests)
 
+add_test(model_tests model_tests)
+

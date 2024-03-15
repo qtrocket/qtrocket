@@ -45,6 +45,9 @@ jobs:
             c_compiler: clang
           - os: ubuntu-latest
             c_compiler: cl
+            # Clang is broken on ubuntu-latest. C++20 brings in inconsistent libraries            
+          - os: ubuntu-latest
+            c_compiler: clang
 
     steps:
     - uses: actions/checkout@v3
