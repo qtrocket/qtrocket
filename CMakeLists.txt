@@ -54,11 +54,12 @@ FetchContent_Declare(eigen
 FetchContent_MakeAvailable(eigen)
 
 # boost dependency
+
 FetchContent_Declare(Boost
    GIT_REPOSITORY https://github.com/boostorg/boost
-   GIT_TAG boost-1.82.0)
+   GIT_TAG boost-1.84.0)
+set(BOOST_INCLUDE_LIBRARIES property_tree)
 FetchContent_MakeAvailable(Boost)
-
 # Add qtrocket subdirectories. These are components that will be linked in 
 
 

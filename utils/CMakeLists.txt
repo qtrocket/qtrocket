@@ -19,10 +19,12 @@ add_library(utils
         math/UtilityMathFunctions.h)
 
 
-target_include_directories(utils PRIVATE
-    ${Boost_INCLUDE_DIR})
+#target_include_directories(utils PRIVATE
+#    ${Boost_INCLUDE_DIRS})
+
 
 target_link_libraries(utils PUBLIC
    libcurl
+   Boost::property_tree
    jsoncpp_static
    eigen)
