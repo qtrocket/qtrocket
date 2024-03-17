@@ -68,20 +68,6 @@ std::optional<model::MotorModel> MotorModelDatabase::getMotorModel(const std::st
 void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
 {
 
-/*
-
-<MotorDatabase>
-  <version>1.0</version>
-  <MotorModels>
-    <model name="XYZ">
-      <totalWeight>10.0</totalWeight>
-      <totalImpulse>123.4</totalImpulse>
-    </model>
-  </MotorModels>
-</MotorDatabase>
-
-*/
-
    namespace pt = boost::property_tree;
 
    // top-level tree
@@ -111,6 +97,15 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
       motor.put("totalWeight", m.data.totalWeight);
       motor.put("type", m.data.type.str());
       motor.put("lastUpdated", m.data.lastUpdated);
+
+      // delays tag is in the form of a csv string
+      std::stringstream delays;
+      for (std::size_t i = 0; i < m.data.delays.size() - 1; ++i)
+      {
+          delays << std::to_string(m.data.delays[i]) << ",";
+      }
+      delays << std::to_string(m.data.delays[m.data.delays.size() - 1]);
+      motor.put("delays", delays.str());
 
       // thrust data
       {

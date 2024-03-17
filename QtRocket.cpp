@@ -1,4 +1,3 @@
-
 /// \cond
 // C headers
 // C++ headers
@@ -45,7 +44,7 @@ void guiWorker(int argc, char* argv[], int& ret)
 
    // Go!
    MainWindow w(QtRocket::getInstance());
-   logger->info("Showing MainWindow");
+   logger->debug("Showing MainWindow");
    w.show();
    ret = a.exec();
 
@@ -65,7 +64,7 @@ void QtRocket::init()
    std::lock_guard<std::mutex> lck(mtx);
    if(!initialized)
    {
-      utils::Logger::getInstance()->info("Instantiating new QtRocket");
+      utils::Logger::getInstance()->debug("Instantiating new QtRocket");
       instance = new QtRocket();
       initialized = true;
    }
@@ -81,10 +80,20 @@ QtRocket::QtRocket()
    setEnvironment(std::make_shared<sim::Environment>());
 
    rocket.first =
-      std::make_shared<Rocket>();
+      std::make_shared<model::RocketModel>();
+   
+   rocket.second =
+      std::make_shared<sim::Propagator>(rocket.first);
 
    motorDatabase = std::make_shared<utils::MotorModelDatabase>();
 
+   logger->debug("Initial states vector size: " + std::to_string(states.capacity()) );
+   // Reserve at least 1024 spaces for StateData
+   if(states.capacity() < 1024)
+   {
+       states.reserve(1024);
+   }
+   logger->debug("New states vector size: " + std::to_string(states.capacity()) );
 }
 
 int QtRocket::run(int argc, char* argv[])
@@ -101,12 +110,21 @@ int QtRocket::run(int argc, char* argv[])
    return 0;
 }
 
+void QtRocket::launchRocket()
+{
+   // initialize the propagator
+   rocket.first->clearStates();
+   rocket.second->setCurrentTime(0.0);
+
+   // start the rocket motor
+   rocket.first->launch();
+
+   // run the propagator until it terminates
+   rocket.second->runUntilTerminate();
+}
+
 void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
 {
-   for(const auto& i : m)
-   {
-      motorModels.push_back(i);
-   }
-   motorDatabase->addMotorModels(motorModels);
+   motorDatabase->addMotorModels(m);
    // TODO: Now clear any duplicates?
 }

@@ -40,6 +40,13 @@ void Logger::log(std::string_view msg, const LogLevel& lvl)
    // all levels at or lower than the current level.
    switch(currentLevel)
    {
+      case PERF_:
+         if(lvl == PERF_)
+         {
+            outFile << "[PERF] " << msg << std::endl;
+             std::cout << "[PERF] " << msg << "\n";
+         }
+         [[fallthrough]];
       case DEBUG_:
          if(lvl == DEBUG_)
          {

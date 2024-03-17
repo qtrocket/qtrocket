@@ -35,8 +35,8 @@ AnalysisWindow::~AnalysisWindow()
 
 void AnalysisWindow::onButton_plotAltitude_clicked()
 {
-   std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
-   const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
+   QtRocket* qtRocket = QtRocket::getInstance();
+   const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
    auto& plot = ui->plotWidget;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);
@@ -46,7 +46,7 @@ void AnalysisWindow::onButton_plotAltitude_clicked()
    for (int i = 0; i < tData.size(); ++i)
    {
      tData[i] = res[i].first;
-     zData[i] = res[i].second[2];
+     zData[i] = res[i].second.position[2];
    }
    // create graph and assign data to it:
    plot->addGraph();
@@ -62,8 +62,8 @@ void AnalysisWindow::onButton_plotAltitude_clicked()
 
 void AnalysisWindow::onButton_plotVelocity_clicked()
 {
-   std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
-   const std::vector<std::pair<double, std::vector<double>>>& res = rocket->getStates();
+   QtRocket* qtRocket = QtRocket::getInstance();
+   const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
    auto& plot = ui->plotWidget;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);
@@ -74,7 +74,7 @@ void AnalysisWindow::onButton_plotVelocity_clicked()
    for (int i = 0; i < tData.size(); ++i)
    {
      tData[i] = res[i].first;
-     zData[i] = res[i].second[5];
+     zData[i] = res[i].second.velocity[2];
    }
    // create graph and assign data to it:
    plot->addGraph();
@@ -91,8 +91,8 @@ void AnalysisWindow::onButton_plotVelocity_clicked()
 
 void AnalysisWindow::onButton_plotMotorCurve_clicked()
 {
-   std::shared_ptr<Rocket> rocket = QtRocket::getInstance()->getRocket();
-   model::MotorModel motor = rocket->getCurrentMotorModel();
+   std::shared_ptr<model::RocketModel> rocket = QtRocket::getInstance()->getRocket();
+   model::MotorModel motor = rocket->getMotorModel();
    ThrustCurve tc = motor.getThrustCurve();
 
 

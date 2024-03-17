@@ -17,7 +17,6 @@
 
 #include "sim/ConstantAtmosphere.h"
 #include "sim/USStandardAtmosphere.h"
-#include "sim/GeoidModel.h"
 
 namespace sim
 {

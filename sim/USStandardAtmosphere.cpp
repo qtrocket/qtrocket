@@ -10,6 +10,7 @@
 // qtrocket headers
 #include "sim/USStandardAtmosphere.h"
 #include "utils/math/Constants.h"
+#include "utils/math/UtilityMathFunctions.h"
 
 using namespace utils::math;
 
@@ -17,9 +18,9 @@ namespace sim
 {
 
 // Populate static data
-utils::BinMap initTemps()
+utils::Bin initTemps()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 288.15));
    map.insert(std::make_pair(11000.0, 216.65));
    map.insert(std::make_pair(20000.0, 216.65));
@@ -32,9 +33,9 @@ utils::BinMap initTemps()
 
 }
 
-utils::BinMap initLapseRates()
+utils::Bin initLapseRates()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 0.0065));
    map.insert(std::make_pair(11000.0, 0.0));
    map.insert(std::make_pair(20000.0, -0.001));
@@ -46,9 +47,9 @@ utils::BinMap initLapseRates()
    return map;
 }
 
-utils::BinMap initDensities()
+utils::Bin initDensities()
 {
-   utils::BinMap map;
+   utils::Bin map;
    map.insert(std::make_pair(0.0, 1.225));
    map.insert(std::make_pair(11000.0, 0.36391));
    map.insert(std::make_pair(20000.0, 0.08803));
@@ -60,11 +61,24 @@ utils::BinMap initDensities()
    return map;
 }
 
-utils::BinMap USStandardAtmosphere::temperatureLapseRate(initLapseRates());
-utils::BinMap USStandardAtmosphere::standardTemperature(initTemps());
-utils::BinMap USStandardAtmosphere::standardDensity(initDensities());
+utils::Bin initPressures()
+{
+   utils::Bin map;
+   map.insert(std::make_pair(0.0, 101325));
+   map.insert(std::make_pair(11000.0, 22632.1));
+   map.insert(std::make_pair(20000.0, 5474.89));
+   map.insert(std::make_pair(32000.0, 868.02));
+   map.insert(std::make_pair(47000.0, 110.91));
+   map.insert(std::make_pair(51000.0, 66.94));
+   map.insert(std::make_pair(71000.0, 3.96));
 
+   return map;
+}
 
+utils::Bin USStandardAtmosphere::temperatureLapseRate(initLapseRates());
+utils::Bin USStandardAtmosphere::standardTemperature(initTemps());
+utils::Bin USStandardAtmosphere::standardDensity(initDensities());
+utils::Bin USStandardAtmosphere::standardPressure(initPressures());
 
 USStandardAtmosphere::USStandardAtmosphere()
 {
@@ -78,31 +92,64 @@ USStandardAtmosphere::~USStandardAtmosphere()
 
 double USStandardAtmosphere::getDensity(double altitude)
 {
-   if(temperatureLapseRate[altitude] == 0.0)
+   if(utils::math::floatingPointEqual(temperatureLapseRate[altitude], 0.0))
    {
-      return standardDensity[altitude] * std::exp((-Constants::g0 * Constants::airMolarMass * (altitude - standardDensity.getBinBase(altitude)))
+      return standardDensity[altitude] * std::exp(
+            (-Constants::g0 * Constants::airMolarMass * (altitude - standardDensity.getBinBase(altitude)))
                                                   / (Constants::Rstar * standardTemperature[altitude]));
 
    }
    else
    {
-      double base = standardTemperature[altitude] /
-         (standardTemperature[altitude] + temperatureLapseRate[altitude] * (altitude - standardDensity.getBinBase(altitude)));
+      double base = (standardTemperature[altitude] - temperatureLapseRate[altitude] *
+                    (altitude - standardDensity.getBinBase(altitude))) / standardTemperature[altitude];
       
-      double exponent = 1 + (Constants::g0 * Constants::airMolarMass) /
-         (Constants::Rstar * temperatureLapseRate[altitude]);
+      double exponent = (Constants::g0 * Constants::airMolarMass) /
+         (Constants::Rstar * temperatureLapseRate[altitude]) - 1.0;
 
       return standardDensity[altitude] * std::pow(base, exponent);
-
    }
 }
 
-double USStandardAtmosphere::getTemperature(double /*altitude*/)
+double USStandardAtmosphere::getTemperature(double altitude)
 {
-   return 0.0;
+   double baseTemp = standardTemperature[altitude];
+   double baseAltitude = standardTemperature.getBinBase(altitude);
+   return baseTemp - (altitude - baseAltitude) * temperatureLapseRate[altitude];
+
 }
-double USStandardAtmosphere::getPressure(double /* altitude */)
+double USStandardAtmosphere::getPressure(double altitude)
 {
-   return 0.0;
+   if(utils::math::floatingPointEqual(temperatureLapseRate[altitude], 0.0))
+   {
+      return standardPressure[altitude] * std::exp(
+            (-Constants::g0 * Constants::airMolarMass * (altitude - standardPressure.getBinBase(altitude)))
+                                                  / (Constants::Rstar * standardTemperature[altitude]));
+
+   }
+   else
+   {
+      double base = (standardTemperature[altitude] - temperatureLapseRate[altitude] *
+                    (altitude - standardPressure.getBinBase(altitude))) / standardTemperature[altitude];
+      
+      double exponent = (Constants::g0 * Constants::airMolarMass) /
+         (Constants::Rstar * temperatureLapseRate[altitude]);
+
+      return standardPressure[altitude] * std::pow(base, exponent);
+   }
+
+}
+
+double USStandardAtmosphere::getSpeedOfSound(double altitude)
+{
+   return std::sqrt( (Constants::gamma * Constants::Rstar * getTemperature(altitude))
+                     /
+                     Constants::airMolarMass);
+}
+
+double USStandardAtmosphere::getDynamicViscosity(double altitude)
+{
+   double temperature = getTemperature(altitude);
+   return (Constants::beta * std::pow(temperature, 1.5)) / ( temperature + Constants::S);
 }
 } // namespace sim

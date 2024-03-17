@@ -20,7 +20,7 @@
 #include "gui/MainWindow.h"
 #include "gui/ThrustCurveMotorSelector.h"
 #include "gui/SimOptionsWindow.h"
-#include "model/Rocket.h"
+#include "model/RocketModel.h"
 #include "utils/RSEDatabaseLoader.h"
 
 
@@ -83,6 +83,7 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
            this,
            SLOT(onButton_getTCMotorData_clicked()));
 
+   ui->calculateTrajectory_btn->setDisabled(true);
 }
 
 MainWindow::~MainWindow()
@@ -122,12 +123,16 @@ void MainWindow::onButton_calculateTrajectory_clicked()
 
    double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
    double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
-   std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   //std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   StateData initialState;
+   initialState.position = {0.0, 0.0, 0.0};
+   initialState.velocity = {initialVelocityX, 0.0, initialVelocityZ};
    auto rocket = QtRocket::getInstance()->getRocket();
-   rocket->setInitialState(initialState);
    rocket->setMass(mass);
    rocket->setDragCoefficient(dragCoeff);
-   rocket->launch();
+
+   qtRocket->setInitialState(initialState);
+   qtRocket->launchRocket();
 
    AnalysisWindow aWindow;
    aWindow.setModal(false);
@@ -186,7 +191,13 @@ void MainWindow::onButton_setMotor_clicked()
    QString motorName = ui->engineSelectorComboBox->currentText();
    model::MotorModel mm = rseDatabase->getMotorModelByName(motorName.toStdString());
    QtRocket::getInstance()->getRocket()->setMotorModel(mm);
-   QtRocket::getInstance()->addMotorModels(rseDatabase->getMotors());
+
+   // Now that we have a motor selected, we can enable the calculateTrajectory button
+   ui->calculateTrajectory_btn->setDisabled(false);
+
+   /// TODO: Figure out if this is the right place to populate the motor database
+   /// or from RSEDatabaseLoader where it currently is populated.
+   //QtRocket::getInstance()->addMotorModels(rseDatabase->getMotors());
 
 }
 

@@ -3,15 +3,14 @@
 // C headers
 // C++ headers
 #include <algorithm>
-#include <sstream>
+#include <format>
 #include <stdexcept>
 
 // 3rd party headers
-#include <fmt/core.h>
 /// \endcond
 
 // qtrocket headers
-#include "BinMap.h"
+#include "Bin.h"
 
 // TODO: Check on the availability of this in Clang.
 // Replace libfmt with format when LLVM libc++ supports it
@@ -20,33 +19,33 @@
 namespace utils
 {
 
-BinMap::BinMap()
+Bin::Bin()
    : bins()
 {
 
 }
 
-BinMap::BinMap(BinMap&& o)
+Bin::Bin(Bin&& o)
    : bins(std::move(o.bins))
 {
 
 }
 
-BinMap::~BinMap()
+Bin::~Bin()
 {
 
 }
 
 // TODO: Very low priority, but if anyone wants to make this more efficient it could be
 // interesting
-void BinMap::insert(const std::pair<double, double>& toInsert)
+void Bin::insert(const std::pair<double, double>& toInsert)
 {
    bins.push_back(toInsert);
    std::sort(bins.begin(), bins.end(),
       [](const auto& a, const auto& b){ return a.first < b.first; });
 }
 
-double BinMap::operator[](double key)
+double Bin::operator[](double key)
 {
    auto iter = bins.begin();
    // If the key is less than the lowest bin value, then it is out of range
@@ -56,12 +55,12 @@ double BinMap::operator[](double key)
    if(key < iter->first)
    {
       throw std::out_of_range(
-         fmt::format("{} less than lower bound {} of BinMap", key, iter->first));
+         std::format("{} less than lower bound {} of BinMap", key, iter->first));
    }
    // Increment it and start searching If we reach the end without finding an existing key
    // greater than our search term, then we've just hit the last bin and return that
    iter++;
-   double retVal = bins.end()->second;
+   double retVal = bins.back().second;
    while(iter !=  bins.end())
    {
       if(key < iter->first)
@@ -74,7 +73,7 @@ double BinMap::operator[](double key)
    return retVal;
 }
 
-double BinMap::getBinBase(double key)
+double Bin::getBinBase(double key)
 {
    auto iter = bins.begin();
    // If the key is less than the lowest bin value, then it is out of range
@@ -84,7 +83,7 @@ double BinMap::getBinBase(double key)
    if(key < iter->first)
    {
       throw std::out_of_range(
-         fmt::format("{} less than lower bound {} of BinMap", key, iter->first));
+         std::format("{} less than lower bound {} of BinMap", key, iter->first));
    }
    // Increment it and start searching If we reach the end without finding an existing key
    // greater than our search term, then we've just hit the last bin and return that

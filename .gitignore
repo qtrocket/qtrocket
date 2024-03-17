@@ -38,6 +38,8 @@ build/
 docs/doxygen/*
 
 # IDE
+*.swp
 qtrocket.pro.user
 .qmake.stash
+CMakeLists.txt.user
 

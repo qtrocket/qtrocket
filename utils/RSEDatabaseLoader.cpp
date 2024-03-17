@@ -5,6 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 // 3rd party headers
 #include <boost/property_tree/xml_parser.hpp>
@@ -58,6 +59,16 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
    mm.commonName = v.get<std::string>("<xmlattr>.code", "");
 
    // mm.delays = extract vector from csv list
+   std::string delays = v.get<std::string>("<xmlattr>.delays", "1000");
+   std::size_t pos{0};
+   std::string tok;
+   while ((pos = delays.find(",")) != std::string::npos)
+   {
+       tok = delays.substr(0, pos);
+       mm.delays.push_back(std::atoi(tok.c_str()));
+       delays.erase(0, pos + 1);
+   }
+   mm.delays.push_back(std::atoi(delays.c_str()));
 
    // mm.designation = What is this?
 

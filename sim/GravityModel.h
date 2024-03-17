@@ -2,7 +2,7 @@
 #define SIM_GRAVITYMODEL_H
 
 // qtrocket headers
-#include "utils/Triplet.h"
+#include "utils/math/MathTypes.h"
 
 namespace sim
 {
@@ -10,11 +10,11 @@ namespace sim
 class GravityModel
 {
 public:
-   GravityModel();
-   virtual ~GravityModel();
+   GravityModel() {}
+   virtual ~GravityModel() {}
 
-   virtual TripletD getAccel(double x, double y, double z) = 0;
-   TripletD getAccel(const TripletD& t) { return this->getAccel(t.x1, t.x2, t.x3); }
+   virtual Vector3 getAccel(double x, double y, double z) = 0;
+   Vector3 getAccel(const Vector3& t) { return this->getAccel(t.x(), t.y(), t.z()); }
 };
 
 } // namespace sim

@@ -8,8 +8,6 @@
 /// \endcond
 
 #include "model/ThrustCurve.h"
-#include "utils/Logger.h"
-
 
 ThrustCurve::ThrustCurve(std::vector<std::pair<double, double>>& tc)
    : thrustCurve(tc),

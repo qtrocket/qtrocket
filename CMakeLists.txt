@@ -2,14 +2,27 @@ cmake_minimum_required(VERSION 3.16)
 
 project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+enable_testing()
 
 include(FetchContent)
 
+# Google Test framework
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest
+    GIT_TAG        v1.13.0)
+if(WIN32)
+   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+endif()
+FetchContent_MakeAvailable(googletest)
+
 # fmtlib dependency
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt
-    GIT_TAG        9.1.0)
-FetchContent_MakeAvailable(fmt)
+#FetchContent_Declare(fmt
+#    GIT_REPOSITORY https://github.com/fmtlib/fmt
+#    GIT_TAG        9.1.0)
+#FetchContent_MakeAvailable(fmt)
 
 # jsoncpp dependency
 FetchContent_Declare(jsoncpp
@@ -36,18 +49,30 @@ if(WIN32)
 endif()
 FetchContent_MakeAvailable(CURL)
 
+# eigen dependency
+FetchContent_Declare(Eigen
+   GIT_REPOSITORY https://gitlab.com/libeigen/eigen
+   GIT_TAG 3.4.0)
+FetchContent_MakeAvailable(Eigen)
+
+# boost dependency
+
+FetchContent_Declare(Boost
+   GIT_REPOSITORY https://github.com/boostorg/boost
+   GIT_TAG boost-1.84.0)
+set(BOOST_INCLUDE_LIBRARIES property_tree)
+FetchContent_MakeAvailable(Boost)
+# Add qtrocket subdirectories. These are components that will be linked in 
 
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
   set(CMAKE_PREFIX_PATH $ENV{QTDIR})
-  include_directories("C:\\boost\\boost_1_82_0\\")
+#  include_directories("C:\\boost\\boost_1_82_0\\")
 #  find_package(Qt6Core REQUIRED)
 #  find_package(Qt6Widgets REQUIRED)
 endif()
@@ -84,61 +109,6 @@ set(PROJECT_SOURCES
         gui/ThrustCurveMotorSelector.ui
         gui/qcustomplot.cpp
         gui/qcustomplot.h
-        model/MotorCase.cpp
-        model/MotorCase.h
-        model/MotorModel.cpp
-        model/MotorModel.h
-        model/MotorModelDatabase.cpp
-        model/MotorModelDatabase.h
-        model/Rocket.cpp
-        model/Rocket.h
-        model/ThrustCurve.cpp
-        model/ThrustCurve.h
-        sim/AtmosphericModel.h
-        sim/ConstantAtmosphere.h
-        sim/ConstantGravityModel.cpp
-        sim/ConstantGravityModel.h
-        sim/DESolver.h
-        sim/Environment.h
-        sim/GeoidModel.h
-        sim/GravityModel.cpp
-        sim/GravityModel.h
-        sim/Propagator.cpp
-        sim/Propagator.h
-        sim/RK4Solver.h
-        sim/SphericalGeoidModel.cpp
-        sim/SphericalGeoidModel.h
-        sim/SphericalGravityModel.cpp
-        sim/SphericalGravityModel.h
-        sim/StateData.cpp
-        sim/StateData.h
-        sim/USStandardAtmosphere.cpp
-        sim/USStandardAtmosphere.h
-        sim/WindModel.cpp
-        sim/WindModel.h
-        utils/BinMap.cpp
-        utils/BinMap.h
-        utils/CurlConnection.cpp
-        utils/CurlConnection.h
-        utils/Logger.cpp
-        utils/Logger.h
-        utils/MotorModelDatabase.cpp
-        utils/MotorModelDatabase.h
-        utils/RSEDatabaseLoader.cpp
-        utils/RSEDatabaseLoader.h
-        utils/ThreadPool.cpp
-        utils/ThreadPool.h
-        utils/ThrustCurveAPI.cpp
-        utils/ThrustCurveAPI.h
-        utils/Triplet.h
-        utils/TSQueue.h
-        utils/math/Constants.h
-        utils/math/Quaternion.cpp
-        utils/math/Quaternion.h
-        utils/math/UtilityMathFunctions.cpp
-        utils/math/UtilityMathFunctions.h
-        utils/math/Vector3.cpp
-        utils/math/Vector3.h
         ${TS_FILES}
 )
 
@@ -167,11 +137,26 @@ else()
         )
     endif()
 
-    #qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-#target_link_libraries(qtrocket PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${Qt_VERSION_MAJOR}::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
-target_link_libraries(qtrocket PRIVATE Qt6::Widgets Qt6::PrintSupport libcurl jsoncpp_static fmt::fmt-header-only)
+add_subdirectory(utils)
+add_subdirectory(sim)
+add_subdirectory(model)
+
+#target_link_libraries(qtrocket PRIVATE 
+#   Qt6::Widgets
+#   Qt6::PrintSupport
+#   libcurl
+#   jsoncpp_static
+#   fmt::fmt-header-only
+#   eigen)
+
+target_link_libraries(qtrocket PRIVATE 
+   Qt6::Widgets
+   Qt6::PrintSupport
+   utils
+   sim
+   model)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

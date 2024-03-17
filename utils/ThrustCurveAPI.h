@@ -7,6 +7,7 @@
 // C++ headers
 #include <map>
 #include <string>
+#include <optional>
 
 // 3rd party headers
 /// \endcond
@@ -90,6 +91,8 @@ private:
 
    const std::string hostname;
    CurlConnection curlConnection;
+
+   std::optional<ThrustCurve> getThrustCurve(const std::string& id);
 
    // no extra headers, but CurlConnection library wants them
    const std::vector<std::string> extraHeaders{};
