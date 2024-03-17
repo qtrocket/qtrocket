@@ -20,7 +20,7 @@
 #include "gui/MainWindow.h"
 #include "gui/ThrustCurveMotorSelector.h"
 #include "gui/SimOptionsWindow.h"
-#include "model/Rocket.h"
+#include "model/RocketModel.h"
 #include "utils/RSEDatabaseLoader.h"
 
 

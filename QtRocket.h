@@ -14,7 +14,7 @@
 
 // qtrocket headers
 #include "model/MotorModel.h"
-#include "model/Rocket.h"
+#include "model/RocketModel.h"
 #include "sim/Environment.h"
 #include "sim/Propagator.h"
 #include "utils/Logger.h"
@@ -43,13 +43,13 @@ public:
 
    std::shared_ptr<sim::Environment> getEnvironment() { return environment; }
    void setTimeStep(double t) { rocket.second->setTimeStep(t); }
-   std::shared_ptr<model::Rocket> getRocket() { return rocket.first; }
+   std::shared_ptr<model::RocketModel> getRocket() { return rocket.first; }
 
    std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
    void addMotorModels(std::vector<model::MotorModel>& m);
 
-   void addRocket(std::shared_ptr<model::Rocket> r) { rocket.first = r; }
+   void addRocket(std::shared_ptr<model::RocketModel> r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r); }
 
    void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }
 
@@ -58,15 +58,13 @@ public:
     * @brief getStates returns a vector of time/state pairs generated during launch()
     * @return vector of pairs of doubles, where the first value is a time and the second a state vector
     */
-   const std::vector<std::pair<double, StateData>>& getStates() const { return rocket.second->getStates(); }
+   const std::vector<std::pair<double, StateData>>& getStates() const { return rocket.first->getStates(); }
 
    /**
     * @brief setInitialState sets the initial state of the Rocket.
     * @param initState initial state vector (x, y, z, xDot, yDot, zDot, pitch, yaw, roll, pitchDot, yawDot, rollDot)
     */
-   void setInitialState(const StateData& initState) { rocket.second->setInitialState(initState); }
-
-   void appendState(const StateData& state);
+   void setInitialState(const StateData& initState) { rocket.first->setInitialState(initState); }
 
 private:
    QtRocket();
@@ -80,7 +78,8 @@ private:
 
    utils::Logger* logger;
 
-   std::pair<std::shared_ptr<model::Rocket>, std::shared_ptr<sim::Propagator>> rocket;
+   using Rocket = std::pair<std::shared_ptr<model::RocketModel>, std::shared_ptr<sim::Propagator>>;
+   Rocket rocket;
 
    std::shared_ptr<sim::Environment> environment;
    std::shared_ptr<utils::MotorModelDatabase> motorDatabase;
@@ -91,8 +90,6 @@ private:
 
    // Table of state data
    std::vector<StateData> states;
-
-
 
 };
 

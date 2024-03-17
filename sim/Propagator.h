@@ -5,7 +5,6 @@
 // C headers
 // C++ headers
 #include <memory>
-#include <vector>
 
 // 3rd party headers
 /// \endcond
@@ -30,17 +29,17 @@ namespace sim
 class Propagator
 {
 public:
-    Propagator(std::shared_ptr<model::Rocket> r);
+    Propagator(std::shared_ptr<model::Propagatable> o);
     ~Propagator();
 
     void setInitialState(const StateData& initialState)
     {
-           currentState = initialState;
+        object->setInitialState(initialState);
     }
 
     const StateData& getCurrentState() const
     {
-       return currentState;
+        return object->getCurrentState();
     }
 
     void runUntilTerminate();
@@ -50,44 +49,21 @@ public:
        saveStates = s;
     }
 
-    const std::vector<std::pair<double, StateData>>& getStates() const { return states; }
-
-    void clearStates() { states.clear(); }
     void setCurrentTime(double t) { currentTime = t; }
     void setTimeStep(double ts) { timeStep = ts; }
     void setSaveStats(bool s) { saveStates = s; }
 
 private:
-   double getMass();
-   double getForceX();
-   double getForceY();
-   double getForceZ();
-
-   double getTorqueP(); // yaw
-   double getTorqueQ(); // pitch
-   double getTorqueR(); // roll
-
-   double getIyaw()   { return 1.0; }
-   double getIpitch() { return 1.0; }
-   double getIroll()  { return 1.0; }
 
    std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<model::Propagatable> object;
 
-   StateData currentState;
-   StateData nextState;
-
-   Vector3 currentGravity{0.0, 0.0, 0.0};
-   Vector3 currentWindSpeed{0.0, 0.0, 0.0};
-
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};
-   std::vector<std::pair<double, StateData>> states;
 
-   Vector3 getCurrentGravity();
 };
 
 } // namespace sim

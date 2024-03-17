@@ -30,11 +30,27 @@ public:
 
    virtual bool terminateCondition(double t) = 0;
 
+   void setCurrentState(const StateData& st) { currentState = st; }
+   const StateData& getCurrentState() { return currentState; }
+
+   const StateData& getInitialState() { return initialState; }
+   void setInitialState(const StateData& init) { initialState = init; }
+
+   void appendState(double t, const StateData& st) { states.emplace_back(t, st); }
+
+   const std::vector<std::pair<double, StateData>>& getStates() { return states; }
+
+   void clearStates() { states.clear(); }
+
 protected:
 
    sim::Aero aeroData;
 
-   StateData state;
+   StateData initialState;
+   StateData currentState;
+   StateData nextState;
+
+   std::vector<std::pair<double, StateData>> states;
 };
 
 }

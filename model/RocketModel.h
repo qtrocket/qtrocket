@@ -1,5 +1,5 @@
-#ifndef ROCKET_H
-#define ROCKET_H
+#ifndef ROCKETMODEL_H
+#define ROCKETMODEL_H
 
 /// \cond
 // C headers
@@ -28,19 +28,19 @@ namespace model
  * @brief The Rocket class holds all rocket components
  *
  */
-class Rocket : public Propagatable
+class RocketModel : public Propagatable
 {
 public:
     /**
     * @brief Rocket class constructor
     */
-   Rocket();
+   RocketModel();
 
    /**
     * @brief Rocket class destructor
     * 
     */
-   virtual ~Rocket() {}
+   virtual ~RocketModel() {}
 
     /**
     * @brief launch Propagates the Rocket object until termination,
@@ -113,4 +113,4 @@ private:
 };
 
 } // namespace model
-#endif // ROCKET_H
+#endif // ROCKETMODEL_H

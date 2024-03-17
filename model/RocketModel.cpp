@@ -1,41 +1,41 @@
 
 // qtrocket headers
-#include "Rocket.h"
+#include "RocketModel.h"
 #include "QtRocket.h"
 #include "InertiaTensors.h"
 
 namespace model
-{ 
+{
 
-Rocket::Rocket()
+RocketModel::RocketModel()
     : topPart("NoseCone", InertiaTensors::SolidSphere(1.0), 1.0, {0.0, 0.0, 1.0})
 {
 
 }
 
 
-double Rocket::getMass(double t)
+double RocketModel::getMass(double t)
 {
     double mass = mm.getMass(t);
     mass += topPart.getCompositeMass(t);
     return mass;
 }
 
-Matrix3 Rocket::getInertiaTensor(double)
+Matrix3 RocketModel::getInertiaTensor(double)
 {
     return topPart.getCompositeI();
 }
 
-bool Rocket::terminateCondition(double)
+bool RocketModel::terminateCondition(double)
 {
    // Terminate propagation when the z coordinate drops below zero
-    if(state.position[2] < 0)
+    if(currentState.position[2] < 0)
         return true;
     else
         return false;
 }
 
-Vector3 Rocket::getForces(double t)
+Vector3 RocketModel::getForces(double t)
 {
     // Get thrust
     // Assume that thrust is always through the center of mass and in the rocket's Z-axis
@@ -45,7 +45,7 @@ Vector3 Rocket::getForces(double t)
     // Get gravity
     auto gravityModel = QtRocket::getInstance()->getEnvironment()->getGravityModel();
 
-    Vector3 gravity = gravityModel->getAccel(state.position)*getMass(t);
+    Vector3 gravity = gravityModel->getAccel(currentState.position)*getMass(t);
 
     forces += gravity;
 
@@ -55,23 +55,23 @@ Vector3 Rocket::getForces(double t)
     return forces;
 }
 
-Vector3 Rocket::getTorques(double t)
+Vector3 RocketModel::getTorques(double t)
 {
     return Vector3{0.0, 0.0, 0.0};
 
 }
 
-double Rocket::getThrust(double t)
+double RocketModel::getThrust(double t)
 {
    return mm.getThrust(t);
 }
 
-void Rocket::launch()
+void RocketModel::launch()
 {
    mm.startMotor(0.0);
 }
 
-void Rocket::setMotorModel(const model::MotorModel& motor)
+void RocketModel::setMotorModel(const model::MotorModel& motor)
 {
    mm = motor;
 }

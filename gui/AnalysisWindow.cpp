@@ -91,7 +91,7 @@ void AnalysisWindow::onButton_plotVelocity_clicked()
 
 void AnalysisWindow::onButton_plotMotorCurve_clicked()
 {
-   std::shared_ptr<model::Rocket> rocket = QtRocket::getInstance()->getRocket();
+   std::shared_ptr<model::RocketModel> rocket = QtRocket::getInstance()->getRocket();
    model::MotorModel motor = rocket->getMotorModel();
    ThrustCurve tc = motor.getThrustCurve();
 

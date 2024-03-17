@@ -80,7 +80,7 @@ QtRocket::QtRocket()
    setEnvironment(std::make_shared<sim::Environment>());
 
    rocket.first =
-      std::make_shared<model::Rocket>();
+      std::make_shared<model::RocketModel>();
    
    rocket.second =
       std::make_shared<sim::Propagator>(rocket.first);
@@ -113,7 +113,7 @@ int QtRocket::run(int argc, char* argv[])
 void QtRocket::launchRocket()
 {
    // initialize the propagator
-   rocket.second->clearStates();
+   rocket.first->clearStates();
    rocket.second->setCurrentTime(0.0);
 
    // start the rocket motor
@@ -127,9 +127,4 @@ void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
 {
    motorDatabase->addMotorModels(m);
    // TODO: Now clear any duplicates?
-}
-
-void QtRocket::appendState(const StateData& state)
-{
-    states.emplace_back(state);
 }

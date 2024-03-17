@@ -7,8 +7,8 @@ add_library(model
    Part.h
    Propagatable.cpp
    Propagatable.h
-   Rocket.cpp
-   Rocket.h
+   RocketModel.cpp
+   RocketModel.h
    ThrustCurve.cpp
    ThrustCurve.h
    InertiaTensors.h)
