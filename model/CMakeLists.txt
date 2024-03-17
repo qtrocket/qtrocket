@@ -9,10 +9,9 @@ add_library(model
    Propagatable.h
    Rocket.cpp
    Rocket.h
-   Stage.cpp
-   Stage.h
    ThrustCurve.cpp
-   ThrustCurve.h)
+   ThrustCurve.h
+   InertiaTensors.h)
 
 target_link_libraries(model PRIVATE
    utils)

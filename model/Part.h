@@ -63,7 +63,9 @@ public:
 
    // Set the inertia tensor
    void setI(const Matrix3& I) { inertiaTensor = I; }
-   
+   Matrix3 getI() { return inertiaTensor; }
+   Matrix3 getCompositeI() { return compositeInertiaTensor; }
+
    void setCm(const Vector3& x) { cm = x; }
    // Special version of setCM that assumes the cm lies along the body x-axis
    void setCm(double x) { cm = {x, 0.0, 0.0}; }

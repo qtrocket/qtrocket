@@ -153,7 +153,7 @@ void Propagator::runUntilTerminate()
       {
          states.push_back(std::make_pair(currentTime, nextState));
       }
-      if(object->terminateCondition(std::make_pair(currentTime, currentState)))
+      if(object->terminateCondition(currentTime))
          break;
 
       currentTime += timeStep;
@@ -175,23 +175,26 @@ double Propagator::getMass()
 
 double Propagator::getForceX()
 {
-    QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentState.velocity[0] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2])/ 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[0]* currentState.velocity[0];
+    return 0.0;
+    //QtRocket* qtrocket = QtRocket::getInstance();
+    //return (currentState.velocity[0] >= 0 ? -1.0 : 1.0) *  qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2])/ 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[0]* currentState.velocity[0];
 }
 
 double Propagator::getForceY()
 {
-    QtRocket* qtrocket = QtRocket::getInstance();
-    return (currentState.velocity[1] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[1]* currentState.velocity[1];
+    return 0.0;
+    //QtRocket* qtrocket = QtRocket::getInstance();
+    //return (currentState.velocity[1] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[1]* currentState.velocity[1];
 }
 
 double Propagator::getForceZ()
 {
-    QtRocket* qtrocket = QtRocket::getInstance();
-    double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState.position[0], currentState.position[1], currentState.position[2]))[2];
-    double airDrag = (currentState.velocity[2] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[2]* currentState.velocity[2];
-    double thrust  = object->getThrust(currentTime);
-    return gravity + airDrag + thrust;
+    return 0.0;
+    //QtRocket* qtrocket = QtRocket::getInstance();
+    //double gravity = (qtrocket->getEnvironment()->getGravityModel()->getAccel(currentState.position[0], currentState.position[1], currentState.position[2]))[2];
+    //double airDrag = (currentState.velocity[2] >= 0 ? -1.0 : 1.0) * qtrocket->getEnvironment()->getAtmosphericModel()->getDensity(currentState.position[2]) / 2.0 * 0.008107 * object->getDragCoefficient() * currentState.velocity[2]* currentState.velocity[2];
+    //double thrust  = object->getThrust(currentTime);
+    //return gravity + airDrag + thrust;
 }
 
 double Propagator::getTorqueP() { return 0.0; }

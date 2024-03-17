@@ -1,51 +1,79 @@
 
 // qtrocket headers
 #include "Rocket.h"
+#include "QtRocket.h"
+#include "InertiaTensors.h"
 
 namespace model
 { 
 
 Rocket::Rocket()
+    : topPart("NoseCone", InertiaTensors::SolidSphere(1.0), 1.0, {0.0, 0.0, 1.0})
 {
-    // A rocket needs at least one stage. Upon creation, we need to create at least one stage
-    currentStage.reset(new Stage("sustainer"));
-    stages.push_back(currentStage);
-
 
 }
 
-void Rocket::launch()
+
+double Rocket::getMass(double t)
 {
-   currentStage->getMotorModel().startMotor(0.0);
+    double mass = mm.getMass(t);
+    mass += topPart.getCompositeMass(t);
+    return mass;
 }
 
-void Rocket::setMotorModel(const model::MotorModel& motor)
+Matrix3 Rocket::getInertiaTensor(double)
 {
-   currentStage->setMotorModel(motor);
+    return topPart.getCompositeI();
 }
 
-bool Rocket::terminateCondition(const std::pair<double, StateData>& cond)
+bool Rocket::terminateCondition(double)
 {
    // Terminate propagation when the z coordinate drops below zero
-    if(cond.second.position[2] < 0)
+    if(state.position[2] < 0)
         return true;
     else
         return false;
 }
 
-double Rocket::getThrust(double t)
+Vector3 Rocket::getForces(double t)
 {
-   return currentStage->getMotorModel().getThrust(t);
+    // Get thrust
+    // Assume that thrust is always through the center of mass and in the rocket's Z-axis
+    Vector3 forces{0.0, 0.0, mm.getThrust(t)};
+
+
+    // Get gravity
+    auto gravityModel = QtRocket::getInstance()->getEnvironment()->getGravityModel();
+
+    Vector3 gravity = gravityModel->getAccel(state.position)*getMass(t);
+
+    forces += gravity;
+
+    // Calculate aero forces
+
+
+    return forces;
 }
 
-double Rocket::getMass(double t)
+Vector3 Rocket::getTorques(double t)
 {
-   double totalMass = 0.0;
-   for(const auto& stage : stages)
-   {
-      totalMass += stage->getMass(t);
-   }
-   return totalMass;
+    return Vector3{0.0, 0.0, 0.0};
+
+}
+
+double Rocket::getThrust(double t)
+{
+   return mm.getThrust(t);
+}
+
+void Rocket::launch()
+{
+   mm.startMotor(0.0);
+}
+
+void Rocket::setMotorModel(const model::MotorModel& motor)
+{
+   mm = motor;
 }
 
 } // namespace model
