@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 enable_testing()
@@ -12,7 +12,7 @@ include(FetchContent)
 # Google Test framework
 FetchContent_Declare(googletest
     GIT_REPOSITORY https://github.com/google/googletest
-    GIT_TAG        v1.13.0)
+    GIT_TAG        v1.17.0)
 if(WIN32)
    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 endif()
@@ -27,7 +27,7 @@ FetchContent_MakeAvailable(googletest)
 # jsoncpp dependency
 FetchContent_Declare(jsoncpp
     GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp
-    GIT_TAG        1.9.5)
+    GIT_TAG        1.9.6)
 set(JSONCPP_WITH_TESTS OFF)
 set(JSONCPP_WITH_EXAMPLE OFF)
 set(JSONCPP_WITH_PKGCONFIG_SUPPORT OFF)
@@ -39,11 +39,12 @@ FetchContent_MakeAvailable(jsoncpp)
 # curl dependency
 FetchContent_Declare(CURL
     GIT_REPOSITORY https://github.com/curl/curl
-    GIT_TAG        curl-8_0_1)
+    GIT_TAG        curl-8_18_0)
 set(BUILD_CURL_EXE OFF)
 set(BUILD_SHARED_LIBS OFF)
 set(HTTP_ONLY ON)
 set(SSL_ENABLED ON)
+set(CURL_USE_LIBPSL OFF)
 if(WIN32)
    set(CURL_USE_SCHANNEL ON)
 endif()
@@ -52,14 +53,14 @@ FetchContent_MakeAvailable(CURL)
 # eigen dependency
 FetchContent_Declare(Eigen
    GIT_REPOSITORY https://gitlab.com/libeigen/eigen
-   GIT_TAG 3.4.0)
+   GIT_TAG 5.0.1)
 FetchContent_MakeAvailable(Eigen)
 
 # boost dependency
 
 FetchContent_Declare(Boost
    GIT_REPOSITORY https://github.com/boostorg/boost
-   GIT_TAG boost-1.84.0)
+   GIT_TAG boost-1.90.0)
 set(BOOST_INCLUDE_LIBRARIES property_tree)
 FetchContent_MakeAvailable(Boost)
 # Add qtrocket subdirectories. These are components that will be linked in 
