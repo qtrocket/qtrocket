@@ -44,3 +44,4 @@ qtrocket.pro.user
 CMakeLists.txt.user
 
 .cache/
+log.txt

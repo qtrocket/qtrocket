@@ -74,8 +74,10 @@ void Propagator::runUntilTerminate()
         {
             object->appendState(currentTime, nextState);
         }
-        if(object->terminateCondition(currentTime))
+        if(currentTime > minFlightTime && object->terminateCondition(currentTime))
+        {
             break;
+        }
 
         currentTime += timeStep;
     }

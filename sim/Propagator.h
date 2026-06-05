@@ -25,6 +25,7 @@ class QtRocket;
 
 namespace sim
 {
+static constexpr double minFlightTime = 4.0;
 
 class Propagator
 {
