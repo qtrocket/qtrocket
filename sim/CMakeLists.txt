@@ -21,7 +21,7 @@ add_library(sim
    WindModel.cpp
    WindModel.h)
 
-target_link_libraries(sim PRIVATE
+target_link_libraries(sim PUBLIC
    utils)
 
 # Unit tests

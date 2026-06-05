@@ -4,6 +4,7 @@ project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 enable_testing()
 
@@ -27,7 +28,7 @@ FetchContent_MakeAvailable(googletest)
 # jsoncpp dependency
 FetchContent_Declare(jsoncpp
     GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp
-    GIT_TAG        1.9.6)
+    GIT_TAG        1.9.7)
 set(JSONCPP_WITH_TESTS OFF)
 set(JSONCPP_WITH_EXAMPLE OFF)
 set(JSONCPP_WITH_PKGCONFIG_SUPPORT OFF)
@@ -39,7 +40,7 @@ FetchContent_MakeAvailable(jsoncpp)
 # curl dependency
 FetchContent_Declare(CURL
     GIT_REPOSITORY https://github.com/curl/curl
-    GIT_TAG        curl-8_18_0)
+    GIT_TAG        curl-8_20_0)
 set(BUILD_CURL_EXE OFF)
 set(BUILD_SHARED_LIBS OFF)
 set(HTTP_ONLY ON)
@@ -60,7 +61,7 @@ FetchContent_MakeAvailable(Eigen)
 
 FetchContent_Declare(Boost
    GIT_REPOSITORY https://github.com/boostorg/boost
-   GIT_TAG boost-1.90.0)
+   GIT_TAG boost-1.91.0-1)
 set(BOOST_INCLUDE_LIBRARIES property_tree)
 FetchContent_MakeAvailable(Boost)
 # Add qtrocket subdirectories. These are components that will be linked in 

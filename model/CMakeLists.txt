@@ -13,7 +13,7 @@ add_library(model
    ThrustCurve.h
    InertiaTensors.h)
 
-target_link_libraries(model PRIVATE
+target_link_libraries(model PUBLIC
    utils)
 
 # Unit tests

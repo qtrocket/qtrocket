@@ -43,3 +43,4 @@ qtrocket.pro.user
 .qmake.stash
 CMakeLists.txt.user
 
+.cache/
