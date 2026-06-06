@@ -49,5 +49,5 @@ Tasks tagged **[verified bug]** were confirmed against the source during analysi
 ## P5 — Persistence & polish
 
 - [ ] **Design save/load** — an `.ork`-style project file serializing the component tree + sim options (Boost.PropertyTree already a dependency); File → Save/Open in `MainWindow`.
-- [ ] **Implement `MotorModelDatabase::loadMotorDatabase`** (mirror the save; round-trip test) and a **RASP `.eng`** parser alongside `RSEDatabaseLoader`.
+- [ ] ✅ **Implemented `MotorModelDatabase::loadMotorDatabase`** (mirrors the save; round-trip test in [tests/MotorDatabasePersistenceTests.cpp](tests/MotorDatabasePersistenceTests.cpp)), wired into the CLI (`loaddb`/`savedb`) and the GUI ("Load Motor Database" button). **Remaining:** a **RASP `.eng`** parser alongside `RSEDatabaseLoader`.
 - [ ] **Audit logging & threading** — demote per-step logs / add a log-level flag (drop default `PERF_`); confirm the GUI-on-worker-thread model is Qt-safe; consider running long sims on the existing `ThreadPool`.
