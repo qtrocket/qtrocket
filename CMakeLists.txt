@@ -98,6 +98,8 @@ set(PROJECT_SOURCES
         gui/AnalysisWindow.cpp
         gui/AnalysisWindow.h
         gui/AnalysisWindow.ui
+        gui/GuiRunner.cpp
+        gui/GuiRunner.h
         gui/MainWindow.cpp
         gui/MainWindow.h
         gui/MainWindow.ui
@@ -153,12 +155,27 @@ add_subdirectory(model)
 #   fmt::fmt-header-only
 #   eigen)
 
-target_link_libraries(qtrocket PRIVATE 
+target_link_libraries(qtrocket PRIVATE
    Qt6::Widgets
    Qt6::PrintSupport
    utils
    sim
    model)
+
+# Headless CLI / REPL driver for the simulation engine (no Qt).
+# QtRocket.cpp is compiled in directly (as it is for the GUI exe) rather than
+# shared via a static lib, because utils calls QtRocket::getInstance() while
+# QtRocket needs utils -- a shared lib would create a circular dependency.
+add_executable(qtrocket-cli
+    cli/CliMain.cpp
+    cli/Repl.cpp
+    cli/Repl.h
+    QtRocket.cpp
+)
+target_link_libraries(qtrocket-cli PRIVATE
+    utils
+    sim
+    model)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

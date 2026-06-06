@@ -5,6 +5,7 @@
 /// \endcond
 
 #include "QtRocket.h"
+#include "gui/GuiRunner.h"
 #include "utils/Logger.h"
 
 int main(int argc, char *argv[])
@@ -20,8 +21,8 @@ int main(int argc, char *argv[])
 
    // Run QtRocket. This'll start the GUI thread and block until the user
    // exits the program
-   logger->debug("QtRocket->run()");
-   int retVal = qtrocket->run(argc, argv);
+   logger->debug("Launching GUI");
+   int retVal = gui::run(qtrocket, argc, argv);
    logger->debug("Returning");
    return retVal;
 }

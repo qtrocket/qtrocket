@@ -51,6 +51,10 @@ Propagator::~Propagator()
 
 void Propagator::runUntilTerminate()
 {
+    // Re-assert the configured timestep on the integrator before each run, so a
+    // run always steps with timeStep regardless of how/when it was set.
+    linearIntegrator->setTimeStep(timeStep);
+
     std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point endTime;
 

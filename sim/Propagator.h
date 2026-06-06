@@ -51,7 +51,18 @@ public:
     }
 
     void setCurrentTime(double t) { currentTime = t; }
-    void setTimeStep(double ts) { timeStep = ts; }
+    void setTimeStep(double ts)
+    {
+        timeStep = ts;
+        // Push the step into the integrator too. Previously only this member was
+        // updated, so the RK4 solver kept using its constructor-set dt (0.01 s)
+        // while only the loop's time-axis bookkeeping (currentTime += timeStep)
+        // changed -- the integration step and the recorded times silently diverged.
+        if(linearIntegrator)
+        {
+            linearIntegrator->setTimeStep(ts);
+        }
+    }
     void setSaveStats(bool s) { saveStates = s; }
 
 private:

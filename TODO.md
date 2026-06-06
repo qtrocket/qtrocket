@@ -11,11 +11,11 @@ Tasks tagged **[verified bug]** were confirmed against the source during analysi
 ## P0 — Unblock, de-risk, stop lying to the user (hours → ~1 day)
 
 - [✅] **Build & run it first.** `cmake -B build -S . && cmake --build build && ./build/qtrocket`; load `data/Aerotech.rse`, set a motor, Calculate Trajectory, view the altitude plot; `ctest` to confirm the atmosphere tests pass. (Newer pinned dependency versions are the likeliest first-build friction.)
-- [ ] **[verified bug] Seed `currentState` from `initialState`** at launch (`QtRocket::launchRocket` / `Propagator::runUntilTerminate`) so launch angle & initial velocity actually affect the trajectory. *Highest-value single fix — currently the rocket launches from rest, straight up.*
-- [ ] **[verified bug] Make `RocketModel::setMass`/`setDragCoefficient` real** ([RocketModel.h:101-103](model/RocketModel.h#L101-L103)) — add backing members and use them — or remove the GUI fields. Pick one and be consistent.
+- [✅] **[verified bug] Seed `currentState` from `initialState`** at launch (`QtRocket::launchRocket` / `Propagator::runUntilTerminate`) so launch angle & initial velocity actually affect the trajectory. *Highest-value single fix — currently the rocket launches from rest, straight up.*
+- [✅] **[verified bug] Make `RocketModel::setMass`/`setDragCoefficient` real** ([RocketModel.h:101-103](model/RocketModel.h#L101-L103)) — add backing members and use them — or remove the GUI fields. Pick one and be consistent.
 - [ ] **[verified bug] Fix `Environment::getAvailable*Models()`** ([Environment.h:43-57](sim/Environment.h#L43-L57)) to remove the leading blank combo-box entries (build an empty vector + `reserve`, or index).
 - [ ] **[verified bug] Enable "Calculate Trajectory" from the thrustcurve.org path too** — unify a single "a motor is set" signal across both motor-selection paths (only the RSE path enables it today).
-- [ ] **[verified bug] Fix timestep propagation** — `Propagator::setTimeStep` ([Propagator.h:53](sim/Propagator.h#L53)) must push `dt` into the `RK4Solver` (set only once in the ctor today), so Sim Options actually changes the integration step.
+- [✅] **[verified bug] Fix timestep propagation** — `Propagator::setTimeStep` ([Propagator.h:54](sim/Propagator.h#L54)) now pushes `dt` into the `RK4Solver` (and `runUntilTerminate` re-asserts it before each run), so changing the timestep changes the integration step. Verified via `qtrocket-cli`: across dt = 0.001…0.1 the step count scales ~1/dt and the CSV sample interval equals dt, while flight time stays ~constant and apogee converges as dt→0.
 - [ ] **Decide the fate of `sim/RK45Solver.h`** — finish it (see P4) or delete the untracked, non-compiling file so it can't break a future build.
 - [ ] **Remove dead code** — delete `model/MotorModelDatabase.{h,cpp}` + its CMake entry (duplicate-class hazard); also clean up `QtRocket::runSim()` (dead decl), the stray `QtRocket::states`, and the unused `launchSitePosition`.
 - [ ] **Audit `utils/ThrustCurveAPI.cpp`** — remove `debug("1".."6")` traces; fix the Klima↔Quest swap ([MotorModel.h:346-349](model/MotorModel.h#L346-L349)); complete the manufacturer mapping in `searchMotors` (only "AeroTech" today).
@@ -31,6 +31,7 @@ Tasks tagged **[verified bug]** were confirmed against the source during analysi
 
 - [ ] **Introduce concrete component types** on `model::Part` (NoseCone, BodyTube, FinSet) carrying dimensions; derive mass, CG, and reference/frontal area from geometry (reuse `InertiaTensors` + parallel-axis composition). Replace the hard-coded 1 kg sphere with an assembled design.
 - [ ] **Wire `gui/RocketTreeView`** to a `QAbstractItemModel` backed by the `Part` tree — editable exploded view with add/remove/edit; recompute mass/inertia on change.
+- [ ] **Restore `topPart.getCompositeMass()` in `RocketModel::getMass()`** ([RocketModel.cpp](model/RocketModel.cpp)) — the P0 mass fix temporarily overrides mass with the GUI-provided `dryMass` because `topPart` is a placeholder 1 kg sphere. `getMass()` = `mm.getMass(t) + topPart.getCompositeMass(t)` is the correct formulation; once concrete Part types carry real masses, drop the `dryMass` override (and reconcile/repurpose the GUI mass field) and add the composite-mass term back.
 
 ## P3 — Stability & center of pressure (Barrowman) (1–2 weeks)
 

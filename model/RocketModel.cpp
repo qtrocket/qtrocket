@@ -17,7 +17,11 @@ RocketModel::RocketModel()
 double RocketModel::getMass(double t)
 {
     double mass = mm.getMass(t);
-    mass += topPart.getCompositeMass(t);
+    // TODO(P2): restore topPart.getCompositeMass(t) here. getMass() = motor + composite
+    // part mass is the correct formulation; we only override with the GUI-provided dryMass
+    // because topPart is currently a placeholder 1 kg sphere with no real component model.
+    // Once concrete Part types carry real masses, drop dryMass and add the line back. See TODO.md P2.
+    mass += dryMass;
     return mass;
 }
 

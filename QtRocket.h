@@ -4,7 +4,6 @@
 /// \cond
 // C headers
 // C++ headers
-#include <atomic>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -32,14 +31,6 @@ public:
    static QtRocket* getInstance();
 
    utils::Logger* getLogger() { return logger; }
-
-   // This will return when the main window returns;
-   // If called multiple times, subsequent calls, will simply
-   // immediately return with value 0
-   int run(int argc, char* argv[]);
-
-   void runSim();
-
 
    std::shared_ptr<sim::Environment> getEnvironment() { return environment; }
    void setTimeStep(double t) { rocket.second->setTimeStep(t); }
@@ -71,7 +62,6 @@ private:
 
    static void init();
 
-   std::atomic_bool running;
    static bool initialized;
    static std::mutex mtx;
    static QtRocket* instance;

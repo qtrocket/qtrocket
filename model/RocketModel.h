@@ -98,9 +98,15 @@ public:
     */
    void setName(const std::string& n) { name = n; }
 
-   double getDragCoefficient() { return 1.0; }
-   void setDragCoefficient(double d) { }
-   void setMass(double m) { }
+   double getDragCoefficient() { return dragCoefficient; }
+   void setDragCoefficient(double d) { dragCoefficient = d; }
+
+   /**
+    * @brief setMass sets the structural (non-motor) dry mass.
+    * @param m mass in kg. Non-positive values are ignored because getMass() is the
+    *          ODE divisor in the propagator and a zero mass would divide by zero.
+    */
+   void setMass(double m) { if(m > 0.0) dryMass = m; }
 
 private:
 
@@ -109,6 +115,12 @@ private:
    model::MotorModel mm; /// Current Motor Model
 
    model::Part topPart;
+
+   /// Structural (non-motor) mass in kg. Default 1.0 keeps mass > 0 before the GUI sets it.
+   double dryMass{1.0};
+
+   /// Dimensionless drag coefficient. Stored but not yet consumed (see P1 drag work).
+   double dragCoefficient{1.0};
 
 };
 
