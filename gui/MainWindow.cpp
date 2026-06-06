@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include <memory>
+#include <optional>
 
 // 3rd party headers
 #include <QFileDialog>
@@ -21,7 +22,7 @@
 #include "gui/ThrustCurveMotorSelector.h"
 #include "gui/SimOptionsWindow.h"
 #include "model/RocketModel.h"
-#include "utils/RSEDatabaseLoader.h"
+#include "utils/MotorModelDatabase.h"
 
 
 
@@ -147,21 +148,30 @@ void MainWindow::onButton_loadRSE_button_clicked()
                                                   "/home",
                                                   tr("Rocksim Engine Files (*.rse)"));
 
-   if(!rseFile.isEmpty())
+   if(rseFile.isEmpty())
+      return;
+
+   auto motorDatabase = QtRocket::getInstance()->getMotorDatabase();
+   try
    {
-      rseDatabase.reset(new utils::RSEDatabaseLoader(rseFile.toStdString()));
+      motorDatabase->importRSEFile(rseFile.toStdString());
+   }
+   catch(const std::exception& e)
+   {
+      std::cerr << "Failed to import " << rseFile.toStdString() << ": " << e.what() << std::endl;
+      return;
+   }
 
-      ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
+   ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
 
-      QComboBox* engineSelector =
-            ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
-
-      const std::vector<model::MotorModel>& motors = rseDatabase->getMotors();
-      for(const auto& motor : motors)
-      {
-         std::cout << "Adding: " << motor.data.commonName << std::endl;
-         engineSelector->addItem(QString(motor.data.commonName.c_str()));
-      }
+   // Repopulate the selector from the database, the single source of truth for motors. Clearing
+   // first keeps the list correct and duplicate-free when several files are imported across loads.
+   QComboBox* engineSelector =
+         ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
+   engineSelector->clear();
+   for(const auto& motor : motorDatabase->listMotors())
+   {
+      engineSelector->addItem(QString::fromStdString(motor.commonName));
    }
 }
 
@@ -189,16 +199,15 @@ void MainWindow::onMenu_Edit_SimulationOptions_triggered()
 void MainWindow::onButton_setMotor_clicked()
 {
    QString motorName = ui->engineSelectorComboBox->currentText();
-   model::MotorModel mm = rseDatabase->getMotorModelByName(motorName.toStdString());
-   QtRocket::getInstance()->getRocket()->setMotorModel(mm);
+   std::optional<model::MotorModel> mm =
+         QtRocket::getInstance()->getMotorDatabase()->getMotorModel(motorName.toStdString());
+   if(!mm)
+      return; // nothing selected, or the name is not in the database
+
+   QtRocket::getInstance()->getRocket()->setMotorModel(*mm);
 
    // Now that we have a motor selected, we can enable the calculateTrajectory button
    ui->calculateTrajectory_btn->setDisabled(false);
-
-   /// TODO: Figure out if this is the right place to populate the motor database
-   /// or from RSEDatabaseLoader where it currently is populated.
-   //QtRocket::getInstance()->addMotorModels(rseDatabase->getMotors());
-
 }
 
 void MainWindow::onMenu_File_Quit_triggered()

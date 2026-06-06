@@ -1,8 +1,6 @@
 add_library(model
    MotorModel.cpp
    MotorModel.h
-   MotorModelDatabase.cpp
-   MotorModelDatabase.h
    Part.cpp
    Part.h
    Propagatable.cpp

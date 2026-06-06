@@ -38,8 +38,6 @@ public:
 
    std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
-   void addMotorModels(std::vector<model::MotorModel>& m);
-
    void addRocket(std::shared_ptr<model::RocketModel> r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r); }
 
    void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }

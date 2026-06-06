@@ -5,13 +5,11 @@
 // C headers
 // C++ headers
 #include <iosfwd>
-#include <memory>
 #include <string>
 // 3rd party headers
 /// \endcond
 
 // qtrocket headers
-#include "utils/RSEDatabaseLoader.h"
 
 // Forward declare
 class QtRocket;
@@ -49,7 +47,6 @@ public:
 
 private:
    QtRocket* qtRocket;
-   std::unique_ptr<utils::RSEDatabaseLoader> loader;
 
    // Staged configuration, applied at launch (mirrors the GUI's line edits).
    bool motorSet{false};

@@ -13,7 +13,6 @@
 
 // qtrocket headers
 #include "utils/RSEDatabaseLoader.h"
-#include "QtRocket.h"
 #include "Logger.h"
 
 namespace utils {
@@ -29,8 +28,6 @@ RSEDatabaseLoader::RSEDatabaseLoader(const std::string& filename)
    {
       buildAndAppendMotorModel(v.second);
    }
-
-   QtRocket::getInstance()->addMotorModels(motors);
 }
 
 RSEDatabaseLoader::~RSEDatabaseLoader()

@@ -72,9 +72,3 @@ void QtRocket::launchRocket()
    // run the propagator until it terminates
    rocket.second->runUntilTerminate();
 }
-
-void QtRocket::addMotorModels(std::vector<model::MotorModel>& m)
-{
-   motorDatabase->addMotorModels(m);
-   // TODO: Now clear any duplicates?
-}

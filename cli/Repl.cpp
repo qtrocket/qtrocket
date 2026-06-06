@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -21,6 +22,7 @@
 #include "model/MotorModel.h"
 #include "model/RocketModel.h"
 #include "sim/StateData.h"
+#include "utils/MotorModelDatabase.h"
 
 namespace
 {
@@ -155,38 +157,38 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          out << "ERR usage: loadmotors <file.rse>\n";
          return true;
       }
+      std::size_t added = 0;
       try
       {
-         loader = std::make_unique<utils::RSEDatabaseLoader>(path);
+         added = qtRocket->getMotorDatabase()->importRSEFile(path);
       }
       catch(const std::exception& e)
       {
-         loader.reset();
          out << "ERR loadmotors: " << e.what() << "\n";
          return true;
       }
-      out << "OK loadmotors: " << loader->getMotors().size() << " motors from " << path << "\n";
+      out << "OK loadmotors: " << added << " motors from " << path << "\n";
       return true;
    }
    else if(cmd == "listmotors")
    {
-      if(!loader)
+      auto db = qtRocket->getMotorDatabase();
+      if(db->size() == 0)
       {
-         out << "ERR listmotors: no motor database loaded (use loadmotors)\n";
+         out << "ERR listmotors: no motors loaded (use loadmotors)\n";
          return true;
       }
       const std::string filter = restOfLine(iss);
+      utils::MotorQuery query;
+      if(!filter.empty())
+         query.nameContains = filter;
+      const std::vector<utils::MotorSummary> motors = db->listMotors(query);
       std::ostringstream entries;
-      std::size_t shown = 0;
-      for(const auto& m : loader->getMotors())
+      for(const auto& s : motors)
       {
-         const std::string& name = m.data.commonName;
-         if(!filter.empty() && name.find(filter) == std::string::npos)
-            continue;
-         entries << name << "  avg=" << m.data.avgThrust << "N  Itot=" << m.data.totalImpulse << "Ns\n";
-         ++shown;
+         entries << s.commonName << "  avg=" << s.avgThrust << "N  Itot=" << s.totalImpulse << "Ns\n";
       }
-      out << "OK listmotors: " << shown << " shown";
+      out << "OK listmotors: " << motors.size() << " shown";
       if(!filter.empty())
          out << " (filter=\"" << filter << "\")";
       out << "\n" << entries.str();
@@ -194,9 +196,10 @@ bool Repl::execute(const std::string& line, std::ostream& out)
    }
    else if(cmd == "setmotor")
    {
-      if(!loader)
+      auto db = qtRocket->getMotorDatabase();
+      if(db->size() == 0)
       {
-         out << "ERR setmotor: no motor database loaded (use loadmotors)\n";
+         out << "ERR setmotor: no motors loaded (use loadmotors)\n";
          return true;
       }
       const std::string name = restOfLine(iss);
@@ -205,16 +208,13 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          out << "ERR usage: setmotor <code>\n";
          return true;
       }
-      const auto& motors = loader->getMotors();
-      const bool found = std::any_of(motors.begin(), motors.end(),
-                                     [&](const auto& m) { return m.data.commonName == name; });
-      if(!found)
+      std::optional<model::MotorModel> mm = db->getMotorModel(name);
+      if(!mm)
       {
          out << "ERR setmotor: '" << name << "' not found (use listmotors)\n";
          return true;
       }
-      model::MotorModel mm = loader->getMotorModelByName(name);
-      qtRocket->getRocket()->setMotorModel(mm);
+      qtRocket->getRocket()->setMotorModel(*mm);
       motorSet = true;
       motorName = name;
       out << "OK setmotor: " << name << "\n";
@@ -348,8 +348,9 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "  angle      = " << initialAngleDeg << " deg (from horizontal)\n"
           << "  atmosphere = " << atmosphereModel << "\n"
           << "  database   = "
-          << (loader ? (std::to_string(loader->getMotors().size()) + " motors")
-                     : std::string("(none loaded)"))
+          << (qtRocket->getMotorDatabase()->size() > 0
+                 ? std::to_string(qtRocket->getMotorDatabase()->size()) + " motors"
+                 : std::string("(none loaded)"))
           << "\n";
       return true;
    }

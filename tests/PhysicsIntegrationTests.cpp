@@ -50,8 +50,8 @@ protected:
       qtRocket = QtRocket::getInstance();
 
       // Load the bundled motor DB (absolute path injected by CMake) and arm a
-      // known motor + airframe. RSEDatabaseLoader registers motors with the
-      // singleton, so QtRocket must already exist (it does, above).
+      // known motor + airframe. The loader is a pure parser; we pull the motor
+      // from it directly via getMotorModelByName.
       loader = std::make_unique<utils::RSEDatabaseLoader>(
          std::string(QTROCKET_DATA_DIR) + "/Aerotech.rse");
 

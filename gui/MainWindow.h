@@ -13,7 +13,6 @@
 #include "QtRocket.h"
 
 #include "gui/SimOptionsWindow.h"
-#include "utils/RSEDatabaseLoader.h"
 
 
 QT_BEGIN_NAMESPACE
@@ -58,6 +57,5 @@ private slots:
    QtRocket* qtRocket;
 
    SimOptionsWindow* simOptionsWindow{nullptr};
-   std::unique_ptr<utils::RSEDatabaseLoader> rseDatabase;
 };
 #endif // MAINWINDOW_H
