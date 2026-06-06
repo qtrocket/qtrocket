@@ -1,9 +1,10 @@
-# End-to-end physics integration tests. These drive the real RocketModel /
-# Propagator / Environment via the QtRocket controller, so QtRocket.cpp is
-# compiled in directly (as for the executables) to avoid a utils<->controller
-# circular static-lib dependency. No Qt is needed (the controller is Qt-free).
+# End-to-end tests that drive the real RocketModel / Propagator / Environment and the
+# motor database via the QtRocket controller, so QtRocket.cpp is compiled in directly
+# (as for the executables) to avoid a utils<->controller circular static-lib dependency.
+# No Qt is needed (the controller is Qt-free).
 add_executable(integration_tests
    PhysicsIntegrationTests.cpp
+   MotorDatabasePersistenceTests.cpp
    ${CMAKE_SOURCE_DIR}/QtRocket.cpp
 )
 

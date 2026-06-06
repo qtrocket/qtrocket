@@ -147,6 +147,7 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
       motor.put("maxThrust", m.data.maxThrust);
       motor.put("motorIdTC", m.data.motorIdTC);
       motor.put("propType", m.data.propType);
+      motor.put("propWeight", m.data.propWeight);
       motor.put("sparky", m.data.sparky ? "true" : "false");
       motor.put("totalImpulse", m.data.totalImpulse);
       motor.put("totalWeight", m.data.totalWeight);
@@ -183,7 +184,72 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
 
 void MotorModelDatabase::loadMotorDatabase(const std::string& filename)
 {
+   namespace pt = boost::property_tree;
+   namespace mm = model;
 
+   pt::ptree tree;
+   pt::read_xml(filename, tree);
+
+   for(const auto& [key, motor] : tree.get_child("QtRocketMotorDatabase.MotorModels"))
+   {
+      if(key != "motor")
+         continue; // skip attributes / any non-motor nodes
+
+      mm::MotorModel::MetaData md;
+      md.availability  = mm::MotorModel::MotorAvailability(
+                            mm::MotorModel::MotorAvailability::toEnum(motor.get<std::string>("availability", "regular")));
+      md.avgThrust     = motor.get<double>("avgThrust", 0.0);
+      md.burnTime      = motor.get<double>("burnTime", 0.0);
+      md.certOrg       = mm::MotorModel::CertOrg(
+                            mm::MotorModel::CertOrg::toEnum(motor.get<std::string>("certOrg", "Uncertified")));
+      md.commonName    = motor.get<std::string>("commonName", "");
+      md.designation   = motor.get<std::string>("designation", "");
+      md.diameter      = motor.get<double>("diameter", 0.0);
+      md.impulseClass  = motor.get<std::string>("impulseClass", "");
+      md.infoUrl       = motor.get<std::string>("infoUrl", "");
+      md.length        = motor.get<double>("length", 0.0);
+      md.manufacturer  = mm::MotorModel::MotorManufacturer(
+                            mm::MotorModel::MotorManufacturer::toEnum(motor.get<std::string>("manufacturer", "Unknown")));
+      md.maxThrust     = motor.get<double>("maxThrust", 0.0);
+      md.motorIdTC     = motor.get<std::string>("motorIdTC", "");
+      md.propType      = motor.get<std::string>("propType", "");
+      md.propWeight    = motor.get<double>("propWeight", 0.0);
+      md.sparky        = motor.get<std::string>("sparky", "false") == "true";
+      md.totalImpulse  = motor.get<double>("totalImpulse", 0.0);
+      md.totalWeight   = motor.get<double>("totalWeight", 0.0);
+      md.type          = mm::MotorModel::MotorType(
+                            mm::MotorModel::MotorType::toEnum(motor.get<std::string>("type", "Single Use")));
+      md.lastUpdated   = motor.get<std::string>("lastUpdated", "");
+
+      // delays were written as a comma-separated string
+      std::stringstream delays(motor.get<std::string>("delays", ""));
+      std::string tok;
+      while(std::getline(delays, tok, ','))
+      {
+         if(!tok.empty())
+            md.delays.push_back(std::stoi(tok));
+      }
+
+      // thrust curve: <thrustCurve><thrust time=".." force=".."/>...</thrustCurve>
+      std::vector<std::pair<double, double>> thrustData;
+      if(auto thrustCurve = motor.get_child_optional("thrustCurve"))
+      {
+         for(const auto& [tkey, tnode] : *thrustCurve)
+         {
+            if(tkey != "thrust")
+               continue;
+            thrustData.emplace_back(tnode.get<double>("<xmlattr>.time", 0.0),
+                                    tnode.get<double>("<xmlattr>.force", 0.0));
+         }
+      }
+
+      mm::MotorModel motorModel;
+      // Order matters: setMetaData() triggers computeMassCurve(), which integrates the thrust
+      // curve, so the curve must be in place first (mirrors RSEDatabaseLoader).
+      motorModel.addThrustCurve(ThrustCurve(thrustData));
+      motorModel.setMetaData(md);
+      addMotorModel(motorModel);
+   }
 }
 
 } // namespace utils

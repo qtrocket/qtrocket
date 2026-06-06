@@ -199,17 +199,20 @@ public:
        */
       static CERTORG toEnum(const std::string& name)
       {
-         if(name == "AMRS")
+         // Accept both the short codes and the full names emitted by str(), so a
+         // str()->toEnum() round-trip (e.g. save/load) is lossless. The "Austrialian"
+         // and "Unkown" spellings intentionally match str()'s existing (typo'd) output.
+         if(name == "AMRS" || name == "Austrialian Model Rocket Society Inc.")
             return CERTORG::AMRS;
-         else if(name == "CAR")
+         else if(name == "CAR" || name == "Canadian Association of Rocketry")
             return CERTORG::CAR;
-         else if(name == "NAR")
+         else if(name == "NAR" || name == "National Association of Rocketry")
             return CERTORG::NAR;
-         else if(name == "TRA")
+         else if(name == "TRA" || name == "Tripoli Rocketry Association, Inc.")
             return CERTORG::TRA;
-         else if(name == "UNC")
+         else if(name == "UNC" || name == "Uncertified")
             return CERTORG::UNC;
-         else // Unknown
+         else // Unknown ("Unkown")
             return CERTORG::UNK;
 
       }

@@ -84,6 +84,11 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
            this,
            SLOT(onButton_getTCMotorData_clicked()));
 
+   connect(ui->loadMotorDatabase_btn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_loadMotorDatabase_clicked()));
+
    ui->calculateTrajectory_btn->setDisabled(true);
 }
 
@@ -163,13 +168,17 @@ void MainWindow::onButton_loadRSE_button_clicked()
    }
 
    ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
+   populateEngineSelectorFromDatabase();
+}
 
-   // Repopulate the selector from the database, the single source of truth for motors. Clearing
-   // first keeps the list correct and duplicate-free when several files are imported across loads.
+void MainWindow::populateEngineSelectorFromDatabase()
+{
+   // Rebuild the selector from the database (the single source of truth). Clearing first keeps the
+   // list correct and duplicate-free when motors are loaded from several files across loads.
    QComboBox* engineSelector =
          ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
    engineSelector->clear();
-   for(const auto& motor : motorDatabase->listMotors())
+   for(const auto& motor : QtRocket::getInstance()->getMotorDatabase()->listMotors())
    {
       engineSelector->addItem(QString::fromStdString(motor.commonName));
    }
@@ -182,6 +191,33 @@ void MainWindow::onButton_getTCMotorData_clicked()
    window.setModal(false);
    window.exec();
 
+}
+
+
+void MainWindow::onButton_loadMotorDatabase_clicked()
+{
+   QString dbFile = QFileDialog::getOpenFileName(this,
+                                                 tr("Load Motor Database File"),
+                                                 "/home",
+                                                 tr("QtRocket Motor Database (*.qmd)"));
+
+   if(dbFile.isEmpty())
+      return;
+
+   auto motorDatabase = QtRocket::getInstance()->getMotorDatabase();
+   try
+   {
+      motorDatabase->loadMotorDatabase(dbFile.toStdString());
+   }
+   catch(const std::exception& e)
+   {
+      std::cerr << "Failed to load motor database " << dbFile.toStdString() << ": " << e.what()
+                << std::endl;
+      return;
+   }
+
+   ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(dbFile);
+   populateEngineSelectorFromDatabase();
 }
 
 

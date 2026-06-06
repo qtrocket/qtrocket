@@ -127,7 +127,9 @@ bool Repl::execute(const std::string& line, std::ostream& out)
    if(cmd == "help")
    {
       out << "# commands:\n"
-          << "#   loadmotors <file.rse>   load a RockSim motor database\n"
+          << "#   loadmotors <file.rse>   import a RockSim motor database\n"
+          << "#   savedb <file.qmd>       save the motor database to a file\n"
+          << "#   loaddb <file.qmd>       load a saved motor database (adds to current)\n"
           << "#   listmotors [substr]     list motor common names (optional filter)\n"
           << "#   setmotor <code>         select a motor by common name\n"
           << "#   setmass <kg>            set structural (dry) mass, must be > 0\n"
@@ -168,6 +170,50 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
       out << "OK loadmotors: " << added << " motors from " << path << "\n";
+      return true;
+   }
+   else if(cmd == "savedb")
+   {
+      const std::string path = restOfLine(iss);
+      if(path.empty())
+      {
+         out << "ERR usage: savedb <file.qmd>\n";
+         return true;
+      }
+      auto db = qtRocket->getMotorDatabase();
+      try
+      {
+         db->saveMotorDatabase(path);
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR savedb: " << e.what() << "\n";
+         return true;
+      }
+      out << "OK savedb: " << db->size() << " motors to " << path << "\n";
+      return true;
+   }
+   else if(cmd == "loaddb")
+   {
+      const std::string path = restOfLine(iss);
+      if(path.empty())
+      {
+         out << "ERR usage: loaddb <file.qmd>\n";
+         return true;
+      }
+      auto db = qtRocket->getMotorDatabase();
+      const std::size_t before = db->size();
+      try
+      {
+         db->loadMotorDatabase(path);
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR loaddb: " << e.what() << "\n";
+         return true;
+      }
+      out << "OK loaddb: " << (db->size() - before) << " new motors from " << path
+          << " (" << db->size() << " total)\n";
       return true;
    }
    else if(cmd == "listmotors")
