@@ -89,7 +89,14 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
            this,
            SLOT(onButton_loadMotorDatabase_clicked()));
 
-   ui->calculateTrajectory_btn->setDisabled(true);
+   refreshCalculateTrajectoryEnabled();
+}
+
+void MainWindow::refreshCalculateTrajectoryEnabled()
+{
+   // Single rule shared by every motor-selection path (RSE "Set Motor", thrustcurve.org, and a
+   // loaded database): the trajectory can be calculated exactly when the rocket has a motor.
+   ui->calculateTrajectory_btn->setDisabled(!qtRocket->getRocket()->isMotorSet());
 }
 
 MainWindow::~MainWindow()
@@ -191,6 +198,9 @@ void MainWindow::onButton_getTCMotorData_clicked()
    window.setModal(false);
    window.exec();
 
+   // The selector may have set a motor via the database; re-evaluate so this path enables
+   // "Calculate Trajectory" just like the RSE path.
+   refreshCalculateTrajectoryEnabled();
 }
 
 
@@ -242,8 +252,8 @@ void MainWindow::onButton_setMotor_clicked()
 
    QtRocket::getInstance()->getRocket()->setMotorModel(*mm);
 
-   // Now that we have a motor selected, we can enable the calculateTrajectory button
-   ui->calculateTrajectory_btn->setDisabled(false);
+   // Enable "Calculate Trajectory" now that a motor is set (shared rule across all paths).
+   refreshCalculateTrajectoryEnabled();
 }
 
 void MainWindow::onMenu_File_Quit_triggered()

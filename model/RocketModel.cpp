@@ -92,6 +92,7 @@ void RocketModel::launch()
 void RocketModel::setMotorModel(const model::MotorModel& motor)
 {
    mm = motor;
+   motorSet = true;
 }
 
 } // namespace model

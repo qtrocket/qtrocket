@@ -61,6 +61,13 @@ private slots:
     */
    void populateEngineSelectorFromDatabase();
 
+   /**
+    * @brief Enable/disable "Calculate Trajectory" from the single "a motor is set" signal
+    *        (RocketModel::isMotorSet()). Call after any motor-selection path so the RSE and
+    *        thrustcurve.org paths share one rule instead of each toggling the button.
+    */
+   void refreshCalculateTrajectoryEnabled();
+
    Ui::MainWindow* ui;
    QtRocket* qtRocket;
 

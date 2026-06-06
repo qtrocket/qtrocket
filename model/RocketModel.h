@@ -86,6 +86,14 @@ public:
    MotorModel getMotorModel() { return mm; }
 
    /**
+    * @brief isMotorSet reports whether a motor has been assigned to this rocket. Every
+    *        motor-selection path goes through setMotorModel(), so this is the single
+    *        "a motor is set" signal the GUI uses to gate launching, regardless of source.
+    * @return true once setMotorModel() has been called
+    */
+   bool isMotorSet() const { return motorSet; }
+
+   /**
     * @brief Returns the current motor model.
     * @return The current motor model
     */
@@ -120,6 +128,9 @@ private:
    std::string name; /// Rocket name
 
    model::MotorModel mm; /// Current Motor Model
+
+   /// True once a motor has been assigned via setMotorModel(). The default rocket has none.
+   bool motorSet{false};
 
    model::Part topPart;
 
