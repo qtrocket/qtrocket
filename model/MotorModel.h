@@ -344,9 +344,9 @@ public:
          else if(name == "Hypertek")
             return MOTORMANUFACTURER::HYPERTEK;
          else if(name == "Klima")
-            return MOTORMANUFACTURER::QUEST;
-         else if(name == "Quest")
             return MOTORMANUFACTURER::KLIMA;
+         else if(name == "Quest")
+            return MOTORMANUFACTURER::QUEST;
          else
             return MOTORMANUFACTURER::UNKNOWN;
       }
