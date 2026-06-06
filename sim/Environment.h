@@ -17,6 +17,7 @@
 
 #include "sim/ConstantAtmosphere.h"
 #include "sim/USStandardAtmosphere.h"
+#include "sim/VacuumAtmosphere.h"
 
 namespace sim
 {
@@ -42,7 +43,8 @@ public:
 
     std::vector<std::string> getAvailableGravityModels()
     {
-        std::vector<std::string> retVal(gravityModels.size());
+        std::vector<std::string> retVal;
+        retVal.reserve(gravityModels.size());
         std::transform(gravityModels.begin(), gravityModels.end(), std::back_inserter(retVal),
                   [](auto& i) { return i.first; });
         return retVal;
@@ -50,7 +52,8 @@ public:
 
     std::vector<std::string> getAvailableAtmosphereModels()
     {
-        std::vector<std::string> retVal(atmosphereModels.size());
+        std::vector<std::string> retVal;
+        retVal.reserve(atmosphereModels.size());
         std::transform(atmosphereModels.begin(), atmosphereModels.end(), std::back_inserter(retVal),
                   [](auto& i) { return i.first; });
         return retVal;
@@ -82,6 +85,11 @@ public:
             atmosphereModel = model;
             atmosphereModels[atmosphereModel].reset(new sim::USStandardAtmosphere);
         }
+        else if(model == "Vacuum")
+        {
+            atmosphereModel = model;
+            atmosphereModels[atmosphereModel].reset(new sim::VacuumAtmosphere);
+        }
     }
 
     std::shared_ptr<sim::AtmosphericModel> getAtmosphericModel()
@@ -95,7 +103,8 @@ private:
 
     std::map<std::string, std::shared_ptr<sim::AtmosphericModel>> atmosphereModels{
         {"Constant Atmosphere", std::shared_ptr<sim::AtmosphericModel>()},
-        {"US Standard 1976", std::shared_ptr<sim::AtmosphericModel>()}};
+        {"US Standard 1976", std::shared_ptr<sim::AtmosphericModel>()},
+        {"Vacuum", std::shared_ptr<sim::AtmosphericModel>()}};
 
     std::map<std::string, std::shared_ptr<GravityModel>> gravityModels{
         {"Constant Gravity", std::shared_ptr<sim::GravityModel>()},

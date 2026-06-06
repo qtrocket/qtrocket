@@ -146,6 +146,7 @@ endif()
 add_subdirectory(utils)
 add_subdirectory(sim)
 add_subdirectory(model)
+add_subdirectory(tests)
 
 #target_link_libraries(qtrocket PRIVATE 
 #   Qt6::Widgets

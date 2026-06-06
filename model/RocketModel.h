@@ -48,7 +48,7 @@ public:
     */
    void launch();
 
-   Vector3 getForces(double t) override;
+   Vector3 getForces(double t, const Vector3& position, const Vector3& velocity) override;
    Vector3 getTorques(double t) override;
    /**
     * @brief getMass returns current rocket mass
@@ -101,6 +101,13 @@ public:
    double getDragCoefficient() { return dragCoefficient; }
    void setDragCoefficient(double d) { dragCoefficient = d; }
 
+   double getReferenceArea() { return referenceArea; }
+   /**
+    * @brief setReferenceArea sets the aerodynamic reference (frontal) area.
+    * @param a area in m^2. Negative values are ignored as unphysical
+    */
+   void setReferenceArea(double a) { if(a >= 0.0) referenceArea = a; }
+
    /**
     * @brief setMass sets the structural (non-motor) dry mass.
     * @param m mass in kg. Non-positive values are ignored because getMass() is the
@@ -119,8 +126,12 @@ private:
    /// Structural (non-motor) mass in kg. Default 1.0 keeps mass > 0 before the GUI sets it.
    double dryMass{1.0};
 
-   /// Dimensionless drag coefficient. Stored but not yet consumed (see P1 drag work).
+   /// Dimensionless drag coefficient consumed by the drag term in getForces().
    double dragCoefficient{1.0};
+
+   /// Aerodynamic reference (frontal) area in m^2 for the drag model. Default is
+   /// ~ a 38 mm body tube (pi * 0.019^2)
+   double referenceArea{1.134e-3};
 
 };
 

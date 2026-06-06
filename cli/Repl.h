@@ -58,6 +58,8 @@ private:
    double dragCoeff{1.0};
    double initialVelocity{0.0};
    double initialAngleDeg{90.0}; // from horizontal; 90 == straight up
+   double referenceArea{1.134e-3};                     // matches RocketModel default (38 mm tube)
+   std::string atmosphereModel{"Constant Atmosphere"}; // matches Environment default
 };
 
 } // namespace cli

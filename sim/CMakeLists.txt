@@ -18,6 +18,7 @@ add_library(sim
    StateData.h
    USStandardAtmosphere.cpp
    USStandardAtmosphere.h
+   VacuumAtmosphere.h
    WindModel.cpp
    WindModel.h)
 

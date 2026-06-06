@@ -34,7 +34,7 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
         dPosition = rate;
 
         // dvx/dt
-        dVelocity = object->getForces(currentTime) / object->getMass(currentTime);
+        dVelocity = object->getForces(currentTime, state, rate) / object->getMass(currentTime);
 
         return std::make_pair(dPosition, dVelocity);
     };

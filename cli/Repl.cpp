@@ -129,18 +129,21 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "#   listmotors [substr]     list motor common names (optional filter)\n"
           << "#   setmotor <code>         select a motor by common name\n"
           << "#   setmass <kg>            set structural (dry) mass, must be > 0\n"
-          << "#   setdrag <cd>            set drag coefficient (stored; not yet used by physics)\n"
+          << "#   setdrag <cd>            set drag coefficient (dimensionless)\n"
+          << "#   setarea <m^2>           set aerodynamic reference area, must be >= 0\n"
           << "#   setvelocity <m/s>       set initial speed (default 0)\n"
           << "#   setangle <deg>          set launch angle from horizontal (default 90 = up)\n"
-          << "#   settimestep <s>         set integrator timestep (see note)\n"
+          << "#   settimestep <s>         set integrator timestep\n"
+          << "#   listatmospheres         list available atmosphere models\n"
+          << "#   setatmosphere <name>    select atmosphere model (e.g. Vacuum)\n"
           << "#   status                  show current configuration\n"
           << "#   launch                  run the simulation; print summary + write CSV\n"
           << "#   states [stride]         print state vectors to stdout (every stride-th)\n"
           << "#   save <path.csv>         write the last run's full series to a file\n"
           << "#   help                    show this help\n"
           << "#   quit | exit             leave\n"
-          << "# note: the current physics is a vacuum point-mass (no drag yet), so results\n"
-          << "#       validate the integrator + motor model + gravity, not aerodynamics.\n";
+          << "# note: drag uses the active atmosphere's density; select the Vacuum\n"
+          << "#       atmosphere to reduce the model to thrust + gravity.\n";
       out << "OK help\n";
       return true;
    }
@@ -248,6 +251,24 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       out << "OK setdrag: " << d << "\n";
       return true;
    }
+   else if(cmd == "setarea")
+   {
+      double a = 0.0;
+      if(!parseDouble(iss, a))
+      {
+         out << "ERR usage: setarea <m^2>\n";
+         return true;
+      }
+      if(a < 0.0)
+      {
+         out << "ERR setarea: area must be >= 0\n";
+         return true;
+      }
+      qtRocket->getRocket()->setReferenceArea(a);
+      referenceArea = a;
+      out << "OK setarea: " << a << " m^2\n";
+      return true;
+   }
    else if(cmd == "setvelocity")
    {
       double v = 0.0;
@@ -289,14 +310,43 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       out << "OK settimestep: " << dt << " s\n";
       return true;
    }
+   else if(cmd == "listatmospheres")
+   {
+      const auto models = qtRocket->getEnvironment()->getAvailableAtmosphereModels();
+      out << "OK listatmospheres: " << models.size() << " available\n";
+      for(const auto& name : models)
+         out << name << "\n";
+      return true;
+   }
+   else if(cmd == "setatmosphere")
+   {
+      const std::string name = restOfLine(iss);
+      if(name.empty())
+      {
+         out << "ERR usage: setatmosphere <name>  (see listatmospheres)\n";
+         return true;
+      }
+      const auto models = qtRocket->getEnvironment()->getAvailableAtmosphereModels();
+      if(std::find(models.begin(), models.end(), name) == models.end())
+      {
+         out << "ERR setatmosphere: '" << name << "' not found (see listatmospheres)\n";
+         return true;
+      }
+      qtRocket->getEnvironment()->setAtmosphereModel(name);
+      atmosphereModel = name;
+      out << "OK setatmosphere: " << name << "\n";
+      return true;
+   }
    else if(cmd == "status")
    {
       out << "OK status:\n"
           << "  motor      = " << (motorSet ? motorName : std::string("(none)")) << "\n"
           << "  dry_mass   = " << dryMass << " kg\n"
           << "  drag_coeff = " << dragCoeff << "\n"
+          << "  ref_area   = " << referenceArea << " m^2\n"
           << "  velocity   = " << initialVelocity << " m/s\n"
           << "  angle      = " << initialAngleDeg << " deg (from horizontal)\n"
+          << "  atmosphere = " << atmosphereModel << "\n"
           << "  database   = "
           << (loader ? (std::to_string(loader->getMotors().size()) + " motors")
                      : std::string("(none loaded)"))
