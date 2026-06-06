@@ -3,6 +3,7 @@
 // C headers
 // C++ headers
 #include <algorithm>
+#include <optional>
 // 3rd party headers
 /// \endcond
 
@@ -10,11 +11,11 @@
 #include "ThrustCurveMotorSelector.h"
 #include "ui_ThrustCurveMotorSelector.h"
 #include "QtRocket.h"
+#include "utils/MotorModelDatabase.h"
 
 ThrustCurveMotorSelector::ThrustCurveMotorSelector(QWidget *parent) :
    QDialog(parent),
-   ui(new Ui::ThrustCurveMotorSelector),
-   tcApi(new utils::ThrustCurveAPI)
+   ui(new Ui::ThrustCurveMotorSelector)
 {
    ui->setupUi(this);
 
@@ -49,69 +50,51 @@ void ThrustCurveMotorSelector::onButton_getMetadata_clicked()
    // When the user clicks "Get Metadata", we want to pull in Metadata from thrustcurve.org
    // and populate the Manufacturer, Diameter, and Impulse Class combo boxes
 
-   utils::ThrustcurveMetadata metadata = tcApi->getMetadata();
+   utils::MotorSearchFacets facets =
+         QtRocket::getInstance()->getMotorDatabase()->getOnlineSearchFacets();
 
-   for(const auto& i : metadata.diameters)
-   {
-      ui->diameter->addItem(QString::number(i));
-   }
-
-   for(const auto& i : metadata.manufacturers)
-   {
-      ui->manufacturer->addItem(QString::fromStdString(i.first));
-   }
-   for(const auto& i : metadata.impulseClasses)
-   {
-      ui->impulseClass->addItem(QString::fromStdString(i));
-   }
+   for(double d : facets.diameters)
+      ui->diameter->addItem(QString::number(d));
+   for(const std::string& m : facets.manufacturers)
+      ui->manufacturer->addItem(QString::fromStdString(m));
+   for(const std::string& c : facets.impulseClasses)
+      ui->impulseClass->addItem(QString::fromStdString(c));
 }
 
 
 void ThrustCurveMotorSelector::onButton_searchButton_clicked()
 {
+   // Build a source-agnostic query from the chosen facets (leave unset facets unconstrained).
+   utils::MotorQuery query;
+   const QString diameter     = ui->diameter->currentText();
+   const QString manufacturer = ui->manufacturer->currentText();
+   const QString impulseClass = ui->impulseClass->currentText();
+   if(!diameter.isEmpty())     query.diameter     = diameter.toDouble();
+   if(!manufacturer.isEmpty()) query.manufacturer = manufacturer.toStdString();
+   if(!impulseClass.isEmpty()) query.impulseClass = impulseClass.toStdString();
 
-   //double diameter = ui->diameter->
+   const std::vector<utils::MotorSummary> motors =
+         QtRocket::getInstance()->getMotorDatabase()->searchOnline(query);
 
-   std::string diameter = ui->diameter->currentText().toStdString();
-   std::string manufacturer = ui->manufacturer->currentText().toStdString();
-   std::string impulseClass = ui->impulseClass->currentText().toStdString();
-
-   utils::SearchCriteria c;
-   c.addCriteria("diameter", diameter);
-   c.addCriteria("manufacturer", manufacturer);
-   c.addCriteria("impulseClass", impulseClass);
-
-   std::vector<model::MotorModel> motors = tcApi->searchMotors(c);
-   std::copy(std::begin(motors), std::end(motors), std::back_inserter(motorModels));
-
-   for(const auto& i : motors)
-   {
-      ui->motorSelection->addItem(QString::fromStdString(i.data.commonName));
-   }
-
+   ui->motorSelection->clear();
+   for(const auto& m : motors)
+      ui->motorSelection->addItem(QString::fromStdString(m.commonName));
 }
 
 
 void ThrustCurveMotorSelector::onButton_setMotor_clicked()
 {
-   //asdf
    std::string commonName = ui->motorSelection->currentText().toStdString();
 
-   // get motor
+   // The database holds the searched motors (with their thrust curves); fetch the full model.
+   std::optional<model::MotorModel> mm =
+         QtRocket::getInstance()->getMotorDatabase()->getMotorModel(commonName);
+   if(!mm)
+      return;
 
-   model::MotorModel mm = *std::find_if(
-       std::begin(motorModels),
-       std::end(motorModels),
-       [&commonName](const auto& item)
-       {
-           return item.data.commonName == commonName;
-       });
+   QtRocket::getInstance()->getRocket()->setMotorModel(*mm);
 
-   ThrustCurve tc = tcApi->getMotorData(mm.data.motorIdTC).getThrustCurve();
-   mm.addThrustCurve(tc);
-   QtRocket::getInstance()->getRocket()->setMotorModel(mm);
-
-   const std::vector<std::pair<double, double>>& res = tc.getThrustCurveData();
+   const std::vector<std::pair<double, double>>& res = mm->getThrustCurve().getThrustCurveData();
    auto& plot = ui->plot;
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);

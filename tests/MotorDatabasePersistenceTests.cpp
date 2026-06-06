@@ -43,6 +43,25 @@ TEST(MotorEnumRoundTrip, EveryWrapperRoundTripsThroughItsString)
       EXPECT_EQ(MM::MotorManufacturer::toEnum(MM::MotorManufacturer(m).str()), m);
 }
 
+// searchMotors() maps the manufacturer via MotorManufacturer::toEnum, and thrustcurve.org returns
+// the full company name (not the short code) in a search result's "manufacturer" field. Guards that
+// every enum manufacturer is recognised from that name -- i.e. it works for more than just AeroTech.
+TEST(MotorManufacturerMapping, AcceptsThrustcurveOrgNames)
+{
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("AeroTech"),               MM::MOTORMANUFACTURER::AEROTECH);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Animal Motor Works"),     MM::MOTORMANUFACTURER::AMW);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Apogee Components"),      MM::MOTORMANUFACTURER::APOGEE);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Cesaroni Technology"),    MM::MOTORMANUFACTURER::CESARONI);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Contrail Rockets"),       MM::MOTORMANUFACTURER::CONTRAIL);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Estes Industries"),       MM::MOTORMANUFACTURER::ESTES);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Hypertek"),               MM::MOTORMANUFACTURER::HYPERTEK);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Raketenmodellbau Klima"), MM::MOTORMANUFACTURER::KLIMA);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Loki Research"),          MM::MOTORMANUFACTURER::LOKI);
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Quest Aerospace"),        MM::MOTORMANUFACTURER::QUEST);
+   // A manufacturer our enum does not model falls back to UNKNOWN rather than misclassifying.
+   EXPECT_EQ(MM::MotorManufacturer::toEnum("Gorilla Rocket Motors"),  MM::MOTORMANUFACTURER::UNKNOWN);
+}
+
 class MotorDatabaseRoundTrip : public ::testing::Test
 {
 protected:

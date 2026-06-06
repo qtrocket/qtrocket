@@ -130,6 +130,9 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "#   loadmotors <file.rse>   import a RockSim motor database\n"
           << "#   savedb <file.qmd>       save the motor database to a file\n"
           << "#   loaddb <file.qmd>       load a saved motor database (adds to current)\n"
+          << "#   tcfacets                list thrustcurve.org search facets (online)\n"
+          << "#   tcsearch <k=v>...       search thrustcurve.org + add results (online);\n"
+          << "#                           keys: manufacturer, diameter, impulseClass\n"
           << "#   listmotors [substr]     list motor common names (optional filter)\n"
           << "#   setmotor <code>         select a motor by common name\n"
           << "#   setmass <kg>            set structural (dry) mass, must be > 0\n"
@@ -214,6 +217,64 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       }
       out << "OK loaddb: " << (db->size() - before) << " new motors from " << path
           << " (" << db->size() << " total)\n";
+      return true;
+   }
+   else if(cmd == "tcfacets")
+   {
+      utils::MotorSearchFacets facets;
+      try
+      {
+         facets = qtRocket->getMotorDatabase()->getOnlineSearchFacets();
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR tcfacets: " << e.what() << "\n";
+         return true;
+      }
+      out << "OK tcfacets:\n  manufacturers:";
+      for(const auto& m : facets.manufacturers) out << " " << m;
+      out << "\n  diameters:";
+      for(double d : facets.diameters) out << " " << d;
+      out << "\n  impulseClasses:";
+      for(const auto& c : facets.impulseClasses) out << " " << c;
+      out << "\n";
+      return true;
+   }
+   else if(cmd == "tcsearch")
+   {
+      // Parse key=value tokens into a source-agnostic query.
+      utils::MotorQuery query;
+      std::string tok;
+      while(iss >> tok)
+      {
+         const auto eq = tok.find('=');
+         if(eq == std::string::npos)
+            continue;
+         const std::string key = tok.substr(0, eq);
+         const std::string val = tok.substr(eq + 1);
+         if(key == "manufacturer")
+            query.manufacturer = val;
+         else if(key == "impulseClass")
+            query.impulseClass = val;
+         else if(key == "diameter")
+         {
+            try { query.diameter = std::stod(val); }
+            catch(const std::exception&) { out << "ERR tcsearch: bad diameter '" << val << "'\n"; return true; }
+         }
+      }
+      std::vector<utils::MotorSummary> motors;
+      try
+      {
+         motors = qtRocket->getMotorDatabase()->searchOnline(query);
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR tcsearch: " << e.what() << "\n";
+         return true;
+      }
+      out << "OK tcsearch: " << motors.size() << " motors\n";
+      for(const auto& m : motors)
+         out << m.commonName << "  avg=" << m.avgThrust << "N  Itot=" << m.totalImpulse << "Ns\n";
       return true;
    }
    else if(cmd == "listmotors")

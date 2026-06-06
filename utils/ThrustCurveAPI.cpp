@@ -235,9 +235,7 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
       {
          Json::Reader reader;
          Json::Value jsonResult;
-Logger::getInstance()->debug("1");
          reader.parse(result, jsonResult);
-Logger::getInstance()->debug("2");
 
          for(Json::ValueConstIterator iter = jsonResult["results"].begin();
              iter != jsonResult["results"].end();
@@ -246,7 +244,6 @@ Logger::getInstance()->debug("2");
             model::MotorModel motorModel;
             model::MotorModel::MetaData mm;
             mm.commonName = (*iter)["commonName"].asString();
-Logger::getInstance()->debug("3");
 
             std::string availability = (*iter)["availability"].asString();
             if(availability == "regular")
@@ -256,17 +253,14 @@ Logger::getInstance()->debug("3");
 
             mm.avgThrust = (*iter)["avgThrustN"].asDouble();
             mm.burnTime  = (*iter)["burnTimeS"].asDouble();
-Logger::getInstance()->debug("4");
             // TODO fill in certOrg
             // TODO fill in delays
             mm.designation = (*iter)["designation"].asString();
             mm.diameter    = (*iter)["diameter"].asDouble();
             mm.impulseClass = (*iter)["impulseClass"].asString();
             mm.length       = (*iter)["length"].asDouble();
-            std::string manu = (*iter)["manufacturer"].asString();
-            if(manu == "AeroTech")
-                mm.manufacturer = model::MotorModel::MOTORMANUFACTURER::AEROTECH;
-            //mm.manufacturer = (*iter)["manufacturer"].asString();
+            mm.manufacturer = model::MotorModel::MotorManufacturer::toEnum(
+                                 (*iter)["manufacturer"].asString());
             mm.maxThrust    = (*iter)["maxThrustN"].asDouble();
             mm.motorIdTC    = (*iter)["motorId"].asString();
             mm.propType     = (*iter)["propInfo"].asString();
@@ -283,14 +277,14 @@ Logger::getInstance()->debug("4");
             else
                 mm.type = model::MotorModel::MotorType(model::MotorModel::MOTORTYPE::HYBRID);
 
-Logger::getInstance()->debug("5");
             auto tc = getThrustCurve(mm.motorIdTC);
-            motorModel.moveMetaData(std::move(mm));
-Logger::getInstance()->debug("6");
             if(tc)
             {
                 motorModel.addThrustCurve(*tc);
             }
+            // Add the thrust curve before the metadata: moveMetaData() triggers computeMassCurve(),
+            // which integrates the thrust curve, so the curve must be in place first.
+            motorModel.moveMetaData(std::move(mm));
             retVal.push_back(motorModel);
          }
       }

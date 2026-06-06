@@ -326,6 +326,10 @@ public:
        */
       static MOTORMANUFACTURER toEnum(const std::string& name)
       {
+         // Accepts short codes, the full "name" strings thrustcurve.org returns in search
+         // results, and a few legacy variants, so the same helper maps manufacturers coming
+         // from RSE files, thrustcurve.org, and saved databases. Manufacturers outside our
+         // enum fall through to UNKNOWN.
          if(name == "AeroTech" ||
              name == "Aerotech")
             return MOTORMANUFACTURER::AEROTECH;
@@ -333,22 +337,29 @@ public:
                  name == "Animal Motor Works")
             return MOTORMANUFACTURER::AMW;
          else if(name == "Cesaroni" ||
+                 name == "Cesaroni Technology" ||
                  name == "Cesaroni Technology Inc.")
             return MOTORMANUFACTURER::CESARONI;
          else if(name == "Estes" ||
+                 name == "Estes Industries" ||
                  name == "Estes Industries, Inc.")
             return MOTORMANUFACTURER::ESTES;
-         else if(name == "Loki")
+         else if(name == "Loki" ||
+                 name == "Loki Research")
             return MOTORMANUFACTURER::LOKI;
-         else if(name == "Apogee")
+         else if(name == "Apogee" ||
+                 name == "Apogee Components")
             return MOTORMANUFACTURER::APOGEE;
-         else if(name == "Contrail")
+         else if(name == "Contrail" ||
+                 name == "Contrail Rockets")
             return MOTORMANUFACTURER::CONTRAIL;
          else if(name == "Hypertek")
             return MOTORMANUFACTURER::HYPERTEK;
-         else if(name == "Klima")
+         else if(name == "Klima" ||
+                 name == "Raketenmodellbau Klima")
             return MOTORMANUFACTURER::KLIMA;
-         else if(name == "Quest")
+         else if(name == "Quest" ||
+                 name == "Quest Aerospace")
             return MOTORMANUFACTURER::QUEST;
          else
             return MOTORMANUFACTURER::UNKNOWN;

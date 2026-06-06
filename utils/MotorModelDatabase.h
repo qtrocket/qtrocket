@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <memory>
 #include <optional>
 #include <cstddef>
 // 3rd party headers
@@ -18,6 +19,9 @@
 
 namespace utils
 {
+
+// Owned internally so client code depends only on MotorModelDatabase, never on the API directly.
+class ThrustCurveAPI;
 
 /**
  * @brief MotorQuery is a source-agnostic filter for selecting motors. Every field is optional; an
@@ -50,6 +54,17 @@ struct MotorSummary
    double      totalImpulse{0.0}; /// total impulse, Newton-seconds
    double      diameter{0.0};     /// motor diameter, mm
    std::string impulseClass;      /// motor letter, e.g. "A", "J"
+};
+
+/**
+ * @brief MotorSearchFacets enumerates the values an online search can be filtered by (the choices a
+ *        UI would present). Source-agnostic; currently populated from thrustcurve.org metadata.
+ */
+struct MotorSearchFacets
+{
+   std::vector<std::string> manufacturers; /// manufacturer codes, e.g. "AeroTech"
+   std::vector<double>      diameters;     /// motor diameters in mm
+   std::vector<std::string> impulseClasses;/// motor letters, e.g. "A", "J"
 };
 
 /**
@@ -103,6 +118,22 @@ public:
    std::vector<MotorSummary> listMotors(const MotorQuery& q = {}) const;
 
    /**
+    * @brief getOnlineSearchFacets returns the manufacturers / diameters / impulse classes that an
+    *        online (thrustcurve.org) search can be filtered by. Performs a network request.
+    * @return the available search facets (empty if the request fails)
+    */
+   MotorSearchFacets getOnlineSearchFacets();
+
+   /**
+    * @brief searchOnline queries thrustcurve.org for motors matching the query, merges the results
+    *        into this database (so getMotorModel()/listMotors() then see them) and returns their
+    *        summaries. Performs network requests; clients never touch ThrustCurveAPI directly.
+    * @param q source-agnostic filter (manufacturer / impulseClass / diameter; nameContains ignored)
+    * @return summaries of the matching motors (empty if the request fails or matches nothing)
+    */
+   std::vector<MotorSummary> searchOnline(const MotorQuery& q);
+
+   /**
     * @brief size reports how many motors are currently stored, across every source ingested so far.
     * @return number of motors in the database
     */
@@ -117,12 +148,18 @@ private:
    void addMotorModel(const model::MotorModel& m);
    void addMotorModels(const std::vector<model::MotorModel>& models);
 
+   /// Build the lightweight summary used by listMotors()/searchOnline().
+   static MotorSummary toSummary(const model::MotorModel& m);
+
+   /// Lazily construct (on first online use) and return the owned thrustcurve.org client.
+   ThrustCurveAPI& thrustCurveApi();
+
    // The "database" is really just a map. :)
    /// motorModelMap is keyed off of the motor commonName
    std::map<std::string, model::MotorModel> motorModelMap;
-   
 
-
+   /// thrustcurve.org client, owned so clients never depend on it. Null until first online use.
+   std::unique_ptr<ThrustCurveAPI> tcApi;
 };
 
 } // namespace utils

@@ -11,7 +11,6 @@
 /// \endcond
 
 // qtrocket headers
-#include "utils/ThrustCurveAPI.h"
 #include "model/MotorModel.h"
 
 namespace Ui {
@@ -38,10 +37,6 @@ private slots:
 
    private:
    Ui::ThrustCurveMotorSelector *ui;
-
-   std::unique_ptr<utils::ThrustCurveAPI> tcApi;
-
-   std::vector<model::MotorModel> motorModels;
 };
 
 #endif // THRUSTCURVEMOTORSELECTOR_H

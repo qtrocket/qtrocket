@@ -5,6 +5,7 @@
 // C headers
 // C++ headers
 #include <cmath>
+#include <format>
 // 3rd party headers
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -13,6 +14,7 @@
 // qtrocket project headers
 #include "QtRocket.h"
 #include "utils/RSEDatabaseLoader.h"
+#include "utils/ThrustCurveAPI.h"
 
 namespace utils
 {
@@ -107,17 +109,61 @@ std::vector<MotorSummary> MotorModelDatabase::listMotors(const MotorQuery& q) co
    for(const auto& entry : motorModelMap)
    {
       const model::MotorModel& m = entry.second;
-      if(!matches(m))
-         continue;
-      result.push_back(MotorSummary{
-         .commonName   = m.data.commonName,
-         .manufacturer = m.data.manufacturer.str(),
-         .avgThrust    = m.data.avgThrust,
-         .totalImpulse = m.data.totalImpulse,
-         .diameter     = m.data.diameter,
-         .impulseClass = m.data.impulseClass});
+      if(matches(m))
+         result.push_back(toSummary(m));
    }
    return result;
+}
+
+MotorSummary MotorModelDatabase::toSummary(const model::MotorModel& m)
+{
+   return MotorSummary{
+      .commonName   = m.data.commonName,
+      .manufacturer = m.data.manufacturer.str(),
+      .avgThrust    = m.data.avgThrust,
+      .totalImpulse = m.data.totalImpulse,
+      .diameter     = m.data.diameter,
+      .impulseClass = m.data.impulseClass};
+}
+
+ThrustCurveAPI& MotorModelDatabase::thrustCurveApi()
+{
+   if(!tcApi)
+      tcApi = std::make_unique<ThrustCurveAPI>();
+   return *tcApi;
+}
+
+MotorSearchFacets MotorModelDatabase::getOnlineSearchFacets()
+{
+   ThrustcurveMetadata meta = thrustCurveApi().getMetadata();
+
+   MotorSearchFacets facets;
+   facets.diameters = meta.diameters;
+   facets.impulseClasses = meta.impulseClasses;
+   // meta.manufacturers maps code -> full name; the search API keys on the code.
+   for(const auto& [code, name] : meta.manufacturers)
+      facets.manufacturers.push_back(code);
+   return facets;
+}
+
+std::vector<MotorSummary> MotorModelDatabase::searchOnline(const MotorQuery& q)
+{
+   SearchCriteria criteria;
+   if(q.manufacturer)
+      criteria.addCriteria("manufacturer", *q.manufacturer);
+   if(q.impulseClass)
+      criteria.addCriteria("impulseClass", *q.impulseClass);
+   if(q.diameter)
+      // std::format prints 38.0 as "38" and 13.5 as "13.5" -- the form the API expects.
+      criteria.addCriteria("diameter", std::format("{}", *q.diameter));
+
+   std::vector<MotorSummary> found;
+   for(const auto& motor : thrustCurveApi().searchMotors(criteria))
+   {
+      addMotorModel(motor); // merge into the database so getMotorModel()/listMotors() see it
+      found.push_back(toSummary(motor));
+   }
+   return found;
 }
 
 void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
@@ -154,13 +200,15 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
       motor.put("type", m.data.type.str());
       motor.put("lastUpdated", m.data.lastUpdated);
 
-      // delays tag is in the form of a csv string
+      // delays tag is a csv string. Guard against an empty delays vector (thrustcurve.org search
+      // results carry none): the old size()-1 form underflowed and indexed out of bounds.
       std::stringstream delays;
-      for (std::size_t i = 0; i < m.data.delays.size() - 1; ++i)
+      for (std::size_t i = 0; i < m.data.delays.size(); ++i)
       {
-          delays << std::to_string(m.data.delays[i]) << ",";
+          if(i > 0)
+              delays << ",";
+          delays << std::to_string(m.data.delays[i]);
       }
-      delays << std::to_string(m.data.delays[m.data.delays.size() - 1]);
       motor.put("delays", delays.str());
 
       // thrust data
