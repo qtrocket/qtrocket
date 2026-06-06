@@ -14,6 +14,22 @@
 namespace sim
 {
 
+/**
+ * @brief The result of a single integrator step: the advanced state and rate, plus the step size
+ *        actually taken. Fixed-step solvers (RK4Solver) report their constant dt; adaptive solvers
+ *        (RK45Solver) report the step they chose. Callers advance their clock by stepSize and so
+ *        behave the same regardless of which integrator is in use.
+ *
+ * @tparam T the state/rate type (Vector3 or Quaternion)
+ */
+template<typename T>
+struct StepResult
+{
+   T state;
+   T rate;
+   double stepSize{0.0};
+};
+
 template<typename T>
 class DESolver
 {
@@ -21,18 +37,27 @@ public:
    DESolver() {}
    virtual ~DESolver() {}
 
-   virtual void setTimeStep(double ts) = 0;
    /**
-    * @brief 
-    * 
-    * @param curVal 
-    * @param res 
-    * @param t Optional parameter, but not used in QtRocket. Some generic solvers take time as
-    *          a parameter to ODEs, but QtRocket's kinematic equations don't. Since I wrote
-    *          the RK4 solver independently as a general tool, this interface is needed
-    *          here unfortunately.
+    * @brief setTimeStep sets the integration step size. For a fixed-step solver this is the step
+    *        used on every step(); for an adaptive solver it seeds the initial step-size guess.
+    * @param ts step size in seconds
     */
-   virtual std::pair<T, T> step(T& state, T& rate) = 0;
+   virtual void setTimeStep(double ts) = 0;
+
+   /**
+    * @brief step advances the coupled (state, rate) system by one integration step.
+    *
+    * The ODE callback takes no time argument: QtRocket's kinematic equations are evaluated at the
+    * step's start time. (The interface is generic because the solvers were written as standalone
+    * tools.)
+    *
+    * @param state current state (e.g. position), passed by reference as the ODE callback input
+    * @param rate current rate (e.g. velocity)
+    * @return the advanced state and rate plus the step size actually taken (see StepResult); the
+    *         caller advances its clock by StepResult::stepSize -- constant for a fixed-step solver,
+    *         variable for an adaptive one.
+    */
+   virtual StepResult<T> step(T& state, T& rate) = 0;
 };
 
 } // namespace sim

@@ -67,7 +67,9 @@ void Propagator::runUntilTerminate()
         currentPosition = object->getCurrentState().position;
         currentVelocity = object->getCurrentState().velocity;
 
-        std::tie(nextPosition, nextVelocity) = linearIntegrator->step(currentPosition, currentVelocity);
+        StepResult<Vector3> result = linearIntegrator->step(currentPosition, currentVelocity);
+        nextPosition = result.state;
+        nextVelocity = result.rate;
 
         StateData nextState;
         nextState.position = nextPosition;
@@ -83,7 +85,8 @@ void Propagator::runUntilTerminate()
             break;
         }
 
-        currentTime += timeStep;
+        // Advance by the step the integrator actually took: constant dt for RK4, adaptive for RKF45.
+        currentTime += result.stepSize;
     }
     endTime = std::chrono::steady_clock::now();
 

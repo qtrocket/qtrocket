@@ -47,13 +47,12 @@ public:
 
    void setTimeStep(double inTs) override { dt = inTs;  halfDT = dt / 2.0; }
 
-   std::pair<T, T> step(T& state, T& rate) override
+   StepResult<T> step(T& state, T& rate) override
    {
-      std::pair<T, T> res;
       if(dt == std::numeric_limits<double>::quiet_NaN())
       {
          utils::Logger::getInstance()->error("Calling RK4Solver without setting dt first is an error");
-         return res;
+         return StepResult<T>{};
       }
 
       std::tie(k1State, k1Rate) = odes(state, rate);
@@ -68,10 +67,10 @@ public:
       std::tie(tempState, tempRate) = std::make_pair(state + k3State*dt, rate + k3Rate*dt);
       std::tie(k4State, k4Rate) = odes(tempState, tempRate);
 
-      res = std::make_pair(state + (dt / 6.0)*(k1State + 2.0*k2State + 2.0*k3State + k4State),
-                           rate  + (dt / 6.0)*(k1Rate +  2.0*k2Rate  + 2.0*k3Rate  + k4Rate));
-
-      return res;
+      // Fixed-step solver: the step taken is always dt.
+      return StepResult<T>{ state + (dt / 6.0)*(k1State + 2.0*k2State + 2.0*k3State + k4State),
+                            rate  + (dt / 6.0)*(k1Rate +  2.0*k2Rate  + 2.0*k3Rate  + k4Rate),
+                            dt };
    }
 
 private:

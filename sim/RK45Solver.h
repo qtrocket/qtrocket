@@ -1,0 +1,170 @@
+#ifndef SIM_RK45SOLVER_H
+#define SIM_RK45SOLVER_H
+
+/// \cond
+// C headers
+// C++ headers
+#include <array>
+#include <cmath>
+#include <functional>
+#include <limits>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+// 3rd party headers
+/// \endcond
+
+// qtrocket headers
+#include "sim/DESolver.h"
+#include "utils/math/MathTypes.h"
+
+namespace sim
+{
+
+/**
+ * @brief Runge-Kutta-Fehlberg (RKF45) adaptive coupled ODE solver.
+ *
+ * Implements DESolver for a second-order system split into a coupled (state, rate) pair -- the
+ * same formulation RK4Solver uses, so the two are interchangeable behind DESolver. Unlike RK4,
+ * the step size is chosen dynamically to keep the local error estimate at or below a target
+ * tolerance: setTimeStep() only seeds the INITIAL step guess, and each step() adapts from there.
+ * step() reports the step it actually took via StepResult::stepSize, so the caller advances its
+ * clock accordingly.
+ *
+ * @note Like RK4Solver, the ODE callback takes no time argument (QtRocket evaluates forces at the
+ *       step's start time), so the Fehlberg node times are not used to evaluate the ODE -- only the
+ *       stage coefficients matter. Threading time through the ODE interface would be a separate
+ *       change. The local-error estimate combines the state and rate differences as a single
+ *       absolute norm (matching the reference algorithm); a scaled/relative norm is a possible
+ *       future refinement.
+ *
+ * @tparam T the state/rate type (Vector3 or Quaternion)
+ */
+template<typename T>
+class RK45Solver : public DESolver<T>
+{
+public:
+
+   RK45Solver(std::function<std::pair<T, T>(T&, T&)> func, double desiredError = 1.0e-6)
+      : odes(func),
+        tol(desiredError)
+   {
+      // This only works for Eigen Vector types (mirrors RK4Solver).
+      static_assert(std::is_same<T, Vector3>::value
+                    || std::is_same<T, Quaternion>::value,
+                    "You can only use Vector3 or Quaternion valued functions in RK45Solver");
+      if(desiredError <= 0.0)
+      {
+         throw std::invalid_argument("RK45Solver error tolerance must be positive");
+      }
+   }
+   virtual ~RK45Solver() {}
+
+   /// Seeds the INITIAL step-size guess. RKF45 adapts the step from here to hold the error tolerance.
+   void setTimeStep(double inTs) override { h = inTs; }
+
+   /// Set the per-step local error tolerance the adaptive stepper targets. Non-positive is ignored.
+   void setErrorTolerance(double e) { if(e > 0.0) tol = e; }
+
+   StepResult<T> step(T& state, T& rate) override
+   {
+      // Adapt the step size until a step's estimated local error is within tolerance, then accept.
+      while(true)
+      {
+         if(h < hMin)
+         {
+            throw std::runtime_error(
+               "RK45Solver step size underflow: cannot meet the requested error tolerance");
+         }
+
+         // Six Fehlberg stages over the coupled (state, rate) system. Each stage is the ODE
+         // derivative at an intermediate (state, rate) built from the previous stages.
+         T s1, r1, s2, r2, s3, r3, s4, r4, s5, r5, s6, r6; // stage derivatives
+         T ts, tr;                                         // trial (state, rate) fed to the ODE
+
+         std::tie(s1, r1) = odes(state, rate);
+
+         ts = state + h * (K2[0] * s1);
+         tr = rate  + h * (K2[0] * r1);
+         std::tie(s2, r2) = odes(ts, tr);
+
+         ts = state + h * (K3[0] * s1 + K3[1] * s2);
+         tr = rate  + h * (K3[0] * r1 + K3[1] * r2);
+         std::tie(s3, r3) = odes(ts, tr);
+
+         ts = state + h * (K4[0] * s1 + K4[1] * s2 + K4[2] * s3);
+         tr = rate  + h * (K4[0] * r1 + K4[1] * r2 + K4[2] * r3);
+         std::tie(s4, r4) = odes(ts, tr);
+
+         ts = state + h * (K5[0] * s1 + K5[1] * s2 + K5[2] * s3 + K5[3] * s4);
+         tr = rate  + h * (K5[0] * r1 + K5[1] * r2 + K5[2] * r3 + K5[3] * r4);
+         std::tie(s5, r5) = odes(ts, tr);
+
+         ts = state + h * (K6[0] * s1 + K6[1] * s2 + K6[2] * s3 + K6[3] * s4 + K6[4] * s5);
+         tr = rate  + h * (K6[0] * r1 + K6[1] * r2 + K6[2] * r3 + K6[3] * r4 + K6[4] * r5);
+         std::tie(s6, r6) = odes(ts, tr);
+
+         // Fourth- and fifth-order estimates of the advanced state and rate.
+         const T y4State = state + h*(E4[0]*s1 + E4[1]*s2 + E4[2]*s3 + E4[3]*s4 + E4[4]*s5 + E4[5]*s6);
+         const T y4Rate  = rate  + h*(E4[0]*r1 + E4[1]*r2 + E4[2]*r3 + E4[3]*r4 + E4[4]*r5 + E4[5]*r6);
+         const T y5State = state + h*(E5[0]*s1 + E5[1]*s2 + E5[2]*s3 + E5[3]*s4 + E5[4]*s5 + E5[5]*s6);
+         const T y5Rate  = rate  + h*(E5[0]*r1 + E5[1]*r2 + E5[2]*r3 + E5[3]*r4 + E5[4]*r5 + E5[5]*r6);
+
+         // Local error estimate: magnitude of the 5th-vs-4th-order difference across state and rate.
+         const double err = std::sqrt((y5State - y4State).squaredNorm()
+                                      + (y5Rate - y4Rate).squaredNorm());
+
+         if(err > tol)
+         {
+            // Reject: shrink the step and retry, flooring the shrink factor at 0.1.
+            const double scale = std::pow(tol / err, 0.25);
+            h *= (scale < 0.1) ? 0.1 : scale;
+            continue;
+         }
+
+         // Accept. Remember the step actually taken, then grow the guess for next time (cap at 5x).
+         const double usedStep = h;
+         if(err < std::numeric_limits<double>::epsilon())
+         {
+            h *= 5.0; // error negligible -> grow maximally
+         }
+         else
+         {
+            const double scale = std::pow(tol / err, 0.2);
+            h *= (scale > 5.0) ? 5.0 : scale;
+         }
+
+         // The fifth-order estimate is the more accurate result.
+         return StepResult<T>{ y5State, y5Rate, usedStep };
+      }
+   }
+
+private:
+   std::function<std::pair<T, T>(T&, T&)> odes;
+
+   double tol{1.0e-6};  /// target local error per step
+   double h{0.01};      /// current/next step-size guess (seeded by setTimeStep)
+
+   static constexpr double hMin = 1.0e-15; /// give up below this step size
+
+   // Runge-Kutta-Fehlberg (RKF45) Butcher coefficients. The Kn give the intermediate stage states;
+   // E4/E5 are the 4th- and 5th-order solution weights. (Node times TX are unused: see class note.)
+   static constexpr std::array<double, 5> K2 = {1.0 / 4.0, 0.0, 0.0, 0.0, 0.0};
+   static constexpr std::array<double, 5> K3 = {3.0 / 32.0, 9.0 / 32.0, 0.0, 0.0, 0.0};
+   static constexpr std::array<double, 5> K4 = {1932.0 / 2197.0, -7200.0 / 2197.0, 7296.0 / 2197.0,
+                                                0.0, 0.0};
+   static constexpr std::array<double, 5> K5 = {439.0 / 216.0, -8.0, 3680.0 / 513.0, -845.0 / 4104.0,
+                                                0.0};
+   static constexpr std::array<double, 5> K6 = {-8.0 / 27.0, 2.0, -3544.0 / 2565.0, 1859.0 / 4104.0,
+                                                -11.0 / 40.0};
+   static constexpr std::array<double, 6> E4 = {25.0 / 216.0, 0.0, 1408.0 / 2565.0, 2197.0 / 4104.0,
+                                                -1.0 / 5.0, 0.0};
+   static constexpr std::array<double, 6> E5 = {16.0 / 135.0, 0.0, 6656.0 / 12825.0,
+                                                28561.0 / 56430.0, -9.0 / 50.0, 2.0 / 55.0};
+};
+
+} // namespace sim
+
+#endif // SIM_RK45SOLVER_H
