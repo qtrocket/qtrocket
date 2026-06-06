@@ -72,13 +72,6 @@ private:
    std::shared_ptr<sim::Environment> environment;
    std::shared_ptr<utils::MotorModelDatabase> motorDatabase;
 
-   // Launch site
-   // ECEF coordinates
-   Vector3 launchSitePosition{0.0, 0.0, 0.0};
-
-   // Table of state data
-   std::vector<StateData> states;
-
 };
 
 #endif // QTROCKET_H
