@@ -10,7 +10,7 @@ Tasks tagged **[verified bug]** were confirmed against the source during analysi
 
 ## P0 — Unblock, de-risk, stop lying to the user (hours → ~1 day)
 
-- [] **Build & run it first.** `cmake -B build -S . && cmake --build build && ./build/qtrocket`; load `data/Aerotech.rse`, set a motor, Calculate Trajectory, view the altitude plot; `ctest` to confirm the atmosphere tests pass. (Newer pinned dependency versions are the likeliest first-build friction.)
+- [✅] **Build & run it first.** `cmake -B build -S . && cmake --build build && ./build/qtrocket`; load `data/Aerotech.rse`, set a motor, Calculate Trajectory, view the altitude plot; `ctest` to confirm the atmosphere tests pass. (Newer pinned dependency versions are the likeliest first-build friction.)
 - [ ] **[verified bug] Seed `currentState` from `initialState`** at launch (`QtRocket::launchRocket` / `Propagator::runUntilTerminate`) so launch angle & initial velocity actually affect the trajectory. *Highest-value single fix — currently the rocket launches from rest, straight up.*
 - [ ] **[verified bug] Make `RocketModel::setMass`/`setDragCoefficient` real** ([RocketModel.h:101-103](model/RocketModel.h#L101-L103)) — add backing members and use them — or remove the GUI fields. Pick one and be consistent.
 - [ ] **[verified bug] Fix `Environment::getAvailable*Models()`** ([Environment.h:43-57](sim/Environment.h#L43-L57)) to remove the leading blank combo-box entries (build an empty vector + `reserve`, or index).

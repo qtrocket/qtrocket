@@ -68,6 +68,7 @@ double RocketModel::getThrust(double t)
 
 void RocketModel::launch()
 {
+   setCurrentState(initialState);
    mm.startMotor(0.0);
 }
 
