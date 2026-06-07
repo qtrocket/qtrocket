@@ -8,6 +8,7 @@
 #include <optional>
 
 // 3rd party headers
+#include <QDoubleValidator>
 #include <QFileDialog>
 
 /// \endcond
@@ -32,6 +33,12 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
    qtRocket(_qtRocket)
 {
    ui->setupUi(this);
+
+   // Launch angle is measured from vertical: 0 = straight up, 90 = horizontal.
+   // Constrain input to that range so the trajectory math (sin/cos of the angle)
+   // always gets a physical value.
+   auto* angleValidator = new QDoubleValidator(0.0, 90.0, 4, this);
+   ui->initialAngle->setValidator(angleValidator);
 
    ////////////////////////////////
    // Menu signal/slot connections
@@ -134,8 +141,10 @@ void MainWindow::onButton_calculateTrajectory_clicked()
    double dragCoeff =
             ui->rocketPartButtons->findChild<QLineEdit*>(QString("dragCoeff"))->text().toDouble();
 
-   double initialVelocityX = initialVelocity * std::cos(initialAngle / 57.2958);
-   double initialVelocityZ = initialVelocity * std::sin(initialAngle / 57.2958);
+   // Angle is measured from vertical (0 = straight up, 90 = horizontal), so the
+   // vertical (Z) component is the cosine and the downrange (X) component is the sine.
+   double initialVelocityX = initialVelocity * std::sin(initialAngle / 57.2958);
+   double initialVelocityZ = initialVelocity * std::cos(initialAngle / 57.2958);
    //std::vector<double> initialState = {0.0, 0.0, 0.0, initialVelocityX, 0.0, initialVelocityZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    StateData initialState;
    initialState.position = {0.0, 0.0, 0.0};

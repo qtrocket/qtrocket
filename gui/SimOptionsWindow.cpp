@@ -2,8 +2,10 @@
 /// \cond
 // C headers
 // C++ headers
+#include <limits>
 #include <memory>
 // 3rd party headers
+#include <QDoubleValidator>
 /// \endcond
 
 // qtrocket headers
@@ -18,6 +20,13 @@ SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
     ui(new Ui::SimOptionsWindow)
 {
     ui->setupUi(this);
+
+    // Constrain the timestep field to strictly-positive numbers so a bad value
+    // can't reach setTimeStep (a dt <= 0 hangs the run loop). The setter guards
+    // this too; this just gives the user immediate feedback at the field.
+    auto* timeStepValidator = new QDoubleValidator(this);
+    timeStepValidator->setBottom(std::numeric_limits<double>::min());
+    ui->timeStep->setValidator(timeStepValidator);
 
     connect(ui->buttonBox,
             SIGNAL(rejected()),

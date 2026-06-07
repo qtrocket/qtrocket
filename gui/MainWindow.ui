@@ -92,14 +92,11 @@
        <layout class="QGridLayout" name="gridLayout">
         <item row="1" column="1">
          <widget class="QLineEdit" name="initialAngle">
-          <property name="enabled">
-           <bool>false</bool>
+          <property name="toolTip">
+           <string>Launch angle in degrees from vertical (0 = straight up, 90 = horizontal)</string>
           </property>
           <property name="text">
-           <string>90.0</string>
-          </property>
-          <property name="readOnly">
-           <bool>true</bool>
+           <string>0.0</string>
           </property>
          </widget>
         </item>

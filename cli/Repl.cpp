@@ -139,7 +139,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "#   setdrag <cd>            set drag coefficient (dimensionless)\n"
           << "#   setarea <m^2>           set aerodynamic reference area, must be >= 0\n"
           << "#   setvelocity <m/s>       set initial speed (default 0)\n"
-          << "#   setangle <deg>          set launch angle from horizontal (default 90 = up)\n"
+          << "#   setangle <deg>          set launch angle from vertical (default 0 = up)\n"
           << "#   settimestep <s>         set integrator timestep\n"
           << "#   listatmospheres         list available atmosphere models\n"
           << "#   setatmosphere <name>    select atmosphere model (e.g. Vacuum)\n"
@@ -452,7 +452,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "  drag_coeff = " << dragCoeff << "\n"
           << "  ref_area   = " << referenceArea << " m^2\n"
           << "  velocity   = " << initialVelocity << " m/s\n"
-          << "  angle      = " << initialAngleDeg << " deg (from horizontal)\n"
+          << "  angle      = " << initialAngleDeg << " deg (from vertical)\n"
           << "  atmosphere = " << atmosphereModel << "\n"
           << "  database   = "
           << (qtRocket->getMotorDatabase()->size() > 0
@@ -469,9 +469,11 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
 
+      // Angle is measured from vertical (0 = straight up, 90 = horizontal), so the
+      // vertical (Z) component is the cosine and the downrange (X) component is the sine.
       const double rad = initialAngleDeg / DEG_PER_RAD;
-      const double vx = initialVelocity * std::cos(rad);
-      const double vz = initialVelocity * std::sin(rad);
+      const double vx = initialVelocity * std::sin(rad);
+      const double vz = initialVelocity * std::cos(rad);
 
       StateData initialState;
       initialState.position = {0.0, 0.0, 0.0};

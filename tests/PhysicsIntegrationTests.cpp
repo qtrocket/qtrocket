@@ -67,16 +67,19 @@ protected:
       std::size_t steps{0};
       double tFinal{0.0};
       double apogee{0.0};
+      double downrange{0.0}; // max horizontal (X) distance reached
       bool intervalsMatchDt{true};
    };
 
-   // Runs one flight at the given timestep and (speed, angle-from-horizontal).
+   // Runs one flight at the given timestep and (speed, angle-from-vertical).
+   // Angle is measured from vertical (0 = straight up, 90 = horizontal), matching
+   // the GUI/CLI convention, so Z is the cosine and downrange X is the sine.
    FlightResult runFlight(double dt, double speed, double angleDeg)
    {
       const double rad = angleDeg / DEG_PER_RAD;
       StateData initial;
       initial.position = {0.0, 0.0, 0.0};
-      initial.velocity = {speed * std::cos(rad), 0.0, speed * std::sin(rad)};
+      initial.velocity = {speed * std::sin(rad), 0.0, speed * std::cos(rad)};
       qtRocket->setInitialState(initial);
       qtRocket->setTimeStep(dt);
       qtRocket->launchRocket();
@@ -91,6 +94,7 @@ protected:
       for(std::size_t i = 0; i < states.size(); ++i)
       {
          r.apogee = std::max(r.apogee, states[i].second.position[2]);
+         r.downrange = std::max(r.downrange, std::abs(states[i].second.position[0]));
          if(i > 0 && std::abs((states[i].first - states[i - 1].first) - dt) > 1e-9)
             r.intervalsMatchDt = false;
       }
@@ -110,9 +114,9 @@ TEST_F(PhysicsIntegrationTest, TimestepReachesIntegratorUnderVacuum)
 {
    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
 
-   const FlightResult coarse = runFlight(0.04, 0.0, 90.0);
-   const FlightResult mid    = runFlight(0.02, 0.0, 90.0);
-   const FlightResult fine   = runFlight(0.01, 0.0, 90.0);
+   const FlightResult coarse = runFlight(0.04, 0.0, 0.0);
+   const FlightResult mid    = runFlight(0.02, 0.0, 0.0);
+   const FlightResult fine   = runFlight(0.01, 0.0, 0.0);
 
    // Recorded samples are spaced exactly one timestep apart.
    EXPECT_TRUE(coarse.intervalsMatchDt);
@@ -128,15 +132,62 @@ TEST_F(PhysicsIntegrationTest, TimestepReachesIntegratorUnderVacuum)
    EXPECT_NEAR(static_cast<double>(fine.steps) / static_cast<double>(mid.steps), 2.0, 0.2);
 }
 
+// Launch angle convention ([H1]): the angle is measured from vertical, so 0 deg
+// is straight up (no downrange) and a larger angle tips the rocket over and
+// carries it downrange. This locks the from-vertical convention shared by the
+// GUI and CLI. Run under Vacuum so the launch velocity isn't bled off by drag.
+TEST_F(PhysicsIntegrationTest, LaunchAngleFromVerticalProducesDownrange)
+{
+   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+
+   const double speed = 30.0; // m/s initial velocity
+   const FlightResult straightUp = runFlight(0.01, speed, 0.0);  // 0 deg from vertical
+   const FlightResult tilted     = runFlight(0.01, speed, 45.0); // 45 deg from vertical
+
+   // Straight up stays on the launch axis: ~no downrange, highest apogee.
+   EXPECT_NEAR(straightUp.downrange, 0.0, 1e-6);
+
+   // Tilting trades altitude for downrange: the rocket travels horizontally...
+   EXPECT_GT(tilted.downrange, 1.0);
+   // ...and doesn't climb as high as a purely vertical launch.
+   EXPECT_LT(tilted.apogee, straightUp.apogee);
+}
+
+// Guard for the timestep-0 hang ([H2]): a non-positive dt must be rejected by
+// the setter, leaving the previous valid step in place. Pre-fix, setTimeStep(0)
+// made runUntilTerminate advance currentTime by 0 forever -- an infinite loop
+// growing the state vector without bound. Here a rejected dt=0 (and dt<0) must
+// leave the flight identical to the last valid step rather than hang.
+TEST_F(PhysicsIntegrationTest, NonPositiveTimestepIsRejectedAndDoesNotHang)
+{
+   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+
+   // Baseline flight at a known-good step.
+   const FlightResult good = runFlight(0.02, 0.0, 0.0);
+   ASSERT_GT(good.steps, 0u);
+
+   // dt = 0 must be ignored: the prior 0.02 s step is retained, so this flight
+   // terminates and matches the baseline (rather than spinning forever).
+   const FlightResult afterZero = runFlight(0.0, 0.0, 0.0);
+   EXPECT_EQ(afterZero.steps, good.steps);
+   EXPECT_NEAR(afterZero.tFinal, good.tFinal, 1e-9);
+   EXPECT_NEAR(afterZero.apogee, good.apogee, 1e-9);
+
+   // A negative dt is likewise rejected, again leaving the 0.02 s step in force.
+   const FlightResult afterNegative = runFlight(-1.0, 0.0, 0.0);
+   EXPECT_EQ(afterNegative.steps, good.steps);
+   EXPECT_NEAR(afterNegative.tFinal, good.tFinal, 1e-9);
+}
+
 // Drag must cost altitude: the same flight reaches far lower with a real
 // atmosphere than in vacuum.
 TEST_F(PhysicsIntegrationTest, DragReducesApogeeVersusVacuum)
 {
    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
-   const double vacApogee = runFlight(0.01, 0.0, 90.0).apogee;
+   const double vacApogee = runFlight(0.01, 0.0, 0.0).apogee;
 
    qtRocket->getEnvironment()->setAtmosphereModel("Constant Atmosphere");
-   const double dragApogee = runFlight(0.01, 0.0, 90.0).apogee;
+   const double dragApogee = runFlight(0.01, 0.0, 0.0).apogee;
 
    EXPECT_GT(vacApogee, 0.0);
    EXPECT_GT(dragApogee, 0.0);
@@ -186,7 +237,7 @@ TEST_F(PhysicsIntegrationTest, TerminalVelocityForceBalance)
 TEST_F(PhysicsIntegrationTest, USStandardAtmosphereCompletesWithoutCrash)
 {
    qtRocket->getEnvironment()->setAtmosphereModel("US Standard 1976");
-   const FlightResult r = runFlight(0.01, 0.0, 90.0);
+   const FlightResult r = runFlight(0.01, 0.0, 0.0);
    EXPECT_GT(r.steps, 0u);
    EXPECT_GT(r.apogee, 0.0);
 }

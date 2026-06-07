@@ -14,6 +14,7 @@
 #include "utils/math/MathTypes.h"
 #include "sim/StateData.h"
 #include "model/Propagatable.h"
+#include "utils/Logger.h"
 
 
 // Forward declare
@@ -53,6 +54,19 @@ public:
     void setCurrentTime(double t) { currentTime = t; }
     void setTimeStep(double ts)
     {
+        // Reject dt <= 0 (and NaN, which fails every comparison): a zero or
+        // negative step makes runUntilTerminate advance currentTime by 0
+        // forever -- an infinite loop that grows the state vector without bound.
+        // Guarding at this shared setter covers every front-end (GUI Sim
+        // Options, CLI, tests) at one chokepoint; the previous valid step is
+        // kept on rejection so a bad input degrades to "no change" rather than
+        // a hang.
+        if(!(ts > 0.0))
+        {
+            utils::Logger::getInstance()->warn(
+                "Ignoring non-positive timestep; keeping the previous value.");
+            return;
+        }
         timeStep = ts;
         // Push the step into the integrator too. Previously only this member was
         // updated, so the RK4 solver kept using its constructor-set dt (0.01 s)
