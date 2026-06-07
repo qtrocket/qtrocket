@@ -130,16 +130,16 @@ void MainWindow::onButton_calculateTrajectory_clicked()
 {
     // Get the initial conditions
    double initialVelocity =
-            ui->rocketPartButtons->findChild<QLineEdit*>(QString("initialVelocity"))->text().toDouble();
+            ui->cannonballTab->findChild<QLineEdit*>(QString("initialVelocity"))->text().toDouble();
 
    double mass =
-            ui->rocketPartButtons->findChild<QLineEdit*>(QString("mass"))->text().toDouble();
+            ui->cannonballTab->findChild<QLineEdit*>(QString("mass"))->text().toDouble();
 
    double initialAngle =
-            ui->rocketPartButtons->findChild<QLineEdit*>(QString("initialAngle"))->text().toDouble();
+            ui->cannonballTab->findChild<QLineEdit*>(QString("initialAngle"))->text().toDouble();
 
    double dragCoeff =
-            ui->rocketPartButtons->findChild<QLineEdit*>(QString("dragCoeff"))->text().toDouble();
+            ui->cannonballTab->findChild<QLineEdit*>(QString("dragCoeff"))->text().toDouble();
 
    // Angle is measured from vertical (0 = straight up, 90 = horizontal), so the
    // vertical (Z) component is the cosine and the downrange (X) component is the sine.
@@ -183,7 +183,7 @@ void MainWindow::onButton_loadRSE_button_clicked()
       return;
    }
 
-   ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
+   ui->cannonballTab->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(rseFile);
    populateEngineSelectorFromDatabase();
 }
 
@@ -192,7 +192,7 @@ void MainWindow::populateEngineSelectorFromDatabase()
    // Rebuild the selector from the database (the single source of truth). Clearing first keeps the
    // list correct and duplicate-free when motors are loaded from several files across loads.
    QComboBox* engineSelector =
-         ui->rocketPartButtons->findChild<QComboBox*>(QString("engineSelectorComboBox"));
+         ui->cannonballTab->findChild<QComboBox*>(QString("engineSelectorComboBox"));
    engineSelector->clear();
    for(const auto& motor : QtRocket::getInstance()->getMotorDatabase()->listMotors())
    {
@@ -235,7 +235,7 @@ void MainWindow::onButton_loadMotorDatabase_clicked()
       return;
    }
 
-   ui->rocketPartButtons->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(dbFile);
+   ui->cannonballTab->findChild<QLineEdit*>(QString("databaseFileLine"))->setText(dbFile);
    populateEngineSelectorFromDatabase();
 }
 

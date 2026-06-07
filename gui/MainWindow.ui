@@ -54,13 +54,17 @@
        </sizepolicy>
       </property>
      </widget>
-     <widget class="QWidget" name="rocketPartButtons" native="true">
+     <widget class="QTabWidget" name="rocketTabWidget">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
         <horstretch>2</horstretch>
         <verstretch>0</verstretch>
        </sizepolicy>
       </property>
+      <widget class="QWidget" name="cannonballTab">
+       <attribute name="title">
+        <string>Cannonball</string>
+       </attribute>
       <widget class="QPushButton" name="calculateTrajectory_btn">
        <property name="geometry">
         <rect>
@@ -226,6 +230,7 @@
        <property name="text">
         <string>Load Motor Database</string>
        </property>
+      </widget>
       </widget>
      </widget>
     </widget>
