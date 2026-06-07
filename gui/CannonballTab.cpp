@@ -37,6 +37,12 @@ CannonballTab::CannonballTab(QtRocket* _qtRocket, QWidget* parent)
    auto* angleValidator = new QDoubleValidator(0.0, 90.0, 4, this);
    ui->initialAngle->setValidator(angleValidator);
 
+   // Reference area must be >= 0 (matches the CLI's setarea); RocketModel also
+   // ignores negatives, so a bad value can't reach the drag model either way.
+   auto* areaValidator = new QDoubleValidator(this);
+   areaValidator->setBottom(0.0);
+   ui->referenceArea->setValidator(areaValidator);
+
    ////////////////////////////////
    // Button signal/slot connections
    ////////////////////////////////
@@ -91,6 +97,8 @@ void CannonballTab::onButton_calculateTrajectory_clicked()
 
    double dragCoeff = ui->dragCoeff->text().toDouble();
 
+   double referenceArea = ui->referenceArea->text().toDouble();
+
    // Angle is measured from vertical (0 = straight up, 90 = horizontal), so the
    // vertical (Z) component is the cosine and the downrange (X) component is the sine.
    double initialVelocityX = initialVelocity * std::sin(initialAngle / 57.2958);
@@ -101,6 +109,7 @@ void CannonballTab::onButton_calculateTrajectory_clicked()
    auto rocket = QtRocket::getInstance()->getRocket();
    rocket->setMass(mass);
    rocket->setDragCoefficient(dragCoeff);
+   rocket->setReferenceArea(referenceArea);
 
    qtRocket->setInitialState(initialState);
    qtRocket->launchRocket();
