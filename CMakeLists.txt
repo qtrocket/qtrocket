@@ -98,6 +98,9 @@ set(PROJECT_SOURCES
         gui/AnalysisWindow.cpp
         gui/AnalysisWindow.h
         gui/AnalysisWindow.ui
+        gui/CannonballTab.cpp
+        gui/CannonballTab.h
+        gui/CannonballTab.ui
         gui/GuiRunner.cpp
         gui/GuiRunner.h
         gui/MainWindow.cpp
