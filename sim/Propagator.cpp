@@ -40,8 +40,8 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
     };
 
     linearIntegrator.reset(new Integrator);
-    linearIntegrator->setIntegratorModel("Runge-Kutta 4th Order");
     linearIntegrator->setIntegratorFunction(linearODEs);
+    linearIntegrator->setIntegratorModel("Runge-Kutta 4th Order");
     linearIntegrator->setTimeStep(timeStep);
 
     saveStates = true;

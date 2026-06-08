@@ -6,6 +6,7 @@
 // C++ headers
 #include <memory>
 #include <mutex>
+#include <string>
 #include <utility>
 
 // 3rd party headers
@@ -34,6 +35,7 @@ public:
 
    std::shared_ptr<sim::Environment> getEnvironment() { return environment; }
    void setTimeStep(double t) { rocket.second->setTimeStep(t); }
+   void setIntegratorModel(const std::string& m) { rocket.second->setIntegratorModel(m); }
    std::shared_ptr<model::RocketModel> getRocket() { return rocket.first; }
 
    std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }

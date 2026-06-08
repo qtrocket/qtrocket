@@ -14,6 +14,7 @@
 #include "ui_SimOptionsWindow.h"
 
 #include "sim/Environment.h"
+#include "sim/Integrator.h"
 
 SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -52,6 +53,13 @@ SimOptionsWindow::SimOptionsWindow(QWidget *parent) :
     {
         ui->gravityModelCombo->addItem(QString::fromStdString(i));
     }
+
+    sim::Integrator integrator;
+    std::vector<std::string> integratorModels = integrator.getAvailableIntegratorModels();
+    for(const auto& i : integratorModels)
+    {
+        ui->integratorCombo->addItem(QString::fromStdString(i));
+    }
 }
 
 SimOptionsWindow::~SimOptionsWindow()
@@ -71,6 +79,7 @@ void SimOptionsWindow::on_buttonBox_accepted()
 
     std::shared_ptr<sim::Environment> environment(new sim::Environment);
 
+    qtrocket->setIntegratorModel(ui->integratorCombo->currentText().toStdString());
     qtrocket->setTimeStep(ui->timeStep->text().toDouble());
     environment->setGravityModel(ui->gravityModelCombo->currentText().toStdString());
     environment->setAtmosphereModel(ui->atmosphereModelCombo->currentText().toStdString());

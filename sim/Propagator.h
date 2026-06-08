@@ -5,6 +5,7 @@
 // C headers
 // C++ headers
 #include <memory>
+#include <string>
 
 // 3rd party headers
 /// \endcond
@@ -75,6 +76,13 @@ public:
         if(linearIntegrator)
         {
             linearIntegrator->setTimeStep(ts);
+        }
+    }
+    void setIntegratorModel(const std::string& model)
+    {
+        if(linearIntegrator)
+        {
+            linearIntegrator->setIntegratorModel(model);
         }
     }
     void setSaveStats(bool s) { saveStates = s; }
