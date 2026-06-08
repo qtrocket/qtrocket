@@ -55,11 +55,9 @@ void MotorModelDatabase::addMotorModels(const std::vector<model::MotorModel>& mo
 std::size_t MotorModelDatabase::importRSEFile(const std::string& path)
 {
    // RSEDatabaseLoader is an implementation detail owned here: GUI/CLI never see it. Constructing
-   // it parses the .rse file; we then copy its motors into our map so that motor selection goes
-   // through this database regardless of where the data came from. (The loader also still pushes
-   // into the QtRocket-global database as a constructor side effect; that becomes redundant once
-   // the side effect is removed and this is the single ingestion point for unifying motor sources
-   // behind this database.)
+   // it parses the .rse file into its own motor list; we then copy those motors into our map so that
+   // motor selection goes through this database regardless of where the data came from. This is the
+   // single ingestion point that unifies motor sources behind this database.
    const std::size_t before = motorModelMap.size();
    RSEDatabaseLoader loader(path);
    addMotorModels(loader.getMotors());

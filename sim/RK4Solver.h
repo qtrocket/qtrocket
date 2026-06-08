@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <cmath>
 #include <functional>
 #include <limits>
 
@@ -50,7 +51,10 @@ public:
 
    StepResult<T> step(double t, T& state, T& rate) override
    {
-      if(dt == std::numeric_limits<double>::quiet_NaN())
+      // dt defaults to NaN until setTimeStep() is called. Use std::isnan: a direct
+      // `dt == quiet_NaN()` is always false (NaN compares unequal to everything, itself
+      // included), so the original guard never fired.
+      if(std::isnan(dt))
       {
          utils::Logger::getInstance()->error("Calling RK4Solver without setting dt first is an error");
          return StepResult<T>{};
