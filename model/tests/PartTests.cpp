@@ -1,6 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <numbers>
+#include <stdexcept>
+
 #include "model/Part.h"
+#include "model/InertiaTensors.h"
+#include "model/parts/Parts.h"
 
 class PartTest : public testing::Test
 {
@@ -66,5 +72,82 @@ TEST(PartTest, CreationTests)
    Vector3 R{2.0, 2.0, 2.0};
    testPart.addChildPart(testPart2, R);
 
-   
+
+}
+
+namespace
+{
+// Independent closed-form references for a uniform thick-walled hollow sphere.
+double expectedHollowSphereMass(double ri, double ro, double density)
+{
+   const double volume = (4.0 / 3.0) * std::numbers::pi
+                         * (std::pow(ro, 3) - std::pow(ri, 3));
+   return density * volume;
+}
+
+double expectedHollowSphereInertiaDiagonal(double ri, double ro, double density)
+{
+   const double mass = expectedHollowSphereMass(ri, ro, density);
+   return mass * (2.0 / 5.0) * (std::pow(ro, 5) - std::pow(ri, 5))
+                             / (std::pow(ro, 3) - std::pow(ri, 3));
+}
+} // namespace
+
+TEST(HollowSphereTest, MassAndCompositeInertiaMatchClosedForm)
+{
+   const double ri = 0.04;
+   const double ro = 0.05;
+   const double density = 2700.0;
+
+   model::HollowSphere sphere("body", ri, ro, density);
+
+   const double expectedMass = expectedHollowSphereMass(ri, ro, density);
+   EXPECT_NEAR(sphere.getMass(0.0), expectedMass, 1e-12);
+   EXPECT_NEAR(sphere.getVolume(), expectedMass / density, 1e-15);
+
+   // getCompositeI() is the full, mass-weighted tensor (kg*m^2).
+   const Matrix3 I = sphere.getCompositeI();
+   const double expectedDiag = expectedHollowSphereInertiaDiagonal(ri, ro, density);
+   EXPECT_NEAR(I(0, 0), expectedDiag, 1e-12);
+   EXPECT_NEAR(I(1, 1), expectedDiag, 1e-12);
+   EXPECT_NEAR(I(2, 2), expectedDiag, 1e-12);
+   // Isotropic: off-diagonals vanish.
+   EXPECT_DOUBLE_EQ(I(0, 1), 0.0);
+   EXPECT_DOUBLE_EQ(I(0, 2), 0.0);
+   EXPECT_DOUBLE_EQ(I(1, 2), 0.0);
+
+   // getI() is per-unit-mass, so getCompositeI() == mass * getI().
+   EXPECT_NEAR(I(0, 0), expectedMass * sphere.getI()(0, 0), 1e-12);
+}
+
+TEST(HollowSphereTest, ReducesToSolidSphereWhenInnerRadiusZero)
+{
+   const double ro = 0.05;
+   const double density = 2700.0;
+
+   model::HollowSphere sphere("solid", 0.0, ro, density);
+
+   const double mass = sphere.getMass(0.0);
+   // Solid sphere: I = (2/5) m ro^2 on each axis.
+   EXPECT_NEAR(sphere.getCompositeI()(0, 0), mass * (2.0 / 5.0) * ro * ro, 1e-12);
+   // ... which is exactly mass * InertiaTensors::SolidSphere(ro).
+   EXPECT_NEAR(sphere.getCompositeI()(0, 0),
+               mass * model::InertiaTensors::SolidSphere(ro)(0, 0), 1e-12);
+}
+
+TEST(HollowSphereTest, RejectsNonPhysicalGeometry)
+{
+   EXPECT_THROW(model::HollowSphere("bad", 0.05, 0.04, 2700.0), std::invalid_argument); // ri > ro
+   EXPECT_THROW(model::HollowSphere("bad", 0.04, 0.04, 2700.0), std::invalid_argument); // ri == ro
+   EXPECT_THROW(model::HollowSphere("bad", 0.00, 0.05, 0.0),    std::invalid_argument); // density 0
+}
+
+TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
+{
+   // The bare tensor is per-unit-mass; the composite is full (mass * per-mass). With mass = 2.0 and
+   // SolidSphere(1.0) = 0.4 on the diagonal, getI() = 0.4 but getCompositeI() = 0.8 -- this would be
+   // 0.4 if Part stored the tensor un-weighted, so it locks the mass multiply in.
+   model::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
+   EXPECT_DOUBLE_EQ(part.getI()(0, 0), 0.4);
+   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8);
 }

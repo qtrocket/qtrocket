@@ -63,7 +63,7 @@ public:
     */
    bool terminateCondition(double t) override;
 
-   Matrix3 getInertiaTensor(double t) override;
+   Matrix3 getCompositeInertiaTensor(double t) override;
 
    /**
     * @brief getThrust returns current motor thrust
@@ -117,11 +117,11 @@ public:
    void setReferenceArea(double a) { if(a >= 0.0) referenceArea = a; }
 
    /**
-    * @brief setMass sets the structural (non-motor) dry mass.
+    * @brief setMass sets the structural (non-motor) mass by delegating to the top part.
     * @param m mass in kg. Non-positive values are ignored because getMass() is the
     *          ODE divisor in the propagator and a zero mass would divide by zero.
     */
-   void setMass(double m) { if(m > 0.0) dryMass = m; }
+   void setMass(double m) { if(m > 0.0) topPart->setMass(m); }
 
 private:
 
@@ -132,10 +132,10 @@ private:
    /// True once a motor has been assigned via setMotorModel(). The default rocket has none.
    bool motorSet{false};
 
-   model::Part topPart;
-
-   /// Structural (non-motor) mass in kg. Default 1.0 keeps mass > 0 before the GUI sets it.
-   double dryMass{1.0};
+   /// Top of the part tree -- a polymorphic Part handle (a HollowSphere today). shared_ptr matches
+   /// the childParts convention in Part and keeps RocketModel copyable. getMass(), setMass(), and
+   /// getInertiaTensor() all delegate to it.
+   std::shared_ptr<model::Part> topPart;
 
    /// Dimensionless drag coefficient consumed by the drag term in getForces().
    double dragCoefficient{1.0};

@@ -3,6 +3,9 @@ add_library(model
    MotorModel.h
    Part.cpp
    Part.h
+   parts/HollowSphere.cpp
+   parts/HollowSphere.h
+   parts/Parts.h
    Propagatable.cpp
    Propagatable.h
    RocketModel.cpp

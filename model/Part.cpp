@@ -11,7 +11,9 @@ Part::Part(const std::string& n,
    : parent(nullptr),
      name(n),
      inertiaTensor(I),
-     compositeInertiaTensor(I),
+     // inertiaTensor is stored per-unit-mass (geometric, units m^2); the composite tensor is the
+     // full, mass-weighted one (kg*m^2). Multiply by the parameter m here
+     compositeInertiaTensor(m * I),
      mass(m),
      compositeMass(m),
      cm(centerMass),
@@ -95,7 +97,7 @@ void Part::recomputeInertiaTensor()
    }
    // recompute the whole composite inertia tensor
    // Reset the composite inertia tensor
-   compositeInertiaTensor = inertiaTensor;
+   compositeInertiaTensor = mass * inertiaTensor;
    compositeMass = mass;
    for(auto& [child, pos] : childParts)
    {

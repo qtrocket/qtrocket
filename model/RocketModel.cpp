@@ -2,13 +2,17 @@
 // qtrocket headers
 #include "RocketModel.h"
 #include "QtRocket.h"
-#include "InertiaTensors.h"
+#include "model/parts/Parts.h"
 
 namespace model
 {
 
 RocketModel::RocketModel()
-    : topPart("NoseCone", InertiaTensors::SolidSphere(1.0), 1.0, {0.0, 0.0, 1.0})
+    // Placeholder structural body: an aluminum-density hollow sphere (ri=40 mm, ro=50 mm,
+    // rho=2700 kg/m^3) ~ 0.69 kg. Gives a real mass and a correct inertia tensor (consumed by
+    // getInertiaTensor() for future 6-DOF); the GUI may still override the mass via setMass().
+    // The geometry/material will eventually be GUI-driven. See TODO.md P2.
+    : topPart(std::make_shared<HollowSphere>("Body", 0.04, 0.05, 2700.0))
 {
 
 }
@@ -16,18 +20,17 @@ RocketModel::RocketModel()
 
 double RocketModel::getMass(double t)
 {
+    // Motor mass plus the top part's structural mass. Uses the part's own getMass() (not
+    // getCompositeMass()) so it pairs with setMass(): a GUI-set mass writes the part's `mass` and
+    // round-trips here. Revisit for getCompositeMass() once the part tree has children -- see TODO.md P2.
     double mass = mm.getMass(t);
-    // TODO(P2): restore topPart.getCompositeMass(t) here. getMass() = motor + composite
-    // part mass is the correct formulation; we only override with the GUI-provided dryMass
-    // because topPart is currently a placeholder 1 kg sphere with no real component model.
-    // Once concrete Part types carry real masses, drop dryMass and add the line back. See TODO.md P2.
-    mass += dryMass;
+    mass += topPart->getMass(t);
     return mass;
 }
 
-Matrix3 RocketModel::getInertiaTensor(double)
+Matrix3 RocketModel::getCompositeInertiaTensor(double)
 {
-    return topPart.getCompositeI();
+    return topPart->getCompositeI(); // getCompositeI() returns full mass-weighted inertia tensor
 }
 
 bool RocketModel::terminateCondition(double)

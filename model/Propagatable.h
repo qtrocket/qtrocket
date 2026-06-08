@@ -26,7 +26,7 @@ public:
    virtual Vector3 getTorques(double t) = 0;
 
    virtual double getMass(double t) = 0;
-   virtual Matrix3 getInertiaTensor(double t) = 0;
+   virtual Matrix3 getCompositeInertiaTensor(double t) = 0;
 
    virtual bool terminateCondition(double t) = 0;
 

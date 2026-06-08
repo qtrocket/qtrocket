@@ -62,10 +62,12 @@ public:
 
    virtual void setMass(double m) { mass = m; }
 
-   // Set the inertia tensor
+   // Inertia tensor convention: the bare inertiaTensor is stored PER UNIT MASS (geometric,
+   // units m^2). The composite tensor is the FULL, mass-weighted tensor (kg*m^2): mass * inertiaTensor
+   // plus children via the parallel-axis theorem.
    virtual void setI(const Matrix3& I) { inertiaTensor = I; }
-   virtual Matrix3 getI() { return inertiaTensor; }
-   virtual Matrix3 getCompositeI() { return compositeInertiaTensor; }
+   virtual Matrix3 getI() { return inertiaTensor; }            // per-unit-mass (m^2)
+   virtual Matrix3 getCompositeI() { return compositeInertiaTensor; } // full, mass-weighted (kg*m^2)
 
    virtual void setCm(const Vector3& x) { cm = x; }
    // Special version of setCM that assumes the cm lies along the body x-axis
@@ -115,9 +117,9 @@ private:
    // Because a part is both a simple part and the composite of itself with all of it's children,
    // we will keep track of this object's inertia tensor (without children), and the composite
    // one with all of it's children attached
-   Matrix3 inertiaTensor; // moment of inertia tensor with respect to the part's center of mass and
-   Matrix3 compositeInertiaTensor;
-   double mass; // The moment of inertia tensor also has this, so don't double compute
+   Matrix3 inertiaTensor;          // PER-UNIT-MASS (geometric) tensor about this part's CM (m^2)
+   Matrix3 compositeInertiaTensor; // FULL mass-weighted tensor of this part + children (kg*m^2)
+   double mass; // This part's own mass (kg).
    double compositeMass; // The mass of this part along with all attached parts
 
    Vector3 cm; // center of mass wrt middle of component
