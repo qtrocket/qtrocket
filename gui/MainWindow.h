@@ -12,14 +12,13 @@
 // qtrocket headers
 #include "QtRocket.h"
 
-#include "gui/SimOptionsWindow.h"
-
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class CannonballTab;
+class SimOptionsTab;
 
 /**
  * @brief The MainWindow class
@@ -40,8 +39,6 @@ private slots:
 
    void onMenu_Help_About_triggered();
 
-   void onMenu_Edit_SimulationOptions_triggered();
-
    void onMenu_File_Quit_triggered();
 
    void onMenu_Tools_SaveMotorDatabase();
@@ -52,6 +49,6 @@ private slots:
    QtRocket* qtRocket;
 
    CannonballTab* cannonballTab{nullptr};
-   SimOptionsWindow* simOptionsWindow{nullptr};
+   SimOptionsTab* simOptionsTab{nullptr};
 };
 #endif // MAINWINDOW_H

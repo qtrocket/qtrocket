@@ -108,9 +108,9 @@ set(PROJECT_SOURCES
         gui/MainWindow.ui
         gui/RocketTreeView.cpp
         gui/RocketTreeView.h
-        gui/SimOptionsWindow.cpp
-        gui/SimOptionsWindow.h
-        gui/SimOptionsWindow.ui
+        gui/SimOptionsTab.cpp
+        gui/SimOptionsTab.h
+        gui/SimOptionsTab.ui
         gui/ThrustCurveMotorSelector.cpp
         gui/ThrustCurveMotorSelector.h
         gui/ThrustCurveMotorSelector.ui

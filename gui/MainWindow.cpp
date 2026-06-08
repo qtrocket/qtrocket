@@ -14,7 +14,7 @@
 #include "gui/AboutWindow.h"
 #include "gui/CannonballTab.h"
 #include "gui/MainWindow.h"
-#include "gui/SimOptionsWindow.h"
+#include "gui/SimOptionsTab.h"
 #include "utils/MotorModelDatabase.h"
 
 
@@ -30,6 +30,11 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
    cannonballTab = new CannonballTab(qtRocket, this);
    ui->rocketTabWidget->addTab(cannonballTab, tr("Cannonball"));
 
+   // The Simulation Options tab (timestep, atmosphere/gravity/integrator models) sits to the
+   // right of Cannonball and applies its settings live as the user changes them.
+   simOptionsTab = new SimOptionsTab(qtRocket, this);
+   ui->rocketTabWidget->addTab(simOptionsTab, tr("Simulation Options"));
+
    ////////////////////////////////
    // Menu signal/slot connections
    ////////////////////////////////
@@ -39,12 +44,6 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
            SIGNAL(triggered()),
            this,
            SLOT(onMenu_File_Quit_triggered()));
-
-   // Edit Menu Actions
-   connect(ui->actionSimulation_Options,
-           SIGNAL(triggered()),
-           this,
-           SLOT(onMenu_Edit_SimulationOptions_triggered()));
 
    // Tools Menu Actions
    connect(ui->actionSaveMotorDatabase,
@@ -100,16 +99,6 @@ void MainWindow::onMenu_Tools_SaveMotorDatabase()
    }
 }
 
-
-void MainWindow::onMenu_Edit_SimulationOptions_triggered()
-{
-   if(!simOptionsWindow)
-   {
-      simOptionsWindow = new SimOptionsWindow(this);
-   }
-   simOptionsWindow->show();
-
-}
 
 void MainWindow::onMenu_File_Quit_triggered()
 {
