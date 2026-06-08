@@ -5,6 +5,6 @@
 // (e.g. RocketModel, tests) and register each new part header HERE -- so adding a part touches this
 // one file instead of every use site.
 
-#include "model/parts/HollowSphere.h" // IWYU pragma: export
+#include "model/parts/HollowSphere.h" 
 
 #endif // MODEL_PARTS_PARTS_H

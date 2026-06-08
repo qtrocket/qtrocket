@@ -43,22 +43,38 @@ public:
                 double density,
                 const Vector3& centerMass = {0.0, 0.0, 0.0});
 
+   /// @brief Defaulted; HollowSphere owns no resources beyond the Part base.
    ~HollowSphere() override = default;
 
-   double getInnerRadius() const { return innerRadius; }
-   double getOuterRadius() const { return outerRadius; }
-   double getDensity()     const { return density; }
-   double getVolume()      const { return volume; }
+   double getInnerRadius() const { return innerRadius; } ///< Inner radius ri (meters).
+   double getOuterRadius() const { return outerRadius; } ///< Outer radius ro (meters).
+   double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
+   double getVolume()      const { return volume; }      ///< Shell volume (4/3)pi(ro^3 - ri^3) (m^3).
 
 private:
    // Static helpers so they can be evaluated in the Part base-class initializer.
+
+   /**
+    * @brief Shell volume V = (4/3) pi (ro^3 - ri^3).
+    * @param innerRadius inner radius ri (meters)
+    * @param outerRadius outer radius ro (meters)
+    * @return volume (m^3)
+    */
    static double computeVolume(double innerRadius, double outerRadius);
+
+   /**
+    * @brief Total mass m = density * V derived from the shell geometry and density.
+    * @param innerRadius inner radius ri (meters)
+    * @param outerRadius outer radius ro (meters)
+    * @param density     uniform mass density (kg/m^3)
+    * @return mass (kg)
+    */
    static double computeMass(double innerRadius, double outerRadius, double density);
 
-   double innerRadius;
-   double outerRadius;
-   double density;
-   double volume;
+   double innerRadius; ///< Inner radius ri (meters).
+   double outerRadius; ///< Outer radius ro (meters).
+   double density;     ///< Uniform mass density (kg/m^3).
+   double volume;      ///< Cached shell volume (m^3).
 };
 
 } // namespace model
