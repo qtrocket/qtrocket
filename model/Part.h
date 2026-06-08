@@ -44,6 +44,7 @@ public:
        }
        return *this;
    }
+
    Part& operator=(Part&& other)
    {
        parent = std::move(other.parent);
@@ -59,23 +60,23 @@ public:
        return *this;
    }
 
-   void setMass(double m) { mass = m; }
+   virtual void setMass(double m) { mass = m; }
 
    // Set the inertia tensor
-   void setI(const Matrix3& I) { inertiaTensor = I; }
-   Matrix3 getI() { return inertiaTensor; }
-   Matrix3 getCompositeI() { return compositeInertiaTensor; }
+   virtual void setI(const Matrix3& I) { inertiaTensor = I; }
+   virtual Matrix3 getI() { return inertiaTensor; }
+   virtual Matrix3 getCompositeI() { return compositeInertiaTensor; }
 
-   void setCm(const Vector3& x) { cm = x; }
+   virtual void setCm(const Vector3& x) { cm = x; }
    // Special version of setCM that assumes the cm lies along the body x-axis
-   void setCm(double x) { cm = {x, 0.0, 0.0}; }
+   virtual void setCm(double x) { cm = {x, 0.0, 0.0}; }
 
-   double getMass(double t)
+   virtual double getMass(double t)
    {
       return mass;
    }
 
-   double getCompositeMass(double t)
+   virtual double getCompositeMass(double t)
    {
       return compositeMass;
    }
@@ -87,7 +88,7 @@ public:
     * @param position  Relative position of the child part's center-of-mass w.r.t the
     *                  parent's center of mass
     */
-   void addChildPart(const Part& childPart, Vector3 position);
+   virtual void addChildPart(const Part& childPart, Vector3 position);
 
    /**
     * @brief Recomputes the inertia tensor. If the change is due to the change in inertia
@@ -95,11 +96,8 @@ public:
     *        only recompute that change rather than recompute all child inertia
     *        tensors
     * 
-    * @param name Optional name of the child part to recompute. If empty, it will
-    *             recompute all child inertia tensors
     */
-   //void recomputeInertiaTensor(std::string name = "");
-   void recomputeInertiaTensor();
+   virtual void recomputeInertiaTensor();
 private:
 
    // This is a pointer to the parent Part, if it has one. Purpose is to be able to
