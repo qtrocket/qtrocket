@@ -33,12 +33,14 @@ namespace sim
  * step() reports the step it actually took via StepResult::stepSize, so the caller advances its
  * clock accordingly.
  *
- * @note Like RK4Solver, the ODE callback takes no time argument (QtRocket evaluates forces at the
- *       step's start time), so the Fehlberg node times are not used to evaluate the ODE -- only the
- *       stage coefficients matter. Threading time through the ODE interface would be a separate
- *       change. The local-error estimate combines the state and rate differences as a single
- *       absolute norm (matching the reference algorithm); a scaled/relative norm is a possible
- *       future refinement.
+ * @note The ODE callback receives each stage's evaluation time (t + cᵢ·h), so a time-varying force
+ *       such as the motor thrust curve is sampled at the correct instant. This is what lets the
+ *       embedded error estimate *see* a thrust transient: across a sharp burn the 4th- and 5th-order
+ *       estimates diverge, err rises, and the stepper shrinks h to resolve it -- the whole point of
+ *       adaptivity. (Freezing the force at the step's start, as an earlier version did, hid the
+ *       transient from the estimator and let it take a coarse step straight through the burn.) The
+ *       local-error estimate combines the state and rate differences as a single absolute norm
+ *       (matching the reference algorithm); a scaled/relative norm is a possible future refinement.
  *
  * @tparam T the state/rate type (Vector3 or Quaternion)
  */
@@ -47,7 +49,7 @@ class RK45Solver : public DESolver<T>
 {
 public:
 
-   RK45Solver(std::function<std::pair<T, T>(T&, T&)> func = nullptr, double desiredError = 1.0e-6)
+   RK45Solver(std::function<std::pair<T, T>(double, T&, T&)> func = nullptr, double desiredError = 1.0e-6)
       : odes(func),
         tol(desiredError)
    {
@@ -62,15 +64,21 @@ public:
    }
    virtual ~RK45Solver() {}
 
-   void setFunction(std::function<std::pair<T, T>(T&, T&)> func) override { odes = std::move(func); }
+   void setFunction(std::function<std::pair<T, T>(double, T&, T&)> func) override { odes = std::move(func); }
 
-   /// Seeds the INITIAL step-size guess. RKF45 adapts the step from here to hold the error tolerance.
-   void setTimeStep(double inTs) override { h = inTs; }
+   /// Seeds the INITIAL step-size guess AND sets the maximum step to maxStepFactor*inTs. RKF45 adapts
+   /// the step from the guess to hold the error tolerance, but never grows it past hMax -- see the
+   /// hMax note below for why an upper bound is mandatory, not just a nicety.
+   void setTimeStep(double inTs) override { h = inTs; hMax = maxStepFactor * inTs; }
+
+   /// Override the absolute maximum step size (defaults to maxStepFactor x the seeded timestep).
+   /// Non-positive is ignored.
+   void setMaxStepSize(double hm) { if(hm > 0.0) hMax = hm; }
 
    /// Set the per-step local error tolerance the adaptive stepper targets. Non-positive is ignored.
    void setErrorTolerance(double e) { if(e > 0.0) tol = e; }
 
-   StepResult<T> step(T& state, T& rate) override
+   StepResult<T> step(double t, T& state, T& rate) override
    {
       // Adapt the step size until a step's estimated local error is within tolerance, then accept.
       while(true)
@@ -82,31 +90,32 @@ public:
          }
 
          // Six Fehlberg stages over the coupled (state, rate) system. Each stage is the ODE
-         // derivative at an intermediate (state, rate) built from the previous stages.
+         // derivative at an intermediate (state, rate) built from the previous stages, evaluated
+         // at that stage's node time t + Cn*h so a time-varying force is sampled at the right instant.
          T s1, r1, s2, r2, s3, r3, s4, r4, s5, r5, s6, r6; // stage derivatives
          T ts, tr;                                         // trial (state, rate) fed to the ODE
 
-         std::tie(s1, r1) = odes(state, rate);
+         std::tie(s1, r1) = odes(t, state, rate);
 
          ts = state + h * (K2[0] * s1);
          tr = rate  + h * (K2[0] * r1);
-         std::tie(s2, r2) = odes(ts, tr);
+         std::tie(s2, r2) = odes(t + C2 * h, ts, tr);
 
          ts = state + h * (K3[0] * s1 + K3[1] * s2);
          tr = rate  + h * (K3[0] * r1 + K3[1] * r2);
-         std::tie(s3, r3) = odes(ts, tr);
+         std::tie(s3, r3) = odes(t + C3 * h, ts, tr);
 
          ts = state + h * (K4[0] * s1 + K4[1] * s2 + K4[2] * s3);
          tr = rate  + h * (K4[0] * r1 + K4[1] * r2 + K4[2] * r3);
-         std::tie(s4, r4) = odes(ts, tr);
+         std::tie(s4, r4) = odes(t + C4 * h, ts, tr);
 
          ts = state + h * (K5[0] * s1 + K5[1] * s2 + K5[2] * s3 + K5[3] * s4);
          tr = rate  + h * (K5[0] * r1 + K5[1] * r2 + K5[2] * r3 + K5[3] * r4);
-         std::tie(s5, r5) = odes(ts, tr);
+         std::tie(s5, r5) = odes(t + C5 * h, ts, tr);
 
          ts = state + h * (K6[0] * s1 + K6[1] * s2 + K6[2] * s3 + K6[3] * s4 + K6[4] * s5);
          tr = rate  + h * (K6[0] * r1 + K6[1] * r2 + K6[2] * r3 + K6[3] * r4 + K6[4] * r5);
-         std::tie(s6, r6) = odes(ts, tr);
+         std::tie(s6, r6) = odes(t + C6 * h, ts, tr);
 
          // Fourth- and fifth-order estimates of the advanced state and rate.
          const T y4State = state + h*(E4[0]*s1 + E4[1]*s2 + E4[2]*s3 + E4[3]*s4 + E4[4]*s5 + E4[5]*s6);
@@ -138,21 +147,40 @@ public:
             h *= (scale > 5.0) ? 5.0 : scale;
          }
 
+         // Clamp the next-step guess to hMax. Without this, a trajectory whose within-step dynamics
+         // are polynomial -- constant-acceleration coasting in vacuum -- yields err < epsilon every
+         // step, so the branch above would grow h by 5x indefinitely and the integrator would leap
+         // past apogee and the ground in a handful of giant steps.
+         if(h > hMax)
+            h = hMax;
+
          // The fifth-order estimate is the more accurate result.
          return StepResult<T>{ y5State, y5Rate, usedStep };
       }
    }
 
 private:
-   std::function<std::pair<T, T>(T&, T&)> odes;
+   std::function<std::pair<T, T>(double, T&, T&)> odes;
 
    double tol{1.0e-6};  /// target local error per step
    double h{0.01};      /// current/next step-size guess (seeded by setTimeStep)
+   double hMax{0.1};    /// max accepted step; clamps adaptive growth (set by setTimeStep)
+
+   /// Default ratio of hMax to the seeded timestep. Lets the adaptive stepper grow the step for
+   /// efficiency in smooth regions while keeping it small enough to resolve apogee/ground events
+   /// and feed the per-step output sampling. setMaxStepSize() overrides the resulting hMax.
+   static constexpr double maxStepFactor = 10.0;
 
    static constexpr double hMin = 1.0e-15; /// give up below this step size
 
    // Runge-Kutta-Fehlberg (RKF45) Butcher coefficients. The Kn give the intermediate stage states;
-   // E4/E5 are the 4th- and 5th-order solution weights. (Node times TX are unused: see class note.)
+   // E4/E5 are the 4th- and 5th-order solution weights; Cn are the node times (stage n is evaluated
+   // at t + Cn*h, and equals the row-sum of the matching Kn).
+   static constexpr double C2 = 1.0 / 4.0;
+   static constexpr double C3 = 3.0 / 8.0;
+   static constexpr double C4 = 12.0 / 13.0;
+   static constexpr double C5 = 1.0;
+   static constexpr double C6 = 1.0 / 2.0;
    static constexpr std::array<double, 5> K2 = {1.0 / 4.0, 0.0, 0.0, 0.0, 0.0};
    static constexpr std::array<double, 5> K3 = {3.0 / 32.0, 9.0 / 32.0, 0.0, 0.0, 0.0};
    static constexpr std::array<double, 5> K4 = {1932.0 / 2197.0, -7200.0 / 2197.0, 7296.0 / 2197.0,

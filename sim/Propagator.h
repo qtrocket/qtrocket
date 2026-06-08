@@ -90,6 +90,10 @@ public:
 private:
 
    std::unique_ptr<sim::Integrator> linearIntegrator;
+   // 6-DOF (P4): the orientation integrator will use the same DESolver<Quaternion> interface. Its ODE
+   // callback takes the same leading time argument as the linear one -- std::pair<Quaternion,
+   // Quaternion>(double t, Quaternion&, Quaternion&) -- so getTorques() can be evaluated at each
+   // stage's node time, just as getForces() now is.
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<model::Propagatable> object;

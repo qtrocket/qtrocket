@@ -70,7 +70,7 @@ public:
         }
     }
 
-    void setIntegratorFunction(std::function<std::pair<Vector3, Vector3>(Vector3&, Vector3&)> func)
+    void setIntegratorFunction(std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> func)
     {
         odes = func;
     }
@@ -80,7 +80,7 @@ public:
         integratorModels[integratorModel]->setTimeStep(dt);
     }
 
-    StepResult<Vector3> step(Vector3& state, Vector3& rate) { return integratorModels[integratorModel]->step(state, rate); }
+    StepResult<Vector3> step(double t, Vector3& state, Vector3& rate) { return integratorModels[integratorModel]->step(t, state, rate); }
 
 private:
 
@@ -89,7 +89,7 @@ private:
     std::string integratorModel{"Runge-Kutta 4th Order"}; /// RK4 Model is the default
 
     // This is the physics model
-    std::function<std::pair<Vector3, Vector3>(Vector3&, Vector3&)> odes;
+    std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> odes;
 };
 
 } // namespace sim

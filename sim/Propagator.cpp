@@ -25,8 +25,10 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
      saveStates(true),
      timeStep(0.01)
 {
-    // Linear velocity and acceleration
-    std::function<std::pair<Vector3, Vector3>(Vector3&, Vector3&)> linearODEs = [this](Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
+    // Linear velocity and acceleration. The solver passes the time t to allow for custom forcing functions that
+    // are definined in terms of an absolute time (e.g. motor thrust curves) The solver needs to be able to pass
+    // the actual simulation time to getForces()
+    std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> linearODEs = [this](double t, Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
     {
         Vector3 dPosition;
         Vector3 dVelocity;
@@ -34,7 +36,7 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
         dPosition = rate;
 
         // dvx/dt
-        dVelocity = object->getForces(currentTime, state, rate) / object->getMass(currentTime);
+        dVelocity = object->getForces(t, state, rate) / object->getMass(t);
 
         return std::make_pair(dPosition, dVelocity);
     };
@@ -69,7 +71,7 @@ void Propagator::runUntilTerminate()
         currentPosition = object->getCurrentState().position;
         currentVelocity = object->getCurrentState().velocity;
 
-        StepResult<Vector3> result = linearIntegrator->step(currentPosition, currentVelocity);
+        StepResult<Vector3> result = linearIntegrator->step(currentTime, currentPosition, currentVelocity);
         nextPosition = result.state;
         nextVelocity = result.rate;
 

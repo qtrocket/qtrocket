@@ -32,7 +32,7 @@ class RK4Solver : public DESolver<T>
 {
 public:
 
-   RK4Solver(std::function<std::pair<T, T>(T&, T&)> func = nullptr)
+   RK4Solver(std::function<std::pair<T, T>(double, T&, T&)> func = nullptr)
    {
       // This only works for Eigen Vector types.
       // TODO: Figure out how to make this slightly more generic, but for now
@@ -40,15 +40,15 @@ public:
       static_assert(std::is_same<T, Vector3>::value
                     || std::is_same<T, Quaternion>::value,
                     "You can only use Vector3 or Quaternion valued functions in RK4Solver");
-      
+
       odes = std::move(func);
    }
    virtual ~RK4Solver() {}
 
    void setTimeStep(double inTs) override { dt = inTs;  halfDT = dt / 2.0; }
-   void setFunction(std::function<std::pair<T, T>(T&, T&)> func) override { odes = std::move(func); }
+   void setFunction(std::function<std::pair<T, T>(double, T&, T&)> func) override { odes = std::move(func); }
 
-   StepResult<T> step(T& state, T& rate) override
+   StepResult<T> step(double t, T& state, T& rate) override
    {
       if(dt == std::numeric_limits<double>::quiet_NaN())
       {
@@ -56,17 +56,19 @@ public:
          return StepResult<T>{};
       }
 
-      std::tie(k1State, k1Rate) = odes(state, rate);
+      // RK4 nodes are at t, t+dt/2, t+dt/2, t+dt. Passing the node time lets the ODE evaluate a
+      // time-varying force (motor thrust, mass) at the correct instant instead of freezing it at t.
+      std::tie(k1State, k1Rate) = odes(t, state, rate);
       // compute k2 values. This involves stepping the current values forward a half-step
       // based on k1, so we do the stepping first
       std::tie(tempState, tempRate) = std::make_pair(state + k1State*halfDT, rate + k1Rate*halfDT);
-      std::tie(k2State, k2Rate) = odes(tempState, tempRate);
+      std::tie(k2State, k2Rate) = odes(t + halfDT, tempState, tempRate);
 
       std::tie(tempState, tempRate) = std::make_pair(state + k2State*halfDT, rate + k2Rate*halfDT);
-      std::tie(k3State, k3Rate) = odes(tempState, tempRate);
+      std::tie(k3State, k3Rate) = odes(t + halfDT, tempState, tempRate);
 
       std::tie(tempState, tempRate) = std::make_pair(state + k3State*dt, rate + k3Rate*dt);
-      std::tie(k4State, k4Rate) = odes(tempState, tempRate);
+      std::tie(k4State, k4Rate) = odes(t + dt, tempState, tempRate);
 
       // Fixed-step solver: the step taken is always dt.
       return StepResult<T>{ state + (dt / 6.0)*(k1State + 2.0*k2State + 2.0*k3State + k4State),
@@ -75,7 +77,7 @@ public:
    }
 
 private:
-   std::function<std::pair<T, T>(T&, T&)> odes;
+   std::function<std::pair<T, T>(double, T&, T&)> odes;
 
    T k1State;
    T k2State;

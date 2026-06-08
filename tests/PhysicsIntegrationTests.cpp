@@ -68,19 +68,25 @@ protected:
       double tFinal{0.0};
       double apogee{0.0};
       double downrange{0.0}; // max horizontal (X) distance reached
+      double finalZ{0.0};    // altitude of the final (impact) sample
       bool intervalsMatchDt{true};
    };
 
-   // Runs one flight at the given timestep and (speed, angle-from-vertical).
-   // Angle is measured from vertical (0 = straight up, 90 = horizontal), matching
-   // the GUI/CLI convention, so Z is the cosine and downrange X is the sine.
-   FlightResult runFlight(double dt, double speed, double angleDeg)
+   // Runs one flight at the given timestep and (speed, angle-from-vertical) under
+   // the named integrator. Angle is measured from vertical (0 = straight up,
+   // 90 = horizontal), matching the GUI/CLI convention, so Z is the cosine and
+   // downrange X is the sine. The integrator is set on every call (defaulting to
+   // RK4) so a test that selects RKF45 can't leak that choice into later tests via
+   // the shared QtRocket singleton.
+   FlightResult runFlight(double dt, double speed, double angleDeg,
+                          const std::string& integrator = "Runge-Kutta 4th Order")
    {
       const double rad = angleDeg / DEG_PER_RAD;
       StateData initial;
       initial.position = {0.0, 0.0, 0.0};
       initial.velocity = {speed * std::sin(rad), 0.0, speed * std::cos(rad)};
       qtRocket->setInitialState(initial);
+      qtRocket->setIntegratorModel(integrator);
       qtRocket->setTimeStep(dt);
       qtRocket->launchRocket();
 
@@ -90,6 +96,7 @@ protected:
       if(states.empty())
          return r;
       r.tFinal = states.back().first;
+      r.finalZ = states.back().second.position[2];
       r.apogee = states.front().second.position[2];
       for(std::size_t i = 0; i < states.size(); ++i)
       {
@@ -130,6 +137,40 @@ TEST_F(PhysicsIntegrationTest, TimestepReachesIntegratorUnderVacuum)
    // Step count scales ~1/dt: halving dt ~doubles the steps.
    EXPECT_NEAR(static_cast<double>(mid.steps) / static_cast<double>(coarse.steps), 2.0, 0.2);
    EXPECT_NEAR(static_cast<double>(fine.steps) / static_cast<double>(mid.steps), 2.0, 0.2);
+}
+
+// Regression for the RKF45 adaptive integrator under Vacuum, covering both fixes:
+//   (a) Step-size runaway: constant-acceleration coasting is integrated exactly by both
+//       embedded orders, so the local-error estimate was ~0 every step and the controller
+//       multiplied the step by 5x without bound -- the flight leapt megameters past the
+//       ground in only 6-8 steps. The hMax cap (sim/RK45Solver.h) bounds the step.
+//   (b) Frozen-thrust burn error: with the old no-time ODE interface, thrust was frozen at
+//       each step's start, so a coarse adaptive step over-integrated the burn impulse
+//       (RKF45 apogee ran ~8% high, worst for sharp-burn motors). Threading each Fehlberg
+//       stage's node time into the ODE lets the error estimator see the thrust transient and
+//       refine across it, so RKF45 now tracks the RK4 baseline tightly.
+// Run under Vacuum so the comparison is the pure thrust+gravity trajectory the bug was worst
+// for (drag would mask (b) by dissipating the carried-forward velocity error during coast).
+TEST_F(PhysicsIntegrationTest, AdaptiveIntegratorMatchesRK4UnderVacuum)
+{
+   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+
+   const FlightResult rk4   = runFlight(0.01, 0.0, 0.0, "Runge-Kutta 4th Order");
+   const FlightResult rkf45 = runFlight(0.01, 0.0, 0.0, "Runge-Kutta-Fehlberg");
+
+   // (a) Did not run away: many steps (not the 6-8 of the runaway), but still far fewer than
+   // the fixed-step baseline -- the adaptive efficiency win (G80T: ~530 vs ~4050 steps).
+   ASSERT_GT(rkf45.steps, 20u);
+   EXPECT_LT(rkf45.steps, rk4.steps);
+
+   // Lands near the ground instead of megameters below it (the cap bounds the final overshoot).
+   EXPECT_NEAR(rkf45.finalZ, 0.0, 20.0);
+
+   // (b) Apogee now matches the RK4 baseline to well under 1% (G80T: ~0.05%). The 2% tolerance
+   // leaves margin for platform floating-point variation while still catching a regression of
+   // the frozen-thrust error, which was ~8% here before the node-time fix.
+   EXPECT_GT(rkf45.apogee, 0.0);
+   EXPECT_NEAR(rkf45.apogee, rk4.apogee, 0.02 * rk4.apogee);
 }
 
 // Launch angle convention ([H1]): the angle is measured from vertical, so 0 deg
