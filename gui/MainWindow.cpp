@@ -3,6 +3,8 @@
 // C headers
 // C++ headers
 // 3rd party headers
+#include <QFileDialog>
+#include <QMessageBox>
 /// \endcond
 
 
@@ -73,7 +75,29 @@ void MainWindow::onMenu_Help_About_triggered()
 
 void MainWindow::onMenu_Tools_SaveMotorDatabase()
 {
-   qtRocket->getMotorDatabase()->saveMotorDatabase("qtrocket_motors.qmd");
+   QString dbFile = QFileDialog::getSaveFileName(this,
+                                                 tr("Save Motor Database File"),
+                                                 "/home",
+                                                 tr("QtRocket Motor Database (*.qmd)"));
+
+   if(dbFile.isEmpty())
+      return;
+
+   // getSaveFileName does not force the filter's suffix, so add it ourselves when the user typed a
+   // bare name. This keeps saved files discoverable by the *.qmd filter on the load side.
+   if(!dbFile.endsWith(".qmd", Qt::CaseInsensitive))
+      dbFile += ".qmd";
+
+   try
+   {
+      qtRocket->getMotorDatabase()->saveMotorDatabase(dbFile.toStdString());
+   }
+   catch(const std::exception& e)
+   {
+      QMessageBox::critical(this,
+                            tr("Save Failed"),
+                            tr("Failed to save motor database %1:\n%2").arg(dbFile, e.what()));
+   }
 }
 
 

@@ -43,6 +43,8 @@ private slots:
 
    void onButton_loadMotorDatabase_clicked();
 
+   void onButton_saveMotorDatabase_clicked();
+
    void onButton_setMotor_clicked();
 
 private:

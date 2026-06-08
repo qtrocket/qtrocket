@@ -137,6 +137,13 @@
     </widget>
    </item>
    <item>
+    <widget class="QPushButton" name="saveMotorDatabase_btn">
+     <property name="text">
+      <string>Save Motor Database</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QPushButton" name="calculateTrajectory_btn">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">

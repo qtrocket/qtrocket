@@ -3,12 +3,12 @@
 // C headers
 // C++ headers
 #include <cmath>
-#include <iostream>
 #include <optional>
 
 // 3rd party headers
 #include <QDoubleValidator>
 #include <QFileDialog>
+#include <QMessageBox>
 /// \endcond
 
 
@@ -70,6 +70,11 @@ CannonballTab::CannonballTab(QtRocket* _qtRocket, QWidget* parent)
            SIGNAL(clicked()),
            this,
            SLOT(onButton_loadMotorDatabase_clicked()));
+
+   connect(ui->saveMotorDatabase_btn,
+           SIGNAL(clicked()),
+           this,
+           SLOT(onButton_saveMotorDatabase_clicked()));
 
    refreshCalculateTrajectoryEnabled();
 }
@@ -136,7 +141,9 @@ void CannonballTab::onButton_loadRSE_button_clicked()
    }
    catch(const std::exception& e)
    {
-      std::cerr << "Failed to import " << rseFile.toStdString() << ": " << e.what() << std::endl;
+      QMessageBox::critical(this,
+                            tr("Import Failed"),
+                            tr("Failed to import %1:\n%2").arg(rseFile, e.what()));
       return;
    }
 
@@ -183,13 +190,45 @@ void CannonballTab::onButton_loadMotorDatabase_clicked()
    }
    catch(const std::exception& e)
    {
-      std::cerr << "Failed to load motor database " << dbFile.toStdString() << ": " << e.what()
-                << std::endl;
+      QMessageBox::critical(this,
+                            tr("Load Failed"),
+                            tr("Failed to load motor database %1:\n%2").arg(dbFile, e.what()));
       return;
    }
 
    ui->databaseFileLine->setText(dbFile);
    populateEngineSelectorFromDatabase();
+}
+
+void CannonballTab::onButton_saveMotorDatabase_clicked()
+{
+   QString dbFile = QFileDialog::getSaveFileName(this,
+                                                 tr("Save Motor Database File"),
+                                                 "/home",
+                                                 tr("QtRocket Motor Database (*.qmd)"));
+
+   if(dbFile.isEmpty())
+      return;
+
+   // getSaveFileName does not force the filter's suffix, so add it ourselves when the user typed a
+   // bare name. This keeps saved files discoverable by the *.qmd filter on the load side.
+   if(!dbFile.endsWith(".qmd", Qt::CaseInsensitive))
+      dbFile += ".qmd";
+
+   auto motorDatabase = QtRocket::getInstance()->getMotorDatabase();
+   try
+   {
+      motorDatabase->saveMotorDatabase(dbFile.toStdString());
+   }
+   catch(const std::exception& e)
+   {
+      QMessageBox::critical(this,
+                            tr("Save Failed"),
+                            tr("Failed to save motor database %1:\n%2").arg(dbFile, e.what()));
+      return;
+   }
+
+   ui->databaseFileLine->setText(dbFile);
 }
 
 void CannonballTab::onButton_setMotor_clicked()
