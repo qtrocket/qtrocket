@@ -21,6 +21,7 @@
 #include "QtRocket.h"
 #include "model/MotorModel.h"
 #include "model/RocketModel.h"
+#include "sim/Integrator.h"
 #include "sim/StateData.h"
 #include "utils/MotorModelDatabase.h"
 
@@ -143,6 +144,10 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "#   settimestep <s>         set integrator timestep\n"
           << "#   listatmospheres         list available atmosphere models\n"
           << "#   setatmosphere <name>    select atmosphere model (e.g. Vacuum)\n"
+          << "#   listgravity             list available gravity models\n"
+          << "#   setgravity <name>       select gravity model (e.g. Constant Gravity)\n"
+          << "#   listintegrators         list available integrator models\n"
+          << "#   setintegrator <name>    select integrator (e.g. Runge-Kutta 4th Order)\n"
           << "#   status                  show current configuration\n"
           << "#   launch                  run the simulation; print summary + write CSV\n"
           << "#   states [stride]         print state vectors to stdout (every stride-th)\n"
@@ -444,6 +449,62 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       out << "OK setatmosphere: " << name << "\n";
       return true;
    }
+   else if(cmd == "listgravity")
+   {
+      const auto models = qtRocket->getEnvironment()->getAvailableGravityModels();
+      out << "OK listgravity: " << models.size() << " available\n";
+      for(const auto& name : models)
+         out << name << "\n";
+      return true;
+   }
+   else if(cmd == "setgravity")
+   {
+      const std::string name = restOfLine(iss);
+      if(name.empty())
+      {
+         out << "ERR usage: setgravity <name>  (see listgravity)\n";
+         return true;
+      }
+      const auto models = qtRocket->getEnvironment()->getAvailableGravityModels();
+      if(std::find(models.begin(), models.end(), name) == models.end())
+      {
+         out << "ERR setgravity: '" << name << "' not found (see listgravity)\n";
+         return true;
+      }
+      qtRocket->getEnvironment()->setGravityModel(name);
+      gravityModel = name;
+      out << "OK setgravity: " << name << "\n";
+      return true;
+   }
+   else if(cmd == "listintegrators")
+   {
+      sim::Integrator integrator;
+      const auto models = integrator.getAvailableIntegratorModels();
+      out << "OK listintegrators: " << models.size() << " available\n";
+      for(const auto& name : models)
+         out << name << "\n";
+      return true;
+   }
+   else if(cmd == "setintegrator")
+   {
+      const std::string name = restOfLine(iss);
+      if(name.empty())
+      {
+         out << "ERR usage: setintegrator <name>  (see listintegrators)\n";
+         return true;
+      }
+      sim::Integrator integrator;
+      const auto models = integrator.getAvailableIntegratorModels();
+      if(std::find(models.begin(), models.end(), name) == models.end())
+      {
+         out << "ERR setintegrator: '" << name << "' not found (see listintegrators)\n";
+         return true;
+      }
+      qtRocket->setIntegratorModel(name);
+      integratorModel = name;
+      out << "OK setintegrator: " << name << "\n";
+      return true;
+   }
    else if(cmd == "status")
    {
       out << "OK status:\n"
@@ -454,6 +515,8 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "  velocity   = " << initialVelocity << " m/s\n"
           << "  angle      = " << initialAngleDeg << " deg (from vertical)\n"
           << "  atmosphere = " << atmosphereModel << "\n"
+          << "  gravity    = " << gravityModel << "\n"
+          << "  integrator = " << integratorModel << "\n"
           << "  database   = "
           << (qtRocket->getMotorDatabase()->size() > 0
                  ? std::to_string(qtRocket->getMotorDatabase()->size()) + " motors"
