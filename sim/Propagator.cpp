@@ -13,7 +13,7 @@
 // qtrocket headers
 #include "Propagator.h"
 
-#include "sim/RK4Solver.h"
+#include "sim/Integrator.h"
 #include "utils/Logger.h"
 
 namespace sim
@@ -39,7 +39,9 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
         return std::make_pair(dPosition, dVelocity);
     };
 
-    linearIntegrator.reset(new RK4Solver<Vector3>(linearODEs));
+    linearIntegrator.reset(new Integrator);
+    linearIntegrator->setIntegratorModel("Runge-Kutta 4th Order");
+    linearIntegrator->setIntegratorFunction(linearODEs);
     linearIntegrator->setTimeStep(timeStep);
 
     saveStates = true;

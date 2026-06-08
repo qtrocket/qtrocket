@@ -47,7 +47,7 @@ class RK45Solver : public DESolver<T>
 {
 public:
 
-   RK45Solver(std::function<std::pair<T, T>(T&, T&)> func, double desiredError = 1.0e-6)
+   RK45Solver(std::function<std::pair<T, T>(T&, T&)> func = nullptr, double desiredError = 1.0e-6)
       : odes(func),
         tol(desiredError)
    {
@@ -61,6 +61,8 @@ public:
       }
    }
    virtual ~RK45Solver() {}
+
+   void setFunction(std::function<std::pair<T, T>(T&, T&)> func) override { odes = std::move(func); }
 
    /// Seeds the INITIAL step-size guess. RKF45 adapts the step from here to hold the error tolerance.
    void setTimeStep(double inTs) override { h = inTs; }

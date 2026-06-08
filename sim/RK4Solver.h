@@ -32,7 +32,7 @@ class RK4Solver : public DESolver<T>
 {
 public:
 
-   RK4Solver(std::function<std::pair<T, T>(T&, T&)> func)
+   RK4Solver(std::function<std::pair<T, T>(T&, T&)> func = nullptr)
    {
       // This only works for Eigen Vector types.
       // TODO: Figure out how to make this slightly more generic, but for now
@@ -41,11 +41,12 @@ public:
                     || std::is_same<T, Quaternion>::value,
                     "You can only use Vector3 or Quaternion valued functions in RK4Solver");
       
-      odes = func;
+      odes = std::move(func);
    }
    virtual ~RK4Solver() {}
 
    void setTimeStep(double inTs) override { dt = inTs;  halfDT = dt / 2.0; }
+   void setFunction(std::function<std::pair<T, T>(T&, T&)> func) override { odes = std::move(func); }
 
    StepResult<T> step(T& state, T& rate) override
    {

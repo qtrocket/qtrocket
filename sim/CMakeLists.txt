@@ -8,9 +8,11 @@ add_library(sim
    Environment.h
    GeoidModel.h
    GravityModel.h
+   Integrator.h
    Propagator.cpp
    Propagator.h
    RK4Solver.h
+   RK45Solver.h
    SphericalGeoidModel.cpp
    SphericalGeoidModel.h
    SphericalGravityModel.cpp

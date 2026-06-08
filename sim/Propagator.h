@@ -10,7 +10,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "sim/RK4Solver.h"
+#include "sim/Integrator.h"
 #include "utils/math/MathTypes.h"
 #include "sim/StateData.h"
 #include "model/Propagatable.h"
@@ -81,7 +81,7 @@ public:
 
 private:
 
-   std::unique_ptr<sim::RK4Solver<Vector3>> linearIntegrator;
+   std::unique_ptr<sim::Integrator> linearIntegrator;
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<model::Propagatable> object;

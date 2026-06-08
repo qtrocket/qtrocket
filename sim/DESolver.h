@@ -5,6 +5,7 @@
 // C headers
 // C++ headers
 #include <utility>
+#include <functional>
 
 // 3rd party headers
 /// \endcond
@@ -58,6 +59,7 @@ public:
     *         variable for an adaptive one.
     */
    virtual StepResult<T> step(T& state, T& rate) = 0;
+   virtual void setFunction(std::function<std::pair<T, T>(T&, T&)> func) = 0;
 };
 
 } // namespace sim
