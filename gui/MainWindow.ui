@@ -63,7 +63,7 @@
       </property>
      </widget>
     </widget>
-    <widget class="QCustomPlot" name="plotWindow" native="true"/>
+    <widget class="RocketModelerView" name="rocketModelerView" native="true"/>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -191,10 +191,9 @@
    <header>gui/RocketTreeView.h</header>
   </customwidget>
   <customwidget>
-   <class>QCustomPlot</class>
+   <class>RocketModelerView</class>
    <extends>QWidget</extends>
-   <header>gui/qcustomplot.h</header>
-   <container>1</container>
+   <header>gui/RocketModelerView.h</header>
   </customwidget>
  </customwidgets>
  <resources>

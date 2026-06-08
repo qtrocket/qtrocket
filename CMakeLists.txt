@@ -106,6 +106,8 @@ set(PROJECT_SOURCES
         gui/MainWindow.cpp
         gui/MainWindow.h
         gui/MainWindow.ui
+        gui/RocketModelerView.cpp
+        gui/RocketModelerView.h
         gui/RocketTreeView.cpp
         gui/RocketTreeView.h
         gui/SimOptionsTab.cpp
