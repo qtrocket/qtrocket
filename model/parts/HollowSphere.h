@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <memory>
 #include <string>
 
 // 3rd party headers
@@ -50,6 +51,18 @@ public:
    double getOuterRadius() const { return outerRadius; } ///< Outer radius ro (meters).
    double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
    double getVolume()      const { return volume; }      ///< Shell volume (4/3)pi(ro^3 - ri^3) (m^3).
+
+protected:
+   /// @brief Protected copy ctor + cloneShallow() implement clone() for this type (Part is otherwise
+   ///        non-copyable). Defaulted: copies geometry/density and, via Part's protected copy ctor,
+   ///        the base mass properties with a fresh id. Protected, so a HollowSphere can't be
+   ///        value-copied or sliced from outside either.
+   HollowSphere(const HollowSphere&) = default;
+
+   std::shared_ptr<Part> cloneShallow() const override
+   {
+      return std::shared_ptr<Part>(new HollowSphere(*this));
+   }
 
 private:
    // Static helpers so they can be evaluated in the Part base-class initializer.

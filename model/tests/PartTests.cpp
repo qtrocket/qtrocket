@@ -67,12 +67,8 @@ TEST(PartTest, CreationTests)
                0, 1, 0,
                0, 0, 1;
    Vector3 cm2{1, 0, 0};
-   model::Part testPart2("testPart2",
-                        inertia2,
-                        1.0,
-                        cm2);
    Vector3 R{2.0, 2.0, 2.0};
-   testPart.addChildPart(testPart2, R);
+   testPart.addChildPart(std::make_shared<model::Part>("testPart2", inertia2, 1.0, cm2), R);
 
 
 }
@@ -157,10 +153,11 @@ TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
 namespace
 {
 // Build a massless-inertia "point mass": all the inertia comes from the parallel-axis shift, which
-// is exactly what the composite math is responsible for getting right.
-model::Part pointMass(const std::string& name, double mass)
+// is exactly what the composite math is responsible for getting right. Returns a shared_ptr because
+// parts are owned through shared_ptr and addChildPart() takes ownership of one.
+std::shared_ptr<model::Part> pointMass(const std::string& name, double mass)
 {
-   return model::Part(name, Matrix3::Zero(), mass, Vector3::Zero());
+   return std::make_shared<model::Part>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 
 // Mass of a uniform hollow cylinder (tube): density * volume, volume = pi * (ro^2 - ri^2) * length.
@@ -171,12 +168,13 @@ double tubeMass(double ri, double ro, double length, double density)
 
 // Build a tube Part: longitudinal axis on z (per InertiaTensors::Tube), CM at the part origin. Used
 // to verify that tubes of equal radii stacked end-to-end along z reproduce a single longer tube.
-model::Part tube(const std::string& name, double ri, double ro, double length, double density)
+std::shared_ptr<model::Part> tube(const std::string& name, double ri, double ro, double length,
+                                  double density)
 {
-   return model::Part(name,
-                      model::InertiaTensors::Tube(ri, ro, length),
-                      tubeMass(ri, ro, length, density),
-                      Vector3::Zero());
+   return std::make_shared<model::Part>(name,
+                                        model::InertiaTensors::Tube(ri, ro, length),
+                                        tubeMass(ri, ro, length, density),
+                                        Vector3::Zero());
 }
 } // namespace
 
@@ -185,14 +183,14 @@ TEST(PartCompositionTest, PointMassPairCompositeCmIsMassWeightedMidpoint)
    // Parent mass at its own CM (origin); child mass offset along +x. The composite CM sits at the
    // mass-weighted average, expressed relative to the parent's own CM.
    const double mp = 2.0, mc = 3.0, L = 4.0;
-   model::Part parent = pointMass("parent", mp);
-   parent.addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
+   auto parent = pointMass("parent", mp);
+   parent->addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
 
-   const Vector3 cm = parent.getCompositeCm();
+   const Vector3 cm = parent->getCompositeCm();
    EXPECT_NEAR(cm(0), mc * L / (mp + mc), 1e-12); // = 2.4
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
    EXPECT_NEAR(cm(2), 0.0, 1e-12);
-   EXPECT_NEAR(parent.getCompositeMass(0.0), mp + mc, 1e-12);
+   EXPECT_NEAR(parent->getCompositeMass(0.0), mp + mc, 1e-12);
 }
 
 TEST(PartCompositionTest, PointMassPairInertiaIsAboutCompositeCmNotParentCm)
@@ -201,12 +199,12 @@ TEST(PartCompositionTest, PointMassPairInertiaIsAboutCompositeCmNotParentCm)
    // transverse axes (mu = reduced mass), 0 about the line joining them. The pre-fix code computed
    // this about the PARENT's CM (mc*L^2), so this value pins the tensor to the composite CM.
    const double mp = 2.0, mc = 3.0, L = 4.0;
-   model::Part parent = pointMass("parent", mp);
-   parent.addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
+   auto parent = pointMass("parent", mp);
+   parent->addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
 
    const double mu = mp * mc / (mp + mc);
    const double expected = mu * L * L; // 19.2
-   const Matrix3 I = parent.getCompositeI();
+   const Matrix3 I = parent->getCompositeI();
    EXPECT_NEAR(I(0, 0), 0.0, 1e-12);       // along the joining line
    EXPECT_NEAR(I(1, 1), expected, 1e-12);
    EXPECT_NEAR(I(2, 2), expected, 1e-12);
@@ -224,10 +222,10 @@ TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
    const double mr = 1.0, mc = 2.0, mg = 3.0;
    const double a = 1.0, b = 2.0;            // child at a from root; grandchild at b from child
 
-   model::Part child = pointMass("child", mc);
-   child.addChildPart(pointMass("grandchild", mg), Vector3{b, 0.0, 0.0});
-   model::Part root = pointMass("root", mr);
-   root.addChildPart(child, Vector3{a, 0.0, 0.0});
+   auto child = pointMass("child", mc);
+   child->addChildPart(pointMass("grandchild", mg), Vector3{b, 0.0, 0.0});
+   auto root = pointMass("root", mr);
+   root->addChildPart(child, Vector3{a, 0.0, 0.0});
 
    // Flat reference (masses on the x-axis at 0, a, a+b).
    const double x[3] = {0.0, a, a + b};
@@ -239,34 +237,35 @@ TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
    double transverse = 0.0;
    for(int i = 0; i < 3; ++i) transverse += m[i] * (x[i] - xc) * (x[i] - xc);
 
-   EXPECT_NEAR(root.getCompositeMass(0.0), M, 1e-12);
-   EXPECT_NEAR(root.getCompositeCm()(0), xc, 1e-12);
+   EXPECT_NEAR(root->getCompositeMass(0.0), M, 1e-12);
+   EXPECT_NEAR(root->getCompositeCm()(0), xc, 1e-12);
 
-   const Matrix3 I = root.getCompositeI();
+   const Matrix3 I = root->getCompositeI();
    EXPECT_NEAR(I(0, 0), 0.0, 1e-12);
    EXPECT_NEAR(I(1, 1), transverse, 1e-12);
    EXPECT_NEAR(I(2, 2), transverse, 1e-12);
 }
 
-TEST(PartCompositionTest, DeepCopyIsIndependentOfOriginal)
+TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
 {
-   // addChildPart deep-copies the child sub-tree, so later mutating the ORIGINAL must not change the
-   // parent's cached composite. (Also guards against the parent being wrongly dirtied by the copy.)
-   model::Part child = pointMass("child", 1.0);
-   child.addChildPart(pointMass("grandchild", 1.0), Vector3{1.0, 0.0, 0.0});
+   // clone() must produce a fully independent deep copy that preserves the dynamic type (no slicing).
+   // Build a HollowSphere with a child, clone it, then mutate the original -> the clone is untouched.
+   auto body = std::make_shared<model::HollowSphere>("body", 0.04, 0.05, 2700.0);
+   body->addChildPart(pointMass("tip", 0.1), Vector3{0.2, 0.0, 0.0});
 
-   model::Part root = pointMass("root", 1.0);
-   root.addChildPart(child, Vector3{1.0, 0.0, 0.0});
+   auto copy = body->clone();
+   const double massBefore = copy->getCompositeMass(0.0);
+   const double iyyBefore = copy->getCompositeI()(1, 1);
 
-   const double massBefore = root.getCompositeMass(0.0);
-   const double iyyBefore = root.getCompositeI()(1, 1);
+   // Mutate the original every which way.
+   body->setMass(99.0);
+   body->addChildPart(pointMass("extra", 50.0), Vector3{1.0, 0.0, 0.0});
 
-   // Mutate the original child every which way.
-   child.setMass(100.0);
-   child.addChildPart(pointMass("extra", 50.0), Vector3{5.0, 0.0, 0.0});
+   EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
+   EXPECT_DOUBLE_EQ(copy->getCompositeI()(1, 1), iyyBefore);
 
-   EXPECT_DOUBLE_EQ(root.getCompositeMass(0.0), massBefore);
-   EXPECT_DOUBLE_EQ(root.getCompositeI()(1, 1), iyyBefore);
+   // Type preserved: the clone is still a HollowSphere, not a sliced base Part.
+   EXPECT_NE(dynamic_cast<model::HollowSphere*>(copy.get()), nullptr);
 }
 
 TEST(PartCompositionTest, SetMassAndSetIInvalidateCompositeCache)
@@ -312,22 +311,22 @@ TEST(PartCompositionTest, TwoTubesEndToEndEqualOneLongerTube)
    const double ri = 0.02, ro = 0.03, density = 1500.0;
    const double L1 = 0.10, L2 = 0.20;
 
-   model::Part assembly = tube("t1", ri, ro, L1, density);
+   auto assembly = tube("t1", ri, ro, L1, density);
    // tube 2's CM sits (L1 + L2)/2 along +z from tube 1's CM (touching faces).
-   assembly.addChildPart(tube("t2", ri, ro, L2, density), Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+   assembly->addChildPart(tube("t2", ri, ro, L2, density), Vector3{0.0, 0.0, (L1 + L2) / 2.0});
 
    const double totalLength = L1 + L2;
    const double totalMass = tubeMass(ri, ro, totalLength, density);
 
-   EXPECT_NEAR(assembly.getCompositeMass(0.0), totalMass, 1e-12);
+   EXPECT_NEAR(assembly->getCompositeMass(0.0), totalMass, 1e-12);
 
    // Merged center is L2/2 beyond tube 1's own center (relative to tube 1's CM).
-   const Vector3 cm = assembly.getCompositeCm();
+   const Vector3 cm = assembly->getCompositeCm();
    EXPECT_NEAR(cm(0), 0.0, 1e-12);
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
    EXPECT_NEAR(cm(2), L2 / 2.0, 1e-12);
 
-   expectMatchesSingleTube(assembly.getCompositeI(), ri, ro, totalLength, totalMass);
+   expectMatchesSingleTube(assembly->getCompositeI(), ri, ro, totalLength, totalMass);
 }
 
 TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
@@ -339,54 +338,48 @@ TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
    const double ri = 0.02, ro = 0.03, density = 1500.0;
    const double L1 = 0.10, L2 = 0.20, L3 = 0.30;
 
-   model::Part t2 = tube("t2", ri, ro, L2, density);
-   t2.addChildPart(tube("t3", ri, ro, L3, density), Vector3{0.0, 0.0, (L2 + L3) / 2.0});
-   model::Part assembly = tube("t1", ri, ro, L1, density);
-   assembly.addChildPart(t2, Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+   auto t2 = tube("t2", ri, ro, L2, density);
+   t2->addChildPart(tube("t3", ri, ro, L3, density), Vector3{0.0, 0.0, (L2 + L3) / 2.0});
+   auto assembly = tube("t1", ri, ro, L1, density);
+   assembly->addChildPart(t2, Vector3{0.0, 0.0, (L1 + L2) / 2.0});
 
    const double totalLength = L1 + L2 + L3;
    const double totalMass = tubeMass(ri, ro, totalLength, density);
 
-   EXPECT_NEAR(assembly.getCompositeMass(0.0), totalMass, 1e-12);
+   EXPECT_NEAR(assembly->getCompositeMass(0.0), totalMass, 1e-12);
 
    // Merged center is (L2 + L3)/2 beyond tube 1's own center (relative to tube 1's CM).
-   const Vector3 cm = assembly.getCompositeCm();
+   const Vector3 cm = assembly->getCompositeCm();
    EXPECT_NEAR(cm(0), 0.0, 1e-12);
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
    EXPECT_NEAR(cm(2), (L2 + L3) / 2.0, 1e-12);
 
-   expectMatchesSingleTube(assembly.getCompositeI(), ri, ro, totalLength, totalMass);
+   expectMatchesSingleTube(assembly->getCompositeI(), ri, ro, totalLength, totalMass);
 }
 
-TEST(PartCompositionTest, PartsHaveUniqueIdsCopiesGetFreshIdsAssignmentPreservesId)
+TEST(PartCompositionTest, PartsHaveUniqueIdsAndCloneGetsAFreshId)
 {
    // Identical name and mass properties must still yield distinct ids -- the id, not the name, is the
    // identity.
-   model::Part a("same", Matrix3::Zero(), 1.0, Vector3::Zero());
-   model::Part b("same", Matrix3::Zero(), 1.0, Vector3::Zero());
-   EXPECT_NE(a.getId(), b.getId());
+   auto a = pointMass("same", 1.0);
+   auto b = pointMass("same", 1.0);
+   EXPECT_NE(a->getId(), b->getId());
 
-   // A copy is a separate object, so it gets a fresh id rather than inheriting the original's.
-   model::Part copyOfA(a);
-   EXPECT_NE(copyOfA.getId(), a.getId());
-
-   // Assignment overwrites contents but preserves the destination's identity.
-   const model::Part::Id aId = a.getId();
-   a = b;
-   EXPECT_EQ(a.getId(), aId);
-   EXPECT_DOUBLE_EQ(a.getMass(0.0), b.getMass(0.0));
+   // A clone is a separate object, so it gets a fresh id rather than inheriting the original's.
+   EXPECT_NE(a->clone()->getId(), a->getId());
 }
 
-TEST(PartCompositionTest, FindByIdLocatesRootAndRejectsAbsentAndClonedOriginalIds)
+TEST(PartCompositionTest, FindByIdLocatesAdoptedPartsAndRejectsAbsent)
 {
-   model::Part root("root", Matrix3::Zero(), 1.0, Vector3::Zero());
-   model::Part child("child", Matrix3::Zero(), 1.0, Vector3::Zero());
-   const model::Part::Id originalChildId = child.getId();
-   root.addChildPart(child, Vector3{1.0, 0.0, 0.0});
+   auto root = pointMass("root", 1.0);
+   auto child = pointMass("child", 1.0);
+   const model::Part::Id childId = child->getId();
+   root->addChildPart(child, Vector3{1.0, 0.0, 0.0}); // adopts: same object, same id, now in the tree
 
-   EXPECT_EQ(root.findById(root.getId()), &root);     // finds itself
-   EXPECT_EQ(root.findById(originalChildId), nullptr); // child was cloned on insert -> fresh id
-   EXPECT_EQ(root.findById(0), nullptr);               // 0 is reserved and never assigned
+   EXPECT_EQ(root->findById(root->getId()), root.get());
+   EXPECT_EQ(root->findById(childId), child.get());    // adopted -> findable by its unchanged id
+   EXPECT_EQ(root->findById(0), nullptr);              // 0 is reserved and never assigned
+   EXPECT_EQ(root->findById(123456789), nullptr);      // absent
 }
 
 namespace model
@@ -402,54 +395,50 @@ protected:
    static bool isDirty(const Part& p) { return p.needsRecomputing; }
 };
 
-TEST_F(PartCompositionAccess, ClonedSubtreeIsReparentedAndDeepDirtyPropagates)
+TEST_F(PartCompositionAccess, AdoptedChildIsReparentedAndDirtyPropagates)
 {
-   Part root("root", Matrix3::Zero(), 1.0, Vector3::Zero());
-   Part child("child", Matrix3::Zero(), 1.0, Vector3::Zero());
-   Part grandchild("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
-   child.addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
-   root.addChildPart(child, Vector3{1.0, 0.0, 0.0}); // root now owns a deep clone of child -> grandchild
+   auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto child = std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto grandchild = std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
+   child->addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
+   root->addChildPart(child, Vector3{1.0, 0.0, 0.0});
 
-   Part& clonedChild = childAt(root, 0);
-   Part& clonedGrandchild = childAt(clonedChild, 0);
-   // Each clone's parent must point within the clone, not back at the originals.
-   EXPECT_EQ(parentOf(clonedChild), &root);
-   EXPECT_EQ(parentOf(clonedGrandchild), &clonedChild);
+   // Adopted, not copied: the very objects we created are in the tree, correctly re-parented.
+   EXPECT_EQ(&childAt(*root, 0), child.get());
+   EXPECT_EQ(parentOf(*child), root.get());
+   EXPECT_EQ(parentOf(*grandchild), child.get());
 
-   // Dirtying the deepest clone node must propagate up to root through those parent pointers.
-   root.getCompositeI(); // clean the whole tree
-   EXPECT_FALSE(isDirty(root));
-   clonedGrandchild.setMass(5.0); // walks up: grandchild -> child -> root
-   EXPECT_TRUE(isDirty(root));
+   // Dirtying the deepest node must propagate up to root through those parent pointers.
+   root->getCompositeI(); // clean the whole tree
+   EXPECT_FALSE(isDirty(*root));
+   grandchild->setMass(5.0); // walks up: grandchild -> child -> root
+   EXPECT_TRUE(isDirty(*root));
 }
 
-TEST_F(PartCompositionAccess, ClonedSubtreeGetsFreshUniqueIdsAndIsFindable)
+TEST_F(PartCompositionAccess, CloneReparentsSubtreeWithFreshUniqueIds)
 {
-   Part root("root", Matrix3::Zero(), 1.0, Vector3::Zero());
-   Part child("child", Matrix3::Zero(), 1.0, Vector3::Zero());
-   Part grandchild("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
-   child.addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
-   root.addChildPart(child, Vector3{1.0, 0.0, 0.0}); // root owns clones of child and grandchild
+   auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   root->addChildPart(std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero()),
+                      Vector3{1.0, 0.0, 0.0});
+   childAt(*root, 0).addChildPart(
+      std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero()),
+      Vector3{1.0, 0.0, 0.0});
 
-   Part& clonedChild = childAt(root, 0);
-   Part& clonedGrandchild = childAt(clonedChild, 0);
+   auto copy = root->clone();
+   Part& copyChild = childAt(*copy, 0);
+   Part& copyGrandchild = childAt(copyChild, 0);
 
-   // Every node in the tree has a distinct id.
-   EXPECT_NE(root.getId(), clonedChild.getId());
-   EXPECT_NE(root.getId(), clonedGrandchild.getId());
-   EXPECT_NE(clonedChild.getId(), clonedGrandchild.getId());
+   // Re-parented within the clone, not pointing back at the originals.
+   EXPECT_EQ(parentOf(copyChild), copy.get());
+   EXPECT_EQ(parentOf(copyGrandchild), &copyChild);
 
-   // The clones did not inherit the originals' ids.
-   EXPECT_NE(clonedChild.getId(), child.getId());
-   EXPECT_NE(clonedGrandchild.getId(), grandchild.getId());
+   // Fresh, unique ids throughout; none shared with the originals.
+   EXPECT_NE(copy->getId(), root->getId());
+   EXPECT_NE(copyChild.getId(), childAt(*root, 0).getId());
+   EXPECT_NE(copyGrandchild.getId(), copy->getId());
+   EXPECT_NE(copyGrandchild.getId(), copyChild.getId());
 
-   // findById resolves every node from the root, at each depth...
-   EXPECT_EQ(root.findById(root.getId()), &root);
-   EXPECT_EQ(root.findById(clonedChild.getId()), &clonedChild);
-   EXPECT_EQ(root.findById(clonedGrandchild.getId()), &clonedGrandchild);
-
-   // ...and the originals (never inserted into root) are absent.
-   EXPECT_EQ(root.findById(child.getId()), nullptr);
-   EXPECT_EQ(root.findById(grandchild.getId()), nullptr);
+   // findById resolves cloned nodes from the clone's root.
+   EXPECT_EQ(copy->findById(copyGrandchild.getId()), &copyGrandchild);
 }
 } // namespace model

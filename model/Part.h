@@ -65,49 +65,14 @@ public:
    /// @brief Virtual so Part can be deleted polymorphically through a base-class pointer.
    virtual ~Part();
 
-   /**
-    * @brief Deep-copies the part and recursively clones its entire sub-tree of child parts.
-    *
-    * Every child is cloned rather than shared, so the copy is a fully independent tree. Child
-    * part names should be unique to avoid ambiguity within the copied tree.
-    */
-   Part(const Part&);
-
-   /// @brief Copy-and-swap assignment (the @p other parameter is intentionally taken by value).
-   Part& operator=(Part other)
-   {
-       if(this != &other)
-       {
-           std::swap(parent, other.parent);
-           std::swap(name, other.name);
-           std::swap(inertiaTensor, other.inertiaTensor);
-           std::swap(compositeInertiaTensor, other.compositeInertiaTensor);
-           std::swap(mass, other.mass);
-           std::swap(compositeMass, other.compositeMass);
-           std::swap(cm, other.cm);
-           std::swap(compositeCm, other.compositeCm);
-           std::swap(needsRecomputing, other.needsRecomputing);
-           std::swap(childParts, other.childParts);
-       }
-       return *this;
-   }
-
-   /// @brief Move assignment; transfers ownership of @p other's members and child sub-tree.
-   Part& operator=(Part&& other)
-   {
-       parent = std::move(other.parent);
-       name = std::move(other.name);
-       inertiaTensor  = std::move(other.inertiaTensor);
-       compositeInertiaTensor  = std::move(other.compositeInertiaTensor);
-       mass  = std::move(other.mass);
-       compositeMass  = std::move(other.compositeMass);
-       cm  = std::move(other.cm);
-       compositeCm  = std::move(other.compositeCm);
-       needsRecomputing  = std::move(other.needsRecomputing);
-       childParts  = std::move(other.childParts);
-
-       return *this;
-   }
+   // ---- Non-copyable / non-movable at the value level ---------------------------------------
+   // A part lives at exactly one place in one tree: it is attached by transferring ownership into
+   // addChildPart(), and duplicated only via the explicit, type-preserving clone(). Deleting value
+   // assignment also rules out silently slicing a subclass down to a base Part. The copy
+   // constructor is declared *protected* (see below) so only clone() can make node copies; that
+   // user-declared copy ctor also suppresses the implicit move ctor, so a Part can't be moved either.
+   Part& operator=(const Part&) = delete;
+   Part& operator=(Part&&)      = delete;
 
    /// @brief Set this part's own mass (kg). Flags this part and every ancestor for recompute.
    virtual void setMass(double m) { mass = m; markAsNeedsRecomputing(); }
@@ -181,18 +146,30 @@ public:
    Part* findById(Id targetId);
 
    /**
-    * @brief Add a child part to this part.
+    * @brief Deep-copy this part and its whole sub-tree into a new, independent tree.
     *
-    * A deep copy of @p childPart (and its sub-tree) is stored and re-parented to this part. This
-    * part and every ancestor are flagged dirty; the composite mass, CM, and inertia are rebuilt
-    * lazily on the next composite read (see recomputeInertiaTensor()). Attaching a part to itself
-    * is rejected.
-    *
-    * @param childPart Child part to add (copied, not referenced)
-    * @param position  Relative position of the child part's center-of-mass w.r.t the
-    *                  parent's center of mass
+    * Type-preserving (a HollowSphere clones to a HollowSphere -- no slicing) and every cloned node
+    * receives a fresh unique id. The returned root has no parent. This is the only way to duplicate
+    * a part, so duplication is always explicit: parent->addChildPart(other->clone(), pos).
     */
-   virtual void addChildPart(const Part& childPart, Vector3 position);
+   std::shared_ptr<Part> clone() const;
+
+   /**
+    * @brief Attach an existing part as a child of this part by TRANSFERRING OWNERSHIP.
+    *
+    * The tree adopts @p child as-is -- no copy, so its dynamic type and id are preserved -- and
+    * re-parents it. This part and every ancestor are flagged dirty; the composite mass, CM, and
+    * inertia are rebuilt lazily on the next composite read (see recomputeInertiaTensor()). Logged
+    * no-op if @p child is null, already has a parent, or is this part or one of its ancestors (which
+    * would form a cycle).
+    *
+    * To attach a duplicate of a part you want to keep using, pass child->clone().
+    *
+    * @param child    part to adopt; the shared_ptr is moved from
+    * @param position Relative position of the child part's center-of-mass w.r.t the
+    *                 parent's center of mass
+    */
+   virtual void addChildPart(std::shared_ptr<Part> child, Vector3 position);
 
    /**
     * @brief Rebuild the cached composite mass, center of mass, and inertia tensor from this part
@@ -204,6 +181,17 @@ public:
     * flag. Does not propagate upward -- ancestors recompute themselves lazily on their next read.
     */
    virtual void recomputeInertiaTensor();
+
+protected:
+   /// @brief Shallow node copy for clone()/cloneShallow() ONLY: copies this part's own mass
+   ///        properties (NOT its children) and assigns a FRESH id, with no parent. Protected so
+   ///        external code can neither copy nor slice a Part; subclasses use it in cloneShallow().
+   Part(const Part&);
+
+   /// @brief Type-preserving shallow copy of just this node (no children), as a shared_ptr. Override
+   ///        in every subclass so clone() reproduces the correct dynamic type. @see clone()
+   virtual std::shared_ptr<Part> cloneShallow() const;
+
 private:
 
    /// @brief Non-owning pointer to the parent part, if any. Used to propagate "needs recompute"

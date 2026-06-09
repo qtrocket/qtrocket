@@ -51,12 +51,10 @@ Part::~Part()
 {}
 
 Part::Part(const Part& orig)
-   // A fresh copy is not yet attached to anything: start with no parent rather than aliasing
-   // orig's parent (which would dangle once orig's tree dies). addChildPart() / the clone loop
-   // below set the correct parent when this copy is inserted into a tree.
+   // Shallow node copy used only by clone(): this part's own mass properties, a FRESH id (a clone is
+   // a distinct, separately identifiable object), no parent, and NO children -- clone() deep-copies
+   // the sub-tree itself. See the class doc on copy/clone semantics.
    : parent(nullptr),
-     // Fresh id, NOT orig.id: a copy is a distinct object and must be separately identifiable. This
-     // matters especially because addChildPart() deep-copies on every insert.
      id(makePartId()),
      name(orig.name),
      inertiaTensor(orig.inertiaTensor),
@@ -67,27 +65,7 @@ Part::Part(const Part& orig)
      compositeCm(orig.compositeCm),
      needsRecomputing(orig.needsRecomputing),
      childParts()
-{
-
-   // We are copying the whole tree. If the part we're copying itself has child
-   // parts, we are also copying all of them! This may be inefficient and not what
-   // is desired, but it is less likely to lead to weird bugs with the same part
-   // appearing in multiple locations of the rocket
-   utils::Logger::getInstance()->debug("Calling model::Part copy constructor. Recursively copying all child parts. Check Part names for uniqueness");
-
-
-   for(const auto& i : orig.childParts)
-   {
-      Part& x = *std::get<0>(i);
-      std::shared_ptr<Part> tempPart = std::make_shared<Part>(x);
-      // Re-parent the clone to THIS copy, not orig. Without this, cloned children would point
-      // back into orig's tree (a dangling pointer once orig dies, and wrong-tree traversal when
-      // markAsNeedsRecomputing() walks up). Recursing the copy ctor fixes up the whole sub-tree.
-      tempPart->parent = this;
-      childParts.emplace_back(tempPart, std::get<1>(i));
-   }
-
-}
+{ }
 
 double Part::getChildMasses(double t)
 {
@@ -100,28 +78,58 @@ double Part::getChildMasses(double t)
 
 }
 
-void Part::addChildPart(const Part& childPart, Vector3 position)
+void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
 {
-   // Attaching a part to itself would clone a snapshot of *this back into *this -- almost certainly
-   // a caller error. Reject it rather than build a nonsensical tree.
-   if(&childPart == this)
+   if(!child)
    {
-      utils::Logger::getInstance()->error("Part::addChildPart: refusing to attach a part to itself");
+      utils::Logger::getInstance()->error("Part::addChildPart: ignoring null child");
       return;
    }
+   if(child->parent != nullptr)
+   {
+      utils::Logger::getInstance()->error(
+         "Part::addChildPart: child already has a parent; clone() it or detach first");
+      return;
+   }
+   // Reject attaching this part or any of its ancestors -- either would form a cycle (and an
+   // ownership cycle through the child shared_ptrs).
+   for(Part* p = this; p != nullptr; p = p->parent)
+   {
+      if(p == child.get())
+      {
+         utils::Logger::getInstance()->error(
+            "Part::addChildPart: refusing to attach a part to itself or an ancestor (cycle)");
+         return;
+      }
+   }
 
-   // Deep-copy the child (and its whole sub-tree) so the tree owns an independent clone, then
-   // re-parent the clone to this part. The copy ctor fixes up parent pointers within the sub-tree.
-   std::shared_ptr<Part> newChild = std::make_shared<Part>(childPart);
-   newChild->parent = this;
-
-   childParts.emplace_back(std::move(newChild), std::move(position));
+   // Adopt the child as-is (no copy, so its dynamic type and id are preserved) and re-parent it.
+   child->parent = this;
+   childParts.emplace_back(std::move(child), std::move(position));
 
    // Don't fold the child in incrementally; just flag this part and every ancestor dirty. The
    // composite mass/CM/inertia are rebuilt lazily (and correctly, about the composite CM) by
-   // recomputeInertiaTensor() on the next composite read. Batch-adding N children then recomputes
-   // once instead of once per add, and there is no window where a cached value is partially updated.
+   // recomputeInertiaTensor() on the next composite read.
    markAsNeedsRecomputing();
+}
+
+std::shared_ptr<Part> Part::cloneShallow() const
+{
+   // Protected copy ctor -> shallow, fresh-id copy of THIS node only. shared_ptr<Part>(new ...)
+   // rather than make_shared because the copy ctor is protected (make_shared can't reach it).
+   return std::shared_ptr<Part>(new Part(*this));
+}
+
+std::shared_ptr<Part> Part::clone() const
+{
+   std::shared_ptr<Part> copy = cloneShallow(); // this node: correct dynamic type, fresh id, no kids
+   for(const auto& [child, pos] : childParts)
+   {
+      std::shared_ptr<Part> childCopy = child->clone(); // recurse polymorphically (no slicing)
+      childCopy->parent = copy.get();
+      copy->childParts.emplace_back(std::move(childCopy), pos);
+   }
+   return copy;
 }
 
 void Part::recomputeInertiaTensor()
