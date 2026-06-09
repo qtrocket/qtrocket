@@ -27,13 +27,23 @@ namespace model
  *
  * Inertia tensor convention: the bare inertia tensor (getI(), setI()) is stored PER UNIT MASS
  * (geometric, units m^2) for this part only (not children). The composite tensor (getCompositeI())
- * is the FULL, mass-weighted tensor (kg*m^2): mass * inertiaTensor combined with each child's
- * composite tensor shifted into this part's frame via the parallel-axis theorem. Composite
- * quantities are cached and refreshed lazily by recomputeInertiaTensor() once the tree has been
- * flagged dirty.
+ * is the FULL, mass-weighted tensor (kg*m^2) of this part plus every descendant, taken about the
+ * COMPOSITE center of mass (getCompositeCm()) -- not about this part's own CM. It is formed by
+ * shifting this part's own tensor and each child's composite tensor to the composite CM via the
+ * parallel-axis theorem. Composite quantities (mass, CM, inertia) are cached and refreshed lazily
+ * by recomputeInertiaTensor() once the tree has been flagged dirty.
+ *
+ * Frame assumption: all parts share the same body-frame orientation, so child @p position offsets
+ * are pure translations and tensors combine by addition (no rotation). This holds for a rigid
+ * rocket; relative part rotation is not modeled.
  */
 class Part
 {
+   /// @brief Test-only friend: grants the composition unit tests white-box access to the private
+   ///        parent pointers, child list, and dirty flag so they can verify clone re-parenting and
+   ///        upward dirty propagation. Defined in PartTests.cpp (namespace model).
+   friend class PartCompositionAccess;
+
 public:
    /**
     * @brief Construct a leaf part from its mass properties.
@@ -70,6 +80,7 @@ public:
            std::swap(mass, other.mass);
            std::swap(compositeMass, other.compositeMass);
            std::swap(cm, other.cm);
+           std::swap(compositeCm, other.compositeCm);
            std::swap(needsRecomputing, other.needsRecomputing);
            std::swap(childParts, other.childParts);
        }
@@ -86,17 +97,19 @@ public:
        mass  = std::move(other.mass);
        compositeMass  = std::move(other.compositeMass);
        cm  = std::move(other.cm);
+       compositeCm  = std::move(other.compositeCm);
        needsRecomputing  = std::move(other.needsRecomputing);
        childParts  = std::move(other.childParts);
 
        return *this;
    }
 
-   /// @brief Set this part's own mass (kg).
-   virtual void setMass(double m) { mass = m; needsRecomputing = true; }
+   /// @brief Set this part's own mass (kg). Flags this part and every ancestor for recompute.
+   virtual void setMass(double m) { mass = m; markAsNeedsRecomputing(); }
 
    /// @brief Set the per-unit-mass (geometric) inertia tensor about this part's CM (m^2).
-   virtual void setI(const Matrix3& I) { inertiaTensor = I; }
+   ///        Flags this part and every ancestor for recompute.
+   virtual void setI(const Matrix3& I) { inertiaTensor = I; markAsNeedsRecomputing(); }
    /// @brief Get the per-unit-mass (geometric) inertia tensor (m^2). @see getCompositeI()
    virtual Matrix3 getI() { return inertiaTensor; }
    /// @brief Get the full, mass-weighted composite tensor of this part + children (kg*m^2).
@@ -137,11 +150,28 @@ public:
    }
 
    /**
-    * @brief Add a child part to this part, updating the cached composite mass and inertia.
+    * @brief Composite center of mass of this part plus all descendants, expressed relative to this
+    *        part's own center of mass (the zero vector for a childless part).
     *
-    * A deep copy of @p childPart (and its sub-tree) is stored. The child's composite inertia
-    * is shifted into this part's frame via the parallel-axis theorem and folded into this part's
-    * composite tensor, and any parent is flagged to recompute.
+    * This is the point that getCompositeI() is taken about. Pairs with getCompositeMass() /
+    * getCompositeI(); recomputed lazily when the tree is dirty.
+    */
+   virtual Vector3 getCompositeCm()
+   {
+      if(needsRecomputing)
+      {
+         recomputeInertiaTensor();
+      }
+      return compositeCm;
+   }
+
+   /**
+    * @brief Add a child part to this part.
+    *
+    * A deep copy of @p childPart (and its sub-tree) is stored and re-parented to this part. This
+    * part and every ancestor are flagged dirty; the composite mass, CM, and inertia are rebuilt
+    * lazily on the next composite read (see recomputeInertiaTensor()). Attaching a part to itself
+    * is rejected.
     *
     * @param childPart Child part to add (copied, not referenced)
     * @param position  Relative position of the child part's center-of-mass w.r.t the
@@ -150,11 +180,13 @@ public:
    virtual void addChildPart(const Part& childPart, Vector3 position);
 
    /**
-    * @brief Rebuild the cached composite mass and inertia tensor from this part and its children.
+    * @brief Rebuild the cached composite mass, center of mass, and inertia tensor from this part
+    *        and its children.
     *
     * A no-op unless the part has been flagged dirty (see markAsNeedsRecomputing()). When it does
-    * run it recurses into each child, re-accumulates the composite mass and the parallel-axis-
-    * shifted composite inertia tensor, then clears the dirty flag.
+    * run it recurses into each child, accumulates the composite mass and composite CM, then sums the
+    * parallel-axis-shifted composite inertia tensor about that composite CM, and clears the dirty
+    * flag. Does not propagate upward -- ancestors recompute themselves lazily on their next read.
     */
    virtual void recomputeInertiaTensor();
 private:
@@ -180,6 +212,10 @@ private:
    double compositeMass; ///< Mass of this part plus all attached child parts (kg).
 
    Vector3 cm; ///< Center of mass w.r.t. the middle of the component.
+
+   /// @brief Composite CM of this part plus all descendants, expressed relative to this part's own
+   ///        CM (zero for a leaf). The point getCompositeI()/compositeInertiaTensor is taken about.
+   Vector3 compositeCm;
 
    bool needsRecomputing{false}; ///< True when the cached composite quantities are stale.
 

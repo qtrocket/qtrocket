@@ -117,7 +117,10 @@ public:
    void setReferenceArea(double a) { if(a >= 0.0) referenceArea = a; }
 
    /**
-    * @brief setMass sets the structural (non-motor) mass by delegating to the top part.
+    * @brief setMass sets the structural (non-motor) mass by delegating to the top part's OWN mass.
+    *        getMass() reports the composite (top part + children), so this round-trips exactly only
+    *        while the top part is childless; with children it sets the top part's own mass. See
+    *        TODO.md P2 for the eventual composite-aware GUI mass story.
     * @param m mass in kg. Non-positive values are ignored because getMass() is the
     *          ODE divisor in the propagator and a zero mass would divide by zero.
     */

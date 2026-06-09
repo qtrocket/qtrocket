@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstddef>
 #include <numbers>
 #include <stdexcept>
+#include <tuple>
 
 #include "model/Part.h"
 #include "model/InertiaTensors.h"
@@ -151,3 +153,242 @@ TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
    EXPECT_DOUBLE_EQ(part.getI()(0, 0), 0.4);
    EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8);
 }
+
+namespace
+{
+// Build a massless-inertia "point mass": all the inertia comes from the parallel-axis shift, which
+// is exactly what the composite math is responsible for getting right.
+model::Part pointMass(const std::string& name, double mass)
+{
+   return model::Part(name, Matrix3::Zero(), mass, Vector3::Zero());
+}
+
+// Mass of a uniform hollow cylinder (tube): density * volume, volume = pi * (ro^2 - ri^2) * length.
+double tubeMass(double ri, double ro, double length, double density)
+{
+   return density * std::numbers::pi * (ro * ro - ri * ri) * length;
+}
+
+// Build a tube Part: longitudinal axis on z (per InertiaTensors::Tube), CM at the part origin. Used
+// to verify that tubes of equal radii stacked end-to-end along z reproduce a single longer tube.
+model::Part tube(const std::string& name, double ri, double ro, double length, double density)
+{
+   return model::Part(name,
+                      model::InertiaTensors::Tube(ri, ro, length),
+                      tubeMass(ri, ro, length, density),
+                      Vector3::Zero());
+}
+} // namespace
+
+TEST(PartCompositionTest, PointMassPairCompositeCmIsMassWeightedMidpoint)
+{
+   // Parent mass at its own CM (origin); child mass offset along +x. The composite CM sits at the
+   // mass-weighted average, expressed relative to the parent's own CM.
+   const double mp = 2.0, mc = 3.0, L = 4.0;
+   model::Part parent = pointMass("parent", mp);
+   parent.addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
+
+   const Vector3 cm = parent.getCompositeCm();
+   EXPECT_NEAR(cm(0), mc * L / (mp + mc), 1e-12); // = 2.4
+   EXPECT_NEAR(cm(1), 0.0, 1e-12);
+   EXPECT_NEAR(cm(2), 0.0, 1e-12);
+   EXPECT_NEAR(parent.getCompositeMass(0.0), mp + mc, 1e-12);
+}
+
+TEST(PartCompositionTest, PointMassPairInertiaIsAboutCompositeCmNotParentCm)
+{
+   // Two point masses a distance L apart: inertia about their common CM is mu*L^2 on the two
+   // transverse axes (mu = reduced mass), 0 about the line joining them. The pre-fix code computed
+   // this about the PARENT's CM (mc*L^2), so this value pins the tensor to the composite CM.
+   const double mp = 2.0, mc = 3.0, L = 4.0;
+   model::Part parent = pointMass("parent", mp);
+   parent.addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
+
+   const double mu = mp * mc / (mp + mc);
+   const double expected = mu * L * L; // 19.2
+   const Matrix3 I = parent.getCompositeI();
+   EXPECT_NEAR(I(0, 0), 0.0, 1e-12);       // along the joining line
+   EXPECT_NEAR(I(1, 1), expected, 1e-12);
+   EXPECT_NEAR(I(2, 2), expected, 1e-12);
+   EXPECT_NEAR(I(0, 1), 0.0, 1e-12);
+   EXPECT_NEAR(I(0, 2), 0.0, 1e-12);
+   EXPECT_NEAR(I(1, 2), 0.0, 1e-12);
+}
+
+TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
+{
+   // A depth-2 chain root -> child -> grandchild. The pre-fix code shifted each subtree from its
+   // part CM rather than its composite CM; because the parallel-axis map is not additive, that is
+   // wrong for trees >= 2 deep. Compare against a flat reference that places the three masses at
+   // their absolute positions and computes inertia about the common CM directly.
+   const double mr = 1.0, mc = 2.0, mg = 3.0;
+   const double a = 1.0, b = 2.0;            // child at a from root; grandchild at b from child
+
+   model::Part child = pointMass("child", mc);
+   child.addChildPart(pointMass("grandchild", mg), Vector3{b, 0.0, 0.0});
+   model::Part root = pointMass("root", mr);
+   root.addChildPart(child, Vector3{a, 0.0, 0.0});
+
+   // Flat reference (masses on the x-axis at 0, a, a+b).
+   const double x[3] = {0.0, a, a + b};
+   const double m[3] = {mr, mc, mg};
+   const double M = mr + mc + mg;
+   double xc = 0.0;
+   for(int i = 0; i < 3; ++i) xc += m[i] * x[i];
+   xc /= M;
+   double transverse = 0.0;
+   for(int i = 0; i < 3; ++i) transverse += m[i] * (x[i] - xc) * (x[i] - xc);
+
+   EXPECT_NEAR(root.getCompositeMass(0.0), M, 1e-12);
+   EXPECT_NEAR(root.getCompositeCm()(0), xc, 1e-12);
+
+   const Matrix3 I = root.getCompositeI();
+   EXPECT_NEAR(I(0, 0), 0.0, 1e-12);
+   EXPECT_NEAR(I(1, 1), transverse, 1e-12);
+   EXPECT_NEAR(I(2, 2), transverse, 1e-12);
+}
+
+TEST(PartCompositionTest, DeepCopyIsIndependentOfOriginal)
+{
+   // addChildPart deep-copies the child sub-tree, so later mutating the ORIGINAL must not change the
+   // parent's cached composite. (Also guards against the parent being wrongly dirtied by the copy.)
+   model::Part child = pointMass("child", 1.0);
+   child.addChildPart(pointMass("grandchild", 1.0), Vector3{1.0, 0.0, 0.0});
+
+   model::Part root = pointMass("root", 1.0);
+   root.addChildPart(child, Vector3{1.0, 0.0, 0.0});
+
+   const double massBefore = root.getCompositeMass(0.0);
+   const double iyyBefore = root.getCompositeI()(1, 1);
+
+   // Mutate the original child every which way.
+   child.setMass(100.0);
+   child.addChildPart(pointMass("extra", 50.0), Vector3{5.0, 0.0, 0.0});
+
+   EXPECT_DOUBLE_EQ(root.getCompositeMass(0.0), massBefore);
+   EXPECT_DOUBLE_EQ(root.getCompositeI()(1, 1), iyyBefore);
+}
+
+TEST(PartCompositionTest, SetMassAndSetIInvalidateCompositeCache)
+{
+   // setMass() and setI() must flag the composite cache stale; before the fix setI() did not, so a
+   // later getCompositeI() returned a value computed from the old tensor.
+   model::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
+   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8); // 2.0 * 0.4
+
+   part.setMass(4.0);
+   EXPECT_DOUBLE_EQ(part.getCompositeMass(0.0), 4.0);
+   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 1.6); // 4.0 * 0.4 -- setMass invalidated the cache
+
+   part.setI(model::InertiaTensors::SolidSphere(2.0)); // per-unit-mass diagonal 0.4 * 4 = 1.6
+   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 6.4);   // 4.0 * 1.6 -- setI invalidated the cache
+}
+
+namespace
+{
+// Assert that a composite tensor equals the full (mass-weighted) tensor of a single tube of the
+// merged length, element by element, with per-element trace for clear failure messages.
+void expectMatchesSingleTube(const Matrix3& actual, double ri, double ro, double totalLength,
+                             double totalMass)
+{
+   const Matrix3 expected = totalMass * model::InertiaTensors::Tube(ri, ro, totalLength);
+   for(int r = 0; r < 3; ++r)
+   {
+      for(int c = 0; c < 3; ++c)
+      {
+         SCOPED_TRACE(testing::Message() << "inertia element (" << r << ", " << c << ")");
+         EXPECT_NEAR(actual(r, c), expected(r, c), 1e-12);
+      }
+   }
+}
+} // namespace
+
+TEST(PartCompositionTest, TwoTubesEndToEndEqualOneLongerTube)
+{
+   // Two coaxial tubes of identical radii, stacked end-to-end along their z-axis, must be
+   // indistinguishable from a single tube of the summed length: same mass, same CM at the merged
+   // center, same full inertia tensor. The transverse moment depends on L^2, so this exercises the
+   // parallel-axis composition far more sharply than point masses do.
+   const double ri = 0.02, ro = 0.03, density = 1500.0;
+   const double L1 = 0.10, L2 = 0.20;
+
+   model::Part assembly = tube("t1", ri, ro, L1, density);
+   // tube 2's CM sits (L1 + L2)/2 along +z from tube 1's CM (touching faces).
+   assembly.addChildPart(tube("t2", ri, ro, L2, density), Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+
+   const double totalLength = L1 + L2;
+   const double totalMass = tubeMass(ri, ro, totalLength, density);
+
+   EXPECT_NEAR(assembly.getCompositeMass(0.0), totalMass, 1e-12);
+
+   // Merged center is L2/2 beyond tube 1's own center (relative to tube 1's CM).
+   const Vector3 cm = assembly.getCompositeCm();
+   EXPECT_NEAR(cm(0), 0.0, 1e-12);
+   EXPECT_NEAR(cm(1), 0.0, 1e-12);
+   EXPECT_NEAR(cm(2), L2 / 2.0, 1e-12);
+
+   expectMatchesSingleTube(assembly.getCompositeI(), ri, ro, totalLength, totalMass);
+}
+
+TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
+{
+   // Same idea at depth 2: a chain t1 -> t2 -> t3 stacked along z. t2 is itself a composite (it owns
+   // t3) when it is attached to t1, so this checks that the composition shifts each sub-assembly from
+   // its OWN composite CM -- the case the pre-fix code got wrong because parallel-axis is not
+   // additive across a non-CM intermediate point.
+   const double ri = 0.02, ro = 0.03, density = 1500.0;
+   const double L1 = 0.10, L2 = 0.20, L3 = 0.30;
+
+   model::Part t2 = tube("t2", ri, ro, L2, density);
+   t2.addChildPart(tube("t3", ri, ro, L3, density), Vector3{0.0, 0.0, (L2 + L3) / 2.0});
+   model::Part assembly = tube("t1", ri, ro, L1, density);
+   assembly.addChildPart(t2, Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+
+   const double totalLength = L1 + L2 + L3;
+   const double totalMass = tubeMass(ri, ro, totalLength, density);
+
+   EXPECT_NEAR(assembly.getCompositeMass(0.0), totalMass, 1e-12);
+
+   // Merged center is (L2 + L3)/2 beyond tube 1's own center (relative to tube 1's CM).
+   const Vector3 cm = assembly.getCompositeCm();
+   EXPECT_NEAR(cm(0), 0.0, 1e-12);
+   EXPECT_NEAR(cm(1), 0.0, 1e-12);
+   EXPECT_NEAR(cm(2), (L2 + L3) / 2.0, 1e-12);
+
+   expectMatchesSingleTube(assembly.getCompositeI(), ri, ro, totalLength, totalMass);
+}
+
+namespace model
+{
+// White-box fixture: grants the re-parenting test access to Part's private parent pointers, child
+// list, and dirty flag. Lives in namespace model so the unqualified `friend class
+// PartCompositionAccess;` in Part.h refers to it, and so TEST_F below finds it by name.
+class PartCompositionAccess : public ::testing::Test
+{
+protected:
+   static Part* parentOf(const Part& p) { return p.parent; }
+   static Part& childAt(const Part& p, std::size_t i) { return *std::get<0>(p.childParts.at(i)); }
+   static bool isDirty(const Part& p) { return p.needsRecomputing; }
+};
+
+TEST_F(PartCompositionAccess, ClonedSubtreeIsReparentedAndDeepDirtyPropagates)
+{
+   Part root("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   Part child("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   Part grandchild("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
+   child.addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
+   root.addChildPart(child, Vector3{1.0, 0.0, 0.0}); // root now owns a deep clone of child -> grandchild
+
+   Part& clonedChild = childAt(root, 0);
+   Part& clonedGrandchild = childAt(clonedChild, 0);
+   // Each clone's parent must point within the clone, not back at the originals.
+   EXPECT_EQ(parentOf(clonedChild), &root);
+   EXPECT_EQ(parentOf(clonedGrandchild), &clonedChild);
+
+   // Dirtying the deepest clone node must propagate up to root through those parent pointers.
+   root.getCompositeI(); // clean the whole tree
+   EXPECT_FALSE(isDirty(root));
+   clonedGrandchild.setMass(5.0); // walks up: grandchild -> child -> root
+   EXPECT_TRUE(isDirty(root));
+}
+} // namespace model

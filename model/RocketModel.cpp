@@ -20,11 +20,13 @@ RocketModel::RocketModel()
 
 double RocketModel::getMass(double t)
 {
-    // Motor mass plus the top part's structural mass. Uses the part's own getMass() (not
-    // getCompositeMass()) so it pairs with setMass(): a GUI-set mass writes the part's `mass` and
-    // round-trips here. Revisit for getCompositeMass() once the part tree has children -- see TODO.md P2.
+    // Motor mass plus the composite structural mass (the top part together with every attached child
+    // part), so mass stays consistent with getCompositeInertiaTensor() once the part tree grows.
+    // setMass() writes the top part's OWN mass: for today's single childless part that still
+    // round-trips a GUI-set value exactly; once children attach, a GUI-set value is the top part's
+    // own mass and this returns it plus the child masses. See TODO.md P2.
     double mass = mm.getMass(t);
-    mass += topPart->getMass(t);
+    mass += topPart->getCompositeMass(t);
     return mass;
 }
 
