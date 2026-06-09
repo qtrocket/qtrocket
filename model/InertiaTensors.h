@@ -32,7 +32,7 @@ static Matrix3 SolidSphere(double radius)
 }
 
 /**
- * @brief HollowSphere
+ * @brief HollowSphere (thin shell, negligible thickness)
  * @param radius (meters)
  * @return
  */

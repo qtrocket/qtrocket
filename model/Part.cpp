@@ -1,6 +1,12 @@
 #include "Part.h"
 #include "utils/Logger.h"
 
+/// \cond
+// C++ headers
+#include <atomic>
+#include <cstdint>
+/// \endcond
+
 namespace model
 {
 
@@ -13,6 +19,12 @@ Matrix3 parallelAxisTerm(const Vector3& d)
 {
    return d.dot(d) * Matrix3::Identity() - d * d.transpose();
 }
+
+/// @brief Process-wide source of unique Part ids. Atomic so concurrent construction stays unique;
+///        relaxed ordering suffices since we only need uniqueness, not synchronization with other
+///        memory. Starts at 1, leaving 0 as a reserved "none/invalid" id.
+std::atomic<Part::Id> nextPartId{1};
+Part::Id makePartId() { return nextPartId.fetch_add(1, std::memory_order_relaxed); }
 } // anonymous namespace
 
 Part::Part(const std::string& n,
@@ -20,6 +32,7 @@ Part::Part(const std::string& n,
            double m,
            const Vector3& centerMass)
    : parent(nullptr),
+     id(makePartId()),
      name(n),
      inertiaTensor(I),
      // inertiaTensor is stored per-unit-mass (geometric, units m^2); the composite tensor is the
@@ -42,6 +55,9 @@ Part::Part(const Part& orig)
    // orig's parent (which would dangle once orig's tree dies). addChildPart() / the clone loop
    // below set the correct parent when this copy is inserted into a tree.
    : parent(nullptr),
+     // Fresh id, NOT orig.id: a copy is a distinct object and must be separately identifiable. This
+     // matters especially because addChildPart() deep-copies on every insert.
+     id(makePartId()),
      name(orig.name),
      inertiaTensor(orig.inertiaTensor),
      compositeInertiaTensor(orig.compositeInertiaTensor),
@@ -150,6 +166,22 @@ void Part::recomputeInertiaTensor()
    // No upward recursion here: propagating "dirty" up the tree is markAsNeedsRecomputing()'s job,
    // and reads recompute lazily downward from whatever node is queried. An ancestor that needs a
    // fresh value is already flagged dirty and will recompute itself on its next read.
+}
+
+Part* Part::findById(Id targetId)
+{
+   if(id == targetId)
+   {
+      return this;
+   }
+   for(auto& [child, pos] : childParts)
+   {
+      if(Part* hit = child->findById(targetId))
+      {
+         return hit;
+      }
+   }
+   return nullptr;
 }
 
 } // namespace model

@@ -358,6 +358,37 @@ TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
    expectMatchesSingleTube(assembly.getCompositeI(), ri, ro, totalLength, totalMass);
 }
 
+TEST(PartCompositionTest, PartsHaveUniqueIdsCopiesGetFreshIdsAssignmentPreservesId)
+{
+   // Identical name and mass properties must still yield distinct ids -- the id, not the name, is the
+   // identity.
+   model::Part a("same", Matrix3::Zero(), 1.0, Vector3::Zero());
+   model::Part b("same", Matrix3::Zero(), 1.0, Vector3::Zero());
+   EXPECT_NE(a.getId(), b.getId());
+
+   // A copy is a separate object, so it gets a fresh id rather than inheriting the original's.
+   model::Part copyOfA(a);
+   EXPECT_NE(copyOfA.getId(), a.getId());
+
+   // Assignment overwrites contents but preserves the destination's identity.
+   const model::Part::Id aId = a.getId();
+   a = b;
+   EXPECT_EQ(a.getId(), aId);
+   EXPECT_DOUBLE_EQ(a.getMass(0.0), b.getMass(0.0));
+}
+
+TEST(PartCompositionTest, FindByIdLocatesRootAndRejectsAbsentAndClonedOriginalIds)
+{
+   model::Part root("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   model::Part child("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   const model::Part::Id originalChildId = child.getId();
+   root.addChildPart(child, Vector3{1.0, 0.0, 0.0});
+
+   EXPECT_EQ(root.findById(root.getId()), &root);     // finds itself
+   EXPECT_EQ(root.findById(originalChildId), nullptr); // child was cloned on insert -> fresh id
+   EXPECT_EQ(root.findById(0), nullptr);               // 0 is reserved and never assigned
+}
+
 namespace model
 {
 // White-box fixture: grants the re-parenting test access to Part's private parent pointers, child
@@ -390,5 +421,35 @@ TEST_F(PartCompositionAccess, ClonedSubtreeIsReparentedAndDeepDirtyPropagates)
    EXPECT_FALSE(isDirty(root));
    clonedGrandchild.setMass(5.0); // walks up: grandchild -> child -> root
    EXPECT_TRUE(isDirty(root));
+}
+
+TEST_F(PartCompositionAccess, ClonedSubtreeGetsFreshUniqueIdsAndIsFindable)
+{
+   Part root("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   Part child("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   Part grandchild("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
+   child.addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
+   root.addChildPart(child, Vector3{1.0, 0.0, 0.0}); // root owns clones of child and grandchild
+
+   Part& clonedChild = childAt(root, 0);
+   Part& clonedGrandchild = childAt(clonedChild, 0);
+
+   // Every node in the tree has a distinct id.
+   EXPECT_NE(root.getId(), clonedChild.getId());
+   EXPECT_NE(root.getId(), clonedGrandchild.getId());
+   EXPECT_NE(clonedChild.getId(), clonedGrandchild.getId());
+
+   // The clones did not inherit the originals' ids.
+   EXPECT_NE(clonedChild.getId(), child.getId());
+   EXPECT_NE(clonedGrandchild.getId(), grandchild.getId());
+
+   // findById resolves every node from the root, at each depth...
+   EXPECT_EQ(root.findById(root.getId()), &root);
+   EXPECT_EQ(root.findById(clonedChild.getId()), &clonedChild);
+   EXPECT_EQ(root.findById(clonedGrandchild.getId()), &clonedGrandchild);
+
+   // ...and the originals (never inserted into root) are absent.
+   EXPECT_EQ(root.findById(child.getId()), nullptr);
+   EXPECT_EQ(root.findById(grandchild.getId()), nullptr);
 }
 } // namespace model

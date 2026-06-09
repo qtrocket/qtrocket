@@ -6,6 +6,7 @@
 // C++ headers
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 // 3rd party headers
 /// \endcond
@@ -39,18 +40,22 @@ namespace model
  */
 class Part
 {
-   /// @brief Test-only friend: grants the composition unit tests white-box access to the private
+   /// @brief Test-only friend: grants the composition unit tests access to the private
    ///        parent pointers, child list, and dirty flag so they can verify clone re-parenting and
-   ///        upward dirty propagation. Defined in PartTests.cpp (namespace model).
+   ///        upward dirty propagation. Defined in PartTests.cpp
    friend class PartCompositionAccess;
 
 public:
+   /// @brief Type of a Part's stable per-instance identifier. @see getId()
+   using Id = std::uint64_t;
+
    /**
     * @brief Construct a leaf part from its mass properties.
     * @param name       part name (used to identify child parts within a tree)
     * @param I          per-unit-mass (geometric) inertia tensor about the part's CM (m^2)
     * @param m          part mass (kg)
-    * @param centerMass center of mass w.r.t. the middle of the component
+    * @param centerMass center of mass w.r.t. the middle of the component (stored as `cm`, not yet
+    *                   consumed by the composition math -- see the `cm` member)
     */
    Part(const std::string& name,
         const Matrix3& I,
@@ -122,11 +127,6 @@ public:
       return compositeInertiaTensor;
    }
 
-   /// @brief Set the center of mass w.r.t. the middle of the component.
-   virtual void setCm(const Vector3& x) { cm = x; }
-   /// @brief Set the center of mass assuming it lies on the body x-axis: cm = {x, 0, 0}.
-   virtual void setCm(double x) { cm = {x, 0.0, 0.0}; }
-
    /**
     * @brief This part's own mass at simulation time @p t (kg).
     * @param t simulation time (seconds); lets overrides model time-varying mass (e.g. a motor)
@@ -166,6 +166,21 @@ public:
    }
 
    /**
+    * @brief This part's unique identifier (unique within the process run, even across copies and
+    *        identical names). Assigned at construction and never changed; a copy receives a NEW id.
+    *        Use it -- not the human-facing name, which need not be unique -- to identify a part.
+    */
+   Id getId() const { return id; }
+
+   /**
+    * @brief Find a part by id within this sub-tree (this part or any descendant).
+    * @param targetId id to search for
+    * @return borrowed pointer to the matching part (valid while the tree lives), or nullptr if no
+    *         part in this sub-tree has @p targetId. Call on the root to search a whole rocket.
+    */
+   Part* findById(Id targetId);
+
+   /**
     * @brief Add a child part to this part.
     *
     * A deep copy of @p childPart (and its sub-tree) is stored and re-parented to this part. This
@@ -195,7 +210,13 @@ private:
    ///        notifications up the tree when this part's mass or inertia changes.
    Part* parent{nullptr};
 
-   std::string name; ///< Part name (identifies the part within a tree).
+   /// @brief Unique per-instance id (see getId()). Assigned a fresh value in every constructor --
+   ///        including the copy constructor, so a copy is a distinct, separately identifiable object
+   ///        -- and deliberately left untouched by the assignment operators so a part keeps its
+   ///        identity when its contents are overwritten.
+   Id id;
+
+   std::string name; ///< Human-facing label; need NOT be unique. Use id to identify a part.
 
    /// @brief Sum of the masses of this part's direct child parts at simulation time @p t (seconds).
    double getChildMasses(double t);
@@ -211,7 +232,13 @@ private:
    double mass;          ///< This part's own mass (kg).
    double compositeMass; ///< Mass of this part plus all attached child parts (kg).
 
-   Vector3 cm; ///< Center of mass w.r.t. the middle of the component.
+   /// @brief Center of mass w.r.t. the middle of the component. NOT CURRENTLY CONSUMED: the inertia
+   ///        tensor is defined about the CM and child @p position offsets are CM-to-CM, so the
+   ///        composition math never needs the CM-vs-middle offset. Set once at construction (these
+   ///        rigid parts don't move their CM afterward); kept as the natural home for that offset
+   ///        once asymmetric parts or 6-DOF force application (locating the CM in the body frame)
+   ///        need it.
+   Vector3 cm;
 
    /// @brief Composite CM of this part plus all descendants, expressed relative to this part's own
    ///        CM (zero for a leaf). The point getCompositeI()/compositeInertiaTensor is taken about.
