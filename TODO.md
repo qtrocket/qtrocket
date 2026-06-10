@@ -1,14 +1,88 @@
 # QtRocket — TODO
 
+Prioritized roadmap, regenerated 2026-06-09 from the architecture audit — see [docs/ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md) for evidence behind every item (§5 Gap Register, §7 State of the Code; `F#` tags below are §7.4 findings). This replaces the previous TODO, which was derived from the since-removed `ANALYSIS_RESULTS*.md` docs; that list — including its ✅ completed-work log with verification notes for the June 2026 reactivation — is preserved verbatim in [Appendix A](#appendix-a--previous-todo-preserved-verbatim).
+
+> **Legacy references:** code comments citing "TODO.md P1/P2/P4" predate this rewrite and resolve against Appendix A (whose section anchors are unchanged). Mapping: old **P1** → done (appendix) except two items carried into new **P4**; old **P2** → new **P1/P2/P3**; old **P3** → new **P5**; old **P4** → new **P4/P6**; old **P5** → split across new **P0/P2/P4**.
+
+🎯 **Next milestone: a multi-part rocket you can build, save, reload, and fly — with honest mass and CG.** P0 makes the floor safe, P1 settles the two structural decisions everything else sits on, P2 delivers the milestone through the CLI. (The milestone after that is the GUI editor, P3.)
+
+Tags: **[by inspection]** = established by reading the code during the audit, not by executing it. **[carried: Pn]** = carried forward from the old TODO's tier *n*, sometimes reworded — original wording in Appendix A.
+
+---
+
+## P0 — Stabilize the floor (hours → ~2 days)
+
+Hazard removal + dead-weight deletion. Every item is small, isolated, and test-coverable; together they make later phases safe to develop against.
+
+- [ ] **Hang-proof `Propagator::runUntilTerminate`** — add a max-sim-time cap and a NaN/finite-state check to the `while(true)` loop ([Propagator.cpp:69-94](sim/Propagator.cpp#L69-L94)). Do this **first**: it converts every current and future physics bug from "app freezes" into "run aborts with an error".
+- [ ] **[by inspection] Fix `SphericalGravityModel`, then gate it out of the registries (F1)** — the denominator is `std::sqrt(r³)` = r^1.5, not the r³ an inverse-square law needs ([SphericalGravityModel.cpp:41](sim/SphericalGravityModel.cpp#L41)), and r = 0 at the front ends' (0,0,0) launch site → NaN forces → infinite loop on the GUI thread. Fix the exponent, guard r → 0, **remove "Spherical Gravity" from `Environment`** ([Environment.h:69-73](sim/Environment.h#L69-L73)) until a geocentric frame exists (the old P4 "reconcile coordinate frames" item anticipated exactly this gating — full support returns in P6), and add a test — it has zero coverage today.
+- [ ] **[by inspection] `Integrator::setIntegratorModel`: unknown name → logged no-op (F2)** — currently nulls the active solver under a `"None"` key, so the next `step()` is a null deref and `"None"` leaks into the available-models list ([Integrator.h:67-70](sim/Integrator.h#L67-L70)). Match the codebase's `addChildPart` logged-no-op convention.
+- [ ] **Stop recording subterranean states (F9)** — replace the blanket `t > 4 s ∧ z < 0` exit gate ([Propagator.cpp:87-90](sim/Propagator.cpp#L87-L90), [Propagator.h:30](sim/Propagator.h#L30)) with "descending ∧ z < 0", so flights shorter than 4 s stop integrating underground into plots/CSVs. (Proper event-driven termination lands in P4.)
+- [ ] **[carried: P5] Logging defaults** — the GUI still boots at `PERF_` (most verbose, [main.cpp:16](main.cpp#L16)) while `MotorModel` logs per evaluation (the CLI works around it — [CliMain.cpp:15-19](cli/CliMain.cpp#L15-L19)); demote per-step logs and default the GUI to `WARN_`/`INFO_`.
+- [ ] **Trivia batch** — re-enable TLS verification for thrustcurve.org ([CurlConnection.cpp:43](utils/CurlConnection.cpp#L43)); remove **or** implement the dead `plotAtmosphereBtn` ([AnalysisWindow.ui:52](gui/AnalysisWindow.ui#L52) — no connect, no slot); make Logger construction thread-safe ([Logger.cpp:17-24](utils/Logger.cpp#L17-L24)); use `Constants::g0` in `ConstantGravityModel` ([ConstantGravityModel.h:19](sim/ConstantGravityModel.h#L19) vs [Constants.h:10](utils/math/Constants.h#L10)); fix `Integrator.h`'s mismatched endif comment ([Integrator.h:98](sim/Integrator.h#L98)).
+- [ ] **Delete dead code** (audit §7.2) — `ThreadPool`/`TSQueue` (zero uses since 2023; supersedes the old P5 idea of running sims on it — use Qt/std threading when P4 needs a worker), `ThrustCurve::setThrustCurveVector` (its own doc says remove it), `ThrustCurveAPI::getMotorData`, `StateData::get{Pos,Vel}StdVector`, one of the duplicate `retainStates`/`setSaveStats`, and the phantom `class Rocket;` forward declaration ([Propagator.h:24](sim/Propagator.h#L24)).
+
+## P1 — Settle the two structural decisions (≈ a week)
+
+The editor, design files, and aero math all build on these (F4, F5). Settle them while the codebase is still ~3.4 k lines.
+
+- [ ] **Break the singleton back-calls (F4)** — inject `Environment` into `RocketModel` (constructor, or a `getForces` parameter; back-calls at [RocketModel.cpp:56,67](model/RocketModel.cpp#L56)) and switch `MotorModelDatabase` to `Logger::getInstance()` directly (its QtRocket detour buys nothing — [MotorModelDatabase.cpp:33,48](utils/MotorModelDatabase.cpp#L33)). Payoff: `QtRocket.cpp` can move into a library instead of being recompiled into every executable (audit §2.3), and the core becomes testable without the singleton.
+- [ ] **Put the motor in the part tree (F5)** — a `MotorPart` wrapping `MotorModel`, overriding the time-varying `Part::getMass(t)` hook that exists for exactly this purpose ([Part.h:95-102](model/Part.h#L95-L102)). The motor gains a location and an inertia contribution → composite mass/CM/inertia become honest → **CG(t) is computable** (prerequisite for P5 static margin and P6 tensors).
+  - This closes the old P2 "reconcile `getMass()` vs `getInertiaTensor()`" item, which is **half-done already**: the read side went composite ([RocketModel.cpp:21-31](model/RocketModel.cpp#L21-L31)); the write side (`setMass` → top part's own mass, [RocketModel.h:120-127](model/RocketModel.h#L120-L127)) is the remaining half — decide the composite-aware `setMass` story here.
+  - ℹ️ Status correction: the old P2 item "`Part::setMass()` should refresh the cached composite inertia" **is done** since the list was written — dirty-flag invalidation ([Part.h:78](model/Part.h#L78)) with test coverage ([PartTests.cpp:271](model/tests/PartTests.cpp#L271)).
+
+## P2 — Component model + design persistence, proven via the CLI (2–3 weeks) — 🎯 milestone
+
+- [ ] **[carried: P2] Concrete part types** — `NoseCone` (straight cone first), `BodyTube`, `FinSet` (trapezoid), `Transition` later — closed-form mass/inertia following the `HollowSphere` pattern + tests. **Design the geometry fields for P5's Barrowman equations now** (lengths, diameters, fin root/tip/span/sweep), and **derive the reference/frontal area from geometry** (old P2 detail), keeping the manual override.
+- [ ] **[carried: P5, moved up] Design save/load** — XML via Boost.PropertyTree (already a dependency; already the `.qmd` pattern): polymorphic part serialization (type tag + params + children), motor by common name, sim options included, **versioned format from day one**. Round-trip tests mirroring [MotorDatabasePersistenceTests.cpp](tests/MotorDatabasePersistenceTests.cpp). The File-menu actions exist as disabled shells (audit §4.1).
+- [ ] **CLI design commands** — `addpart` / `listparts` / `removepart` / `savedesign` / `loaddesign` in the REPL: the fastest end-to-end proof of the tree API, and the first callers of `addChildPart`/`findById` outside the unit tests.
+- [ ] *(independent, anytime)* **[carried: P5] RASP `.eng` parser** alongside `RSEDatabaseLoader`.
+
+**Exit criterion:** build a multi-part rocket in the REPL, save it, reload it, fly it; mass and CG come out right.
+
+## P3 — GUI editor (the shelved 15%; the largest block)
+
+- [ ] **[carried: P2] `PartTreeModel : QAbstractItemModel`** over the Part tree, wired into `RocketTreeView` (a [6-line stub](gui/RocketTreeView.cpp) today). `Part::Id` + `findById` were built for stable model indexes ([Part.h:50](model/Part.h#L50)).
+- [ ] **Property panel** per part type; add/remove/duplicate via context menu (`addChildPart`/`clone`).
+- [ ] **`RocketModelerView` as a 2-D side view** — plain QPainter from P2's part geometry (no OpenGL yet); today it renders nothing ([6-line stub](gui/RocketModelerView.cpp)).
+- [ ] **Enable the File menu** on P2's persistence (today: disabled, slotless — audit §3.5).
+
+## P4 — Flight realism: events, recovery, thrust direction, worker thread
+
+- [ ] **[carried: P4] Event system replacing the `z<0` terminate** — burnout, apogee (vz sign change), ejection at burnout + delay, ground impact; record event times and mark them on plots. Finally consumes the **parsed-but-never-used ejection delays** ([RSEDatabaseLoader.cpp:58-68](utils/RSEDatabaseLoader.cpp#L58-L68) → [MotorModel.h:388](model/MotorModel.h#L388); note thrustcurve.org imports don't populate them — [ThrustCurveAPI.cpp:257](utils/ThrustCurveAPI.cpp#L257)).
+- [ ] **[carried: P1] Parachute descent phase** — swap to a chute drag model (constant Cd·A) at ejection; plot the full up-and-down profile.
+- [ ] **[carried: P1] Thrust along the velocity/body direction** after rail exit (fall back to +Z at near-zero speed) instead of fixed world +Z ([RocketModel.cpp:50-51](model/RocketModel.cpp#L50-L51)) — interim ballistic realism until P6's real attitude dynamics.
+- [ ] **[carried: P5] Run simulations off the GUI thread** — with minutes-long descents the synchronous launch slot (audit §4.2 callout) becomes untenable; worker + progress + cancel, Qt-safety confirmed (old P5's open question).
+- [ ] **AnalysisWindow upgrades** — downrange/speed plots (the CLI already derives them — [Repl.cpp:554-600](cli/Repl.cpp#L554-L600)), event markers, and fix the `setModal(false)`-then-`exec()` confusion ([CannonballTab.cpp:122-124](gui/CannonballTab.cpp#L122-L124)).
+
+## P5 — Aerodynamics & stability (the OpenRocket-defining feature) [carried: P3]
+
+- [ ] **Barrowman CP** per part type → composite CP, and **CG / CP / static margin shown live in the editor** — needs only P2's geometry plus P1's CG(t), *not* 6-DOF. This is the first feature that makes QtRocket a *design* tool (old P3's framing, still true).
+- [ ] **Component Cd build-up** (nose + body friction + base + fins) replacing the single hand-entered Cd, manual override retained. Fill or replace the empty `Aero` struct ([Aero.h:17-40](sim/Aero.h#L17-L40), 0-line `.cpp`) as part of this.
+
+## P6 — 6-DOF, wind, frames [carried: P4]
+
+- [ ] **Orientation integration** — instantiate the pre-designed `DESolver<Quaternion>` slot ([Propagator.h:93-97](sim/Propagator.h#L93-L97)); `getTorques` from aero moments (CP–CG lever) + thrust offset; first commit: fix the quaternion init/convention (zero-init isn't a rotation; "(vector, scalar)" comment vs Eigen's (w,x,y,z) — [StateData.h:82-83](sim/StateData.h#L82-L83), F8). Keep 3-DOF behind a flag (old P4 note). P1's motor-in-tree makes the tensor honest here.
+- [ ] **Wind** — flesh out `WindModel` (constant + altitude profile); drag on relative airspeed `(v − v_wind)` (old P4 wording; today it returns zeros with no callers).
+- [ ] **Coordinate frames** — geodetic launch-site → ECEF transform if/when the spherical gravity + geoid models return from P0's gating; document the chosen frame (old P4).
+
+## Parked — deliberately not now
+
+US-Standard-1976 rewrite (self-flagged "wrong" but adequate below 10 km — [USStandardAtmosphere.h:19-21](sim/USStandardAtmosphere.h#L19-L21)); full spherical-Earth support (gated in P0, returns in P6); multi-stage (`Stage.h` placeholder, [RocketModel.h:21-22](model/RocketModel.h#L21-L22)); translations ([GuiRunner.cpp:34](gui/GuiRunner.cpp#L34)). Solo re-entry fails by scattering — this list is the guardrail.
+
+---
+
+## Appendix A — previous TODO (preserved verbatim)
+
+*The pre-audit TODO, restored 2026-06-09 and kept as the completed-work log of the June 2026 reactivation — its ✅ entries carry the verification notes. It referenced `ANALYSIS_RESULTS.md` / `ANALYSIS_RESULTS_1.md`, which were removed; [docs/ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md) supersedes them, so those links no longer resolve. Headings are demoted one level (anchors unchanged); content is otherwise untouched. Known status drift since it was written: P2 "`Part::setMass()` should refresh the cached composite inertia" is **done** (dirty-flag + [PartTests.cpp:271](model/tests/PartTests.cpp#L271)); P2 "reconcile `getMass()`/`getInertiaTensor()`" is **half-done** (read side composite) — both tracked above under new P1.*
+
 Prioritized development roadmap, derived from [§8 "Where to Resume"](ANALYSIS_RESULTS.md#8-where-to-resume-prioritized) of [ANALYSIS_RESULTS.md](ANALYSIS_RESULTS.md). See that document for full context, evidence, and the data-flow trace behind each item.
 
 **🎯 Next milestone: "Make a single-stage flight physically believable."** A launched rocket should respect its GUI inputs, coast up against gravity *and drag*, reach a realistic apogee, and (stretch) descend under a parachute. P0 + P1 get you there.
 
 Tasks tagged **[verified bug]** were confirmed against the source during analysis.
 
----
-
-## P0 — Unblock, de-risk, stop lying to the user (hours → ~1 day)
+### P0 — Unblock, de-risk, stop lying to the user (hours → ~1 day)
 
 - [✅] **Build & run it first.** `cmake -B build -S . && cmake --build build && ./build/qtrocket`; load `data/Aerotech.rse`, set a motor, Calculate Trajectory, view the altitude plot; `ctest` to confirm the atmosphere tests pass. (Newer pinned dependency versions are the likeliest first-build friction.)
 - [✅] **[verified bug] Seed `currentState` from `initialState`** at launch (`QtRocket::launchRocket` / `Propagator::runUntilTerminate`) so launch angle & initial velocity actually affect the trajectory. *Highest-value single fix — currently the rocket launches from rest, straight up.*
@@ -20,13 +94,13 @@ Tasks tagged **[verified bug]** were confirmed against the source during analysi
 - [✅] **Remove dead code** — deleted `model/MotorModelDatabase.{h,cpp}` + its CMake entry (the duplicate-class hazard, done while unifying motor sourcing behind `utils::MotorModelDatabase`), and removed the stray `QtRocket::states` (and its reserve/log lines) and the unused `launchSitePosition`. `QtRocket::runSim()` was already gone.
 - [✅] **Audit `utils/ThrustCurveAPI.cpp`** — removed the `debug("1".."6")` traces; fixed the Klima↔Quest swap in `MotorModel::MotorManufacturer::toEnum`; `searchMotors` now maps every modeled manufacturer through `toEnum` (taught to accept thrustcurve.org's full-name forms, e.g. "Estes Industries", "Quest Aerospace") instead of only "AeroTech". Verified live against thrustcurve.org (Estes/Quest/Apogee) plus a deterministic mapping test.
 
-## P1 — Make the physics honest: drag + the atmosphere (keystone, days)
+### P1 — Make the physics honest: drag + the atmosphere (keystone, days)
 
 - [✅] **Implement aerodynamic drag** in `RocketModel::getForces`: `F_drag = -½·ρ(altitude)·|v|·v·Cd·A`, with `ρ` from the active atmospheric model. Added a `referenceArea` member (Cd already existed), a `VacuumAtmosphere` model, and `setatmosphere`/`setarea` CLI commands. Altitude is clamped to ≥0 at the density query (USStandardAtmosphere's Bin lookup throws below 0). Terminal velocity verified manually via `qtrocket-cli` and now covered by an automated test (see below).
 - [✅] **⚠ Fix RK4 force evaluation while adding drag** — `getForces` now takes `(t, position, velocity)` and the Propagator's ODE lambda passes each RK4 trial state ([Propagator.cpp](sim/Propagator.cpp)), so velocity-dependent drag integrates at full RK4 accuracy instead of degrading to Euler.
 - [✅] **Add automated CTest coverage for the new physics** — [tests/PhysicsIntegrationTests.cpp](tests/PhysicsIntegrationTests.cpp) (suite `qtrocket_integration_tests`) drives the real `RocketModel`/`Propagator`/`Environment` end-to-end: timestep invariants under `Vacuum` (step count ∝ 1/dt, flight time ~constant, sample interval == dt), drag-reduces-apogee vs vacuum, terminal-velocity force balance under `Constant Atmosphere`, and a US-Standard no-crash regression guard. No mock Propagatable — atmosphere selection makes the runs drag-free or not as needed.
 
-### P0.5 — Close GUI↔CLI parity gaps & remove two traps (do these first; hours)
+#### P0.5 — Close GUI↔CLI parity gaps & remove two traps (do these first; hours)
 
 *New, from [ANALYSIS_RESULTS_1.md](docs/ANALYSIS_RESULTS_1.md) §9 (evidence in §3–§4). The P0 work made launch angle and timestep functional, but the GUI didn't keep pace — a few inputs are now dead, disabled, or unsafe, which re-introduces the "stop lying to the user" problem on the GUI side. Tags **[H]/[M]/[L]** cross-reference that document's severity.*
 
@@ -37,33 +111,33 @@ Tasks tagged **[verified bug]** were confirmed against the source during analysi
 - [✅] **[M3/M4] Wire or hide the integrator dropdown; add a CLI gravity selector.** **M3 (GUI/engine):** introduced [sim/Integrator.h](sim/Integrator.h), a `DESolver` factory wrapping `RK4Solver` ("Runge-Kutta 4th Order", default) and `RK45Solver` ("Runge-Kutta-Fehlberg"); `Propagator` now holds a `std::unique_ptr<Integrator>` instead of a hard-coded `RK4Solver` ([Propagator.h:92](sim/Propagator.h#L92)), and `SimOptionsWindow` populates `integratorCombo` from `getAvailableIntegratorModels()` and applies the choice via `QtRocket::setIntegratorModel` on Accept ([SimOptionsWindow.cpp:57-62,82](gui/SimOptionsWindow.cpp#L57-L62)). **M4 (CLI parity):** added `setgravity`/`listgravity` (mirroring `setatmosphere`, via `Environment::get/setGravityModel`) **and** `setintegrator`/`listintegrators` to [cli/Repl.cpp](cli/Repl.cpp); both validate against the available-model list and are reflected in `status`. Verified live: RK4 (apogee ~8 m, vmax ~21 m/s) vs RKF45 give distinct trajectories, confirming the switch reaches the engine. (RKF45's adaptive step still diverges — tracked under [P4](#p4--6-dof-events--integrator-fidelity-later) "Finish adaptive RK45".) 20/20 CTest pass.
 - [✅] **[L1/L2] Two quick cleanups.** **L1:** removed the stale parenthetical in `MotorModelDatabase::importRSEFile` that claimed `RSEDatabaseLoader`'s constructor pushes into a QtRocket-global database — verified the loader only parses XML into its own `motors` list, so the comment now just describes this as the single ingestion point ([MotorModelDatabase.cpp](utils/MotorModelDatabase.cpp)). **L2:** fixed the no-op `dt == std::numeric_limits<double>::quiet_NaN()` guard (always false: NaN compares unequal to everything) to `std::isnan(dt)` in `RK4Solver::step` ([RK4Solver.h](sim/RK4Solver.h)), added `<cmath>`. 24/24 CTest pass.
 
-### P1 (remaining) — finish "physically believable single-stage"
+#### P1 (remaining) — finish "physically believable single-stage"
 
-- [ ] **Apply thrust along the velocity/body direction** after rail exit (fall back to +Z at near-zero speed) instead of fixed world +Z.
-- [ ] **Add a recovery / parachute descent phase** — after burnout/apogee, switch to a parachute drag model (constant Cd·A), trigger on vertical-velocity sign change, terminate at ground impact. Plot the full up-and-down profile.
+- [ ] **Apply thrust along the velocity/body direction** after rail exit (fall back to +Z at near-zero speed) instead of fixed world +Z. *(→ carried into new P4 above.)*
+- [ ] **Add a recovery / parachute descent phase** — after burnout/apogee, switch to a parachute drag model (constant Cd·A), trigger on vertical-velocity sign change, terminate at ground impact. Plot the full up-and-down profile. *(→ carried into new P4 above.)*
 - [✅] **Finish adaptive RK45 step-size control** ([sim/RK45Solver.h](sim/RK45Solver.h)) — *promoted from P4; done in two fixes.* **(1) Step-size runaway.** Selecting "Runge-Kutta-Fehlberg" used to **diverge for every motor in vacuum** — leaping past the ground (land_z of −10³…−10⁶ m) in only 6–8 steps, because constant-acceleration coasting is integrated exactly by both embedded orders so `err < epsilon` grew `h` by the max ×5 every step with no upper bound. Added an absolute `hMax` cap (default `10×` the seeded timestep, overridable via `setMaxStepSize`) clamped after each growth step; this also bounds the post-step terminate overshoot. **(2) Frozen-thrust burn error.** With the old no-time ODE interface, thrust was frozen at each step's start, so a coarse adaptive step over-integrated the burn impulse (RKF45 apogee ran ~8% high — worst for sharp-burn motors like D13W, and *not* damped by drag since it originates in the powered phase). Threaded each Fehlberg stage's node time into the ODE: `DESolver::step`/`setFunction` (and `RK4Solver`, `RK45Solver`, `Integrator`, the `Propagator` lambda) now take a leading `double t`, so stages sample thrust/mass at `t + cᵢ·h`. This lets the error estimator *see* the transient and refine across it — and makes RK4 properly 4th-order in time too. Result: RKF45 vacuum now tracks RK4 to <0.3% across the impulse range (D13W 12.3%→−0.05%) in ~1/8 the steps, step count scales with flight energy, and burns get more steps than coast. Regressions: `RK45SolverTest.{StepSizeIsCappedOnExactlyIntegratedDynamics,SetMaxStepSizeOverridesTheCap,TimeDependentForcingIsIntegratedAtNodeTimes}` (unit) + `PhysicsIntegrationTest.AdaptiveIntegratorMatchesRK4UnderVacuum` (end-to-end). 24/24 CTest pass. *("Make it selectable, RK4 default" was already done via [sim/Integrator.h](sim/Integrator.h) + GUI combo + CLI `setintegrator`.)*
 
-## P2 — A real (if minimal) component model + reference area (1–2 weeks)
+### P2 — A real (if minimal) component model + reference area (1–2 weeks)
 
-- [ ] **Introduce concrete component types** on `model::Part` (NoseCone, BodyTube, FinSet) carrying dimensions; derive mass, CG, and reference/frontal area from geometry (reuse `InertiaTensors` + parallel-axis composition). Replace the hard-coded 1 kg sphere with an assembled design.
-- [ ] **Wire `gui/RocketTreeView`** to a `QAbstractItemModel` backed by the `Part` tree — editable exploded view with add/remove/edit; recompute mass/inertia on change.
+- [ ] **Introduce concrete component types** on `model::Part` (NoseCone, BodyTube, FinSet) carrying dimensions; derive mass, CG, and reference/frontal area from geometry (reuse `InertiaTensors` + parallel-axis composition). Replace the hard-coded 1 kg sphere with an assembled design. *(→ carried into new P2 above.)*
+- [ ] **Wire `gui/RocketTreeView`** to a `QAbstractItemModel` backed by the `Part` tree — editable exploded view with add/remove/edit; recompute mass/inertia on change. *(→ carried into new P3 above.)*
 - [✅] **Removed the `dryMass` override in `RocketModel::getMass()`** ([RocketModel.cpp](model/RocketModel.cpp)) — the placeholder 1 kg `Part` is now a `model::HollowSphere` `topPart` (a `std::shared_ptr<model::Part>`), and the `dryMass` member is gone. `getMass()` returns `mm.getMass(t) + topPart->getMass(t)` and `setMass()` delegates to `topPart->setMass()`, so the GUI mass field drives the part instead of a dead override. Used the part's own `getMass()`/`setMass()` pair (not `getCompositeMass()`) so the GUI value round-trips — see the reconciliation item below for when child parts arrive.
-- [ ] **`Part::setMass()` should refresh the cached composite inertia.** `setMass()` writes the scalar `mass` but leaves `compositeInertiaTensor` (= `mass × inertiaTensor` + children, where `inertiaTensor` is stored per-unit-mass) stale — harmless for 3-DOF (the propagator ignores inertia) but wrong once 6-DOF reads `getInertiaTensor()`. Recompute, or mark-dirty + lazily recompute, on `setMass()`/`setI()`. *(Surfaced while wiring `HollowSphere` into `RocketModel`.)*
-- [ ] **Reconcile `RocketModel::getMass()` (part's own mass) with `getInertiaTensor()` (composite).** `getMass()` returns `topPart->getMass()` so a GUI `setMass()` round-trips, while `getInertiaTensor()` returns `topPart->getCompositeI()`. Identical for today's single childless part, but they diverge once child parts attach — then switch mass to `getCompositeMass()` and make `setMass()` composite-aware (distribute, or treat it as the top part's own mass).
+- [ ] **`Part::setMass()` should refresh the cached composite inertia.** `setMass()` writes the scalar `mass` but leaves `compositeInertiaTensor` (= `mass × inertiaTensor` + children, where `inertiaTensor` is stored per-unit-mass) stale — harmless for 3-DOF (the propagator ignores inertia) but wrong once 6-DOF reads `getInertiaTensor()`. Recompute, or mark-dirty + lazily recompute, on `setMass()`/`setI()`. *(Surfaced while wiring `HollowSphere` into `RocketModel`.)* *(→ since DONE: dirty-flag + `PartCompositionTest.SetMassAndSetIInvalidateCompositeCache`.)*
+- [ ] **Reconcile `RocketModel::getMass()` (part's own mass) with `getInertiaTensor()` (composite).** `getMass()` returns `topPart->getMass()` so a GUI `setMass()` round-trips, while `getInertiaTensor()` returns `topPart->getCompositeI()`. Identical for today's single childless part, but they diverge once child parts attach — then switch mass to `getCompositeMass()` and make `setMass()` composite-aware (distribute, or treat it as the top part's own mass). *(→ half-done — read side now composite; remainder carried into new P1 above.)*
 
-## P3 — Stability & center of pressure (Barrowman) (1–2 weeks)
+### P3 — Stability & center of pressure (Barrowman) (1–2 weeks)
 
-- [ ] **Aerodynamic build-up:** compute Barrowman **CP** and a Cd estimate from component geometry in the (empty) `Aero` class, replacing the hand-entered Cd. Surface **CG / CP / static margin** in the UI — the first feature that makes QtRocket a *design* tool.
+- [ ] **Aerodynamic build-up:** compute Barrowman **CP** and a Cd estimate from component geometry in the (empty) `Aero` class, replacing the hand-entered Cd. Surface **CG / CP / static margin** in the UI — the first feature that makes QtRocket a *design* tool. *(→ carried into new P5 above.)*
 
-## P4 — 6-DOF, events & integrator fidelity (later)
+### P4 — 6-DOF, events & integrator fidelity (later)
 
-- [ ] **Re-enable rotational dynamics** — instantiate the commented-out `RK4Solver<Quaternion>` orientation integrator; implement `getTorques` from aero moments (CP–CG) + thrust offset; integrate orientation; update `StateData` orientation/Euler. Keep 3-DOF behind a flag.
-- [ ] **Replace the `z<0` terminate with an event system** — apogee, burnout, recovery deployment, ground impact; record event times and mark them on the plots.
-- [ ] **Reconcile coordinate frames** — flat-ground (ENU/local) vs geocentric (ECEF). Add a geodetic launch-site → ECEF transform for the Spherical models, or gate them out of the GUI until supported. Document the chosen frame.
-- [ ] **Wind** — flesh out `WindModel` (constant + altitude profile); feed relative airspeed `(v − v_wind)` into drag.
+- [ ] **Re-enable rotational dynamics** — instantiate the commented-out `RK4Solver<Quaternion>` orientation integrator; implement `getTorques` from aero moments (CP–CG) + thrust offset; integrate orientation; update `StateData` orientation/Euler. Keep 3-DOF behind a flag. *(→ carried into new P6 above.)*
+- [ ] **Replace the `z<0` terminate with an event system** — apogee, burnout, recovery deployment, ground impact; record event times and mark them on the plots. *(→ carried into new P4 above.)*
+- [ ] **Reconcile coordinate frames** — flat-ground (ENU/local) vs geocentric (ECEF). Add a geodetic launch-site → ECEF transform for the Spherical models, or gate them out of the GUI until supported. Document the chosen frame. *(→ gating lands in new P0; full support in new P6.)*
+- [ ] **Wind** — flesh out `WindModel` (constant + altitude profile); feed relative airspeed `(v − v_wind)` into drag. *(→ carried into new P6 above.)*
 
-## P5 — Persistence & polish
+### P5 — Persistence & polish
 
-- [ ] **Design save/load** — an `.ork`-style project file serializing the component tree + sim options (Boost.PropertyTree already a dependency); File → Save/Open in `MainWindow`.
-- [ ] ✅ **Implemented `MotorModelDatabase::loadMotorDatabase`** (mirrors the save; round-trip test in [tests/MotorDatabasePersistenceTests.cpp](tests/MotorDatabasePersistenceTests.cpp)), wired into the CLI (`loaddb`/`savedb`) and the GUI ("Load Motor Database" button). **Remaining:** a **RASP `.eng`** parser alongside `RSEDatabaseLoader`.
-- [ ] **Audit logging & threading** — demote per-step logs / add a log-level flag (drop default `PERF_`); confirm the GUI-on-worker-thread model is Qt-safe; consider running long sims on the existing `ThreadPool`.
+- [ ] **Design save/load** — an `.ork`-style project file serializing the component tree + sim options (Boost.PropertyTree already a dependency); File → Save/Open in `MainWindow`. *(→ carried into new P2 above.)*
+- [ ] ✅ **Implemented `MotorModelDatabase::loadMotorDatabase`** (mirrors the save; round-trip test in [tests/MotorDatabasePersistenceTests.cpp](tests/MotorDatabasePersistenceTests.cpp)), wired into the CLI (`loaddb`/`savedb`) and the GUI ("Load Motor Database" button). **Remaining:** a **RASP `.eng`** parser alongside `RSEDatabaseLoader`. *(→ `.eng` carried into new P2 above.)*
+- [ ] **Audit logging & threading** — demote per-step logs / add a log-level flag (drop default `PERF_`); confirm the GUI-on-worker-thread model is Qt-safe; consider running long sims on the existing `ThreadPool`. *(→ logging carried into new P0; worker thread into new P4 — but on Qt/std threading, not the dead `ThreadPool`, which new P0 deletes.)*
