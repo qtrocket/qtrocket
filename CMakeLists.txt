@@ -99,7 +99,6 @@ include_directories(${PROJECT_SOURCE_DIR})
 
 set(PROJECT_SOURCES
         main.cpp
-        QtRocket.h
         gui/AboutWindow.cpp
         gui/AboutWindow.h
         gui/AboutWindow.ui
@@ -159,6 +158,18 @@ endif()
 add_subdirectory(utils)
 add_subdirectory(sim)
 add_subdirectory(model)
+
+# Application controller shared by the GUI, the CLI, and the
+# integration tests.
+add_library(qtrocket_core STATIC
+   QtRocket.cpp
+   QtRocket.h)
+
+target_link_libraries(qtrocket_core PUBLIC
+   model
+   sim
+   utils)
+
 add_subdirectory(tests)
 
 #target_link_libraries(qtrocket PRIVATE 
@@ -172,23 +183,17 @@ add_subdirectory(tests)
 target_link_libraries(qtrocket PRIVATE
    Qt6::Widgets
    Qt6::PrintSupport
-   utils
-   sim
-   model)
+   qtrocket_core)
 
-# Headless CLI / REPL driver for the simulation engine (no Qt).
-# QtRocket.cpp is compiled in directly (as it is for the GUI exe) rather than
-# shared via a static lib, because utils calls QtRocket::getInstance() while
-# QtRocket needs utils -- a shared lib would create a circular dependency.
+# Headless CLI / REPL driver for the simulation engine (no Qt). The shared
+# application controller comes from the qtrocket_core static lib.
 add_executable(qtrocket-cli
     cli/CliMain.cpp
     cli/Repl.cpp
     cli/Repl.h
 )
 target_link_libraries(qtrocket-cli PRIVATE
-    utils
-    sim
-    model)
+    qtrocket_core)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

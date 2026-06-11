@@ -46,8 +46,8 @@ model/  +  sim/
 utils/
 ```
 
-- **QtRocket** is the master controller singleton: owns the RocketModel/Propagator pairs, Environment, MotorModelDatabase, and Logger; entry points are `launchRocket()`, `setInitialState()`, `getStates()`.
-- **Circular-dependency constraint**: `utils` calls `QtRocket::getInstance()` while QtRocket links `utils`, so **`QtRocket.cpp` is compiled directly into every executable** (`qtrocket`, `qtrocket-cli`, `integration_tests`) rather than placed in a static lib. Keep this pattern when adding executables.
+- **QtRocket** is the master controller singleton: owns the RocketModel/Propagator pairs, Environment, and MotorModelDatabase; entry points are `launchRocket()`, `setInitialState()`, `getStates()`.
+- **`qtrocket_core`**: `QtRocket.cpp` is built once into the `qtrocket_core` static lib (`PUBLIC model sim utils`), linked by all three executables (`qtrocket`, `qtrocket-cli`, `integration_tests`) — **new executables link `qtrocket_core`**. (Until June 2026 it was compiled directly into every executable to dodge a `utils → QtRocket::getInstance()` back-call cycle; those back-calls are gone — `Environment` is injected via the Propagator, and `MotorModelDatabase` logs via `Logger::getInstance()`.)
 - **model/** — physical description of the rocket:
   - `RocketModel` implements `Propagatable` (the model↔sim bridge interface: `getForces()`, `getTorques()`, `getMass(t)`, `terminateCondition()`...).
   - `Part` (`model/Part.h`) is the base of a composite tree of rocket components (concrete types in `model/parts/`, e.g. `HollowSphere`). Composite mass/CM/inertia are recomputed lazily via a dirty-flag that propagates up the tree; child inertia tensors are shifted to the composite CM with the parallel-axis theorem. Parts store *per-unit-mass* geometric tensors (m²); composites are full mass-weighted tensors (kg·m²). Children are added by move; `clone()` deep-copies.

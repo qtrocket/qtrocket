@@ -1,11 +1,9 @@
 # End-to-end tests that drive the real RocketModel / Propagator / Environment and the
-# motor database via the QtRocket controller, so QtRocket.cpp is compiled in directly
-# (as for the executables) to avoid a utils<->controller circular static-lib dependency.
-# No Qt is needed (the controller is Qt-free).
+# motor database via the QtRocket controller, which is linked in from the
+# qtrocket_core static lib (as for the executables).
 add_executable(integration_tests
    PhysicsIntegrationTests.cpp
    MotorDatabasePersistenceTests.cpp
-   ${CMAKE_SOURCE_DIR}/QtRocket.cpp
 )
 
 # Absolute path to the bundled motor database, so the test runs from any cwd.
@@ -13,9 +11,7 @@ target_compile_definitions(integration_tests PRIVATE
    QTROCKET_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 
 target_link_libraries(integration_tests
-   utils
-   sim
-   model
+   qtrocket_core
    GTest::gtest_main
 )
 
