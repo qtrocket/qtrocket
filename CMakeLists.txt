@@ -73,7 +73,7 @@ if (MSVC)
     add_compile_options(/W4 /WX)
 else()
     # additional warnings
-    add_compile_options(-Wall -Wextra -Wpedantic)
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 endif()
 
 set(CMAKE_AUTOUIC ON)
@@ -97,6 +97,16 @@ set(TS_FILES qtrocket_en_US.ts)
 
 include_directories(${PROJECT_SOURCE_DIR})
 
+# This is the main intended application. qtrocket is the full GUI application
+# The CLI version is defined separately, and while useful, is mostly for testing
+#
+# qcustomplot throws some warnings, so silence them so we can turn on -Werror
+# for our code
+set_source_files_properties(
+    gui/qcustomplot.cpp
+    PROPERTIES
+    COMPILE_OPTIONS "-w"
+)
 set(PROJECT_SOURCES
         main.cpp
         gui/AboutWindow.cpp
