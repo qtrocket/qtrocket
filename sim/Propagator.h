@@ -17,13 +17,6 @@
 #include "model/Propagatable.h"
 #include "utils/Logger.h"
 
-
-// Forward declare
-namespace model
-{
-class Rocket;
-}
-
 namespace sim
 {
 static constexpr double minFlightTime = 4.0;

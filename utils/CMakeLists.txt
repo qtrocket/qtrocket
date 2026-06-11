@@ -9,11 +9,8 @@ add_library(utils
     MotorModelDatabase.h
     RSEDatabaseLoader.cpp
     RSEDatabaseLoader.h
-    ThreadPool.cpp
-    ThreadPool.h
     ThrustCurveAPI.cpp
     ThrustCurveAPI.h
-    TSQueue.h
     math/Constants.h
     math/MathTypes.h
     math/UtilityMathFunctions.h)
@@ -23,8 +20,14 @@ add_library(utils
 #    ${Boost_INCLUDE_DIRS})
 
 
+# 'model' creates a declared cycle (model links utils for Logger/math; utils
+# links model for MotorModel/ThrustCurve in the database/API code). CMake
+# breaks static-library cycles by repeating the archives on the link line.
 target_link_libraries(utils PUBLIC
    libcurl
    Boost::property_tree
    jsoncpp_static
-   eigen)
+   eigen
+   model)
+
+add_subdirectory(tests)

@@ -14,6 +14,13 @@ ThrustCurve::ThrustCurve(std::vector<std::pair<double, double>>& tc)
      maxTime(0.0),
      ignitionTime(0.0)
 {
+   // An empty curve degenerates to the default-constructed one: a single
+   // (0, 0) point, so getThrust() always has an interval to walk.
+   if(thrustCurve.empty())
+   {
+      thrustCurve.emplace_back(0.0, 0.0);
+      return;
+   }
    maxTime = std::max_element(thrustCurve.begin(),
                               thrustCurve.end(),
                               [](const auto& a, const auto& b)
@@ -30,19 +37,6 @@ ThrustCurve::ThrustCurve()
 
 ThrustCurve::~ThrustCurve()
 {}
-
-void ThrustCurve::setThrustCurveVector(const std::vector<std::pair<double, double>>& v)
-{
-   thrustCurve.clear();
-   thrustCurve.resize(v.size());
-   std::copy(v.begin(), v.end(), thrustCurve.begin());
-   maxTime = std::max_element(thrustCurve.begin(),
-                              thrustCurve.end(),
-                              [](const auto& a, const auto& b)
-                              {
-                                  return a.first < b.first;
-                              })->first;
-}
 
 void ThrustCurve::setIgnitionTime(double t)
 {

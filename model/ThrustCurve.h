@@ -43,11 +43,6 @@ public:
 
    double getMaxTime() const { return maxTime; }
 
-   /**
-    * TODO: Get rid of this. This is for temporary testing
-    */
-   void setThrustCurveVector(const std::vector<std::pair<double, double>>& v);
-
    const std::vector<std::pair<double, double>> getThrustCurveData() const { return thrustCurve; }
 
 private:

@@ -65,8 +65,9 @@ public:
     */
    enum class AVAILABILITY
    {
-      REGULAR, /// available
-      OOP      /// Out of Production
+      REGULAR,    /// available
+      OCCASIONAL, /// in production, made in occasional runs
+      OOP         /// Out of Production
    };
 
 
@@ -138,6 +139,8 @@ public:
       {
          if(availability == AVAILABILITY::REGULAR)
             return std::string("regular");
+         else if(availability == AVAILABILITY::OCCASIONAL)
+            return std::string("occasional");
          else
             return std::string("OOP");
       }
@@ -151,6 +154,8 @@ public:
       {
          if(name == "regular")
             return AVAILABILITY::REGULAR;
+         else if(name == "occasional")
+            return AVAILABILITY::OCCASIONAL;
          else
             return AVAILABILITY::OOP;
       }

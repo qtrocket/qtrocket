@@ -24,7 +24,7 @@ using MM = model::MotorModel;
 // (and pins the Klima/Quest mapping).
 TEST(MotorEnumRoundTrip, EveryWrapperRoundTripsThroughItsString)
 {
-   for(auto a : {MM::AVAILABILITY::REGULAR, MM::AVAILABILITY::OOP})
+   for(auto a : {MM::AVAILABILITY::REGULAR, MM::AVAILABILITY::OCCASIONAL, MM::AVAILABILITY::OOP})
       EXPECT_EQ(MM::MotorAvailability::toEnum(MM::MotorAvailability(a).str()), a);
 
    for(auto c : {MM::CERTORG::AMRS, MM::CERTORG::CAR, MM::CERTORG::NAR,

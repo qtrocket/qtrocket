@@ -6,8 +6,10 @@
 // C headers
 // C++ headers
 #include <map>
-#include <string>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 // 3rd party headers
 /// \endcond
@@ -52,11 +54,32 @@ public:
    SearchCriteria& operator=(SearchCriteria&&) = default;
 
    void addCriteria(const std::string& name,
-                    const std::string& vaue);
+                    const std::string& value);
 
    std::map<std::string, std::string> criteria;
 
 };
+
+/**
+ * @brief Parsed payload of a search.json response. Carries metadata only;
+ *        thrust curves are fetched separately per motor via download.json.
+ */
+struct SearchResponse
+{
+   std::vector<model::MotorModel::MetaData> motors;
+   int matches{0}; ///< server-reported total; may exceed motors.size()
+};
+
+// Pure parsers over raw thrustcurve.org response bodies, split out from the
+// HTTP layer so they can be unit-tested with canned JSON. nullopt means the
+// body was malformed (logged); a response whose "error" field is set is
+// logged and yields empty-but-valid results.
+std::optional<SearchResponse> parseSearchResponse(const std::string& json);
+std::optional<ThrustcurveMetadata> parseMetadataResponse(const std::string& json);
+/// Selects ONE simfile's samples: the first RASP entry with samples, else the
+/// first entry of any format with samples. Never concatenates simfiles.
+std::optional<std::vector<std::pair<double, double>>>
+parseDownloadResponse(const std::string& json);
 
 /**
  * @brief This API for Thrustcurve.org - It will provide an interface for querying thrustcurve.org
@@ -68,14 +91,6 @@ class ThrustCurveAPI
 public:
    ThrustCurveAPI();
    ~ThrustCurveAPI();
-
-
-   /**
-    * @brief getThrustCurve will download the thrust data for the given Motor using the motorId
-    * @param m MotorModel to populate
-    */
-   model::MotorModel getMotorData(const std::string& motorId);
-
 
    /**
  * @brief getMetaData
@@ -93,9 +108,6 @@ private:
    CurlConnection curlConnection;
 
    std::optional<ThrustCurve> getThrustCurve(const std::string& id);
-
-   // no extra headers, but CurlConnection library wants them
-   const std::vector<std::string> extraHeaders{};
 };
 
 } // namespace utils
