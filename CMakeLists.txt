@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-enable_testing()
 
 include(FetchContent)
 
@@ -46,6 +45,7 @@ set(BUILD_SHARED_LIBS OFF)
 set(HTTP_ONLY ON)
 set(SSL_ENABLED ON)
 set(CURL_USE_LIBPSL OFF)
+set(BUILD_TESTING OFF)
 if(WIN32)
    set(CURL_USE_SCHANNEL ON)
 endif()
@@ -66,6 +66,15 @@ set(BOOST_INCLUDE_LIBRARIES property_tree)
 FetchContent_MakeAvailable(Boost)
 # Add qtrocket subdirectories. These are components that will be linked in 
 
+
+enable_testing()
+if (MSVC)
+    # warning level 4
+    add_compile_options(/W4 /WX)
+else()
+    # additional warnings
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -90,7 +99,6 @@ include_directories(${PROJECT_SOURCE_DIR})
 
 set(PROJECT_SOURCES
         main.cpp
-        QtRocket.cpp
         QtRocket.h
         gui/AboutWindow.cpp
         gui/AboutWindow.h
@@ -176,7 +184,6 @@ add_executable(qtrocket-cli
     cli/CliMain.cpp
     cli/Repl.cpp
     cli/Repl.h
-    QtRocket.cpp
 )
 target_link_libraries(qtrocket-cli PRIVATE
     utils

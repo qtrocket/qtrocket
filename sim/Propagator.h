@@ -23,7 +23,6 @@ namespace model
 {
 class Rocket;
 }
-class QtRocket;
 
 namespace sim
 {
@@ -32,7 +31,7 @@ static constexpr double minFlightTime = 4.0;
 class Propagator
 {
 public:
-    Propagator(std::shared_ptr<model::Propagatable> o);
+    Propagator(std::shared_ptr<model::Propagatable> o, std::shared_ptr<sim::Environment> environment);
     ~Propagator();
 
     void setInitialState(const StateData& initialState)
@@ -97,6 +96,7 @@ private:
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<model::Propagatable> object;
+   std::shared_ptr<sim::Environment> environment;
 
    bool saveStates{true};
    double currentTime{0.0};

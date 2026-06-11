@@ -260,15 +260,15 @@ TEST_F(PhysicsIntegrationTest, TerminalVelocityForceBalance)
    const double vt = std::sqrt(2.0 * m * g / (rho * Cd * A));
 
    // Descending at v_t: drag (up) cancels gravity (down) -> net ~ 0.
-   const Vector3 atVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -vt});
+   const Vector3 atVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -vt}, *env);
    EXPECT_NEAR(atVt[2], 0.0, 1e-6);
 
    // Slower than v_t: still accelerating downward (net force down).
-   const Vector3 belowVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -0.5 * vt});
+   const Vector3 belowVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -0.5 * vt}, *env);
    EXPECT_LT(belowVt[2], 0.0);
 
    // Faster than v_t: drag dominates (net force up).
-   const Vector3 aboveVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -2.0 * vt});
+   const Vector3 aboveVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -2.0 * vt}, *env);
    EXPECT_GT(aboveVt[2], 0.0);
 }
 

@@ -423,7 +423,6 @@ private:
    bool burnOutOccurred{false};
    double emptyMass;
    double isp;
-   double maxTime;
    double ignitionTime;
    ThrustCurve thrust; /// The measured motor thrust curve
 

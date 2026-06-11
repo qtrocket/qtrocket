@@ -31,8 +31,6 @@ class QtRocket
 public:
    static QtRocket* getInstance();
 
-   utils::Logger* getLogger() { return logger; }
-
    std::shared_ptr<sim::Environment> getEnvironment() { return environment; }
    void setTimeStep(double t) { rocket.second->setTimeStep(t); }
    void setIntegratorModel(const std::string& m) { rocket.second->setIntegratorModel(m); }
@@ -40,9 +38,7 @@ public:
 
    std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
-   void addRocket(std::shared_ptr<model::RocketModel> r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r); }
-
-   void setEnvironment(std::shared_ptr<sim::Environment> e) { environment = e; }
+   void addRocket(std::shared_ptr<model::RocketModel> r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r, environment); }
 
    void launchRocket();
    /**
@@ -65,8 +61,6 @@ private:
    static bool initialized;
    static std::mutex mtx;
    static QtRocket* instance;
-
-   utils::Logger* logger;
 
    using Rocket = std::pair<std::shared_ptr<model::RocketModel>, std::shared_ptr<sim::Propagator>>;
    Rocket rocket;

@@ -12,7 +12,7 @@
 /// \endcond
 
 // qtrocket project headers
-#include "QtRocket.h"
+#include "utils/Logger.h"
 #include "utils/RSEDatabaseLoader.h"
 #include "utils/ThrustCurveAPI.h"
 
@@ -30,22 +30,20 @@ MotorModelDatabase::~MotorModelDatabase()
 
 void MotorModelDatabase::addMotorModel(const model::MotorModel& m)
 {
-   utils::Logger* logger = QtRocket::getInstance()->getLogger();
    std::string name = m.data.commonName;
    if(motorModelMap.find(name) != motorModelMap.end())
    {
-      logger->debug("Replacing MotorModel " + name + " in MotorModelDatabase");
+      Logger::getInstance()->debug("Replacing MotorModel " + name + " in MotorModelDatabase");
    }
    else
    {
-      logger->info("Adding MotorModel " + name + " to MotorModelDatabase");
+      Logger::getInstance()->info("Adding MotorModel " + name + " to MotorModelDatabase");
    }
    motorModelMap[name] = m;
 }
 
 void MotorModelDatabase::addMotorModels(const std::vector<model::MotorModel>& models)
 {
-   utils::Logger* logger = QtRocket::getInstance()->getLogger();
    for(const auto& i : models)
    {
       addMotorModel(i);

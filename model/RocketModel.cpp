@@ -1,8 +1,8 @@
 
 // qtrocket headers
 #include "RocketModel.h"
-#include "QtRocket.h"
 #include "model/parts/Parts.h"
+#include "sim/Environment.h"
 
 namespace model
 {
@@ -44,7 +44,7 @@ bool RocketModel::terminateCondition(double)
         return false;
 }
 
-Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3& velocity)
+Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment)
 {
     // Get thrust
     // Assume that thrust is always through the center of mass and in the rocket's Z-axis
@@ -53,7 +53,7 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
 
     // Get gravity. Evaluate at the trial position passed by the integrator (not the
     // stored currentState) so each RK4 stage sees a consistent state.
-    auto gravityModel = QtRocket::getInstance()->getEnvironment()->getGravityModel();
+    auto gravityModel = environment.getGravityModel();
 
     Vector3 gravity = gravityModel->getAccel(position)*getMass(t);
 
@@ -64,7 +64,7 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
     // rho comes from the active atmospheric model; with the Vacuum model rho = 0,
     // so drag vanishes and the model reduces to thrust + gravity. Written with
     // |v|*v (not v^2 * vhat) so v = 0 gives zero drag with no division.
-    auto atmosphere = QtRocket::getInstance()->getEnvironment()->getAtmosphericModel();
+    auto atmosphere = environment.getAtmosphericModel();
     // Clamp altitude to >= 0: on descent (and in RK4 trial states crossing z=0) position.z
     // can dip just below the launch site, which is outside the atmosphere models' domain --
     // Treat at/below the launch site as launch-level density.
@@ -77,7 +77,7 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
     return forces;
 }
 
-Vector3 RocketModel::getTorques(double t)
+Vector3 RocketModel::getTorques(double)
 {
     return Vector3{0.0, 0.0, 0.0};
 

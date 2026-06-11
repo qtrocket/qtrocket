@@ -19,7 +19,7 @@ class Aero
 public:
 
 private:
-
+/*
    Vector3 cp; /// center of pressure
 
    double Cx; /// longitudinal coefficient
@@ -32,7 +32,7 @@ private:
 
    double baseCd; // coefficient of drag due to base drag
    double Cd; // total coeffient of drag
-
+*/
    
 };
 }

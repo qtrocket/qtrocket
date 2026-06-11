@@ -13,6 +13,9 @@
 #include "sim/StateData.h"
 #include "utils/math/MathTypes.h"
 
+// Forward declarations
+namespace sim { class Environment; }
+
 namespace model
 {
 
@@ -22,7 +25,7 @@ public:
    Propagatable() {}
    virtual ~Propagatable() {}
 
-   virtual Vector3 getForces(double t, const Vector3& position, const Vector3& velocity) = 0;
+   virtual Vector3 getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment) = 0;
    virtual Vector3 getTorques(double t) = 0;
 
    virtual double getMass(double t) = 0;

@@ -8,6 +8,7 @@
 // qtrocket headers
 #include "QtRocket.h"
 #include "utils/Logger.h"
+#include <memory>
 
 // Initialize static member data
 QtRocket* QtRocket::instance = nullptr;
@@ -37,17 +38,15 @@ void QtRocket::init()
 
 QtRocket::QtRocket()
 {
-   logger = utils::Logger::getInstance();
-
    // Need to set some sane defaults for the Environment
    // The default constructor for Environment will do that for us, so just use that
-   setEnvironment(std::make_shared<sim::Environment>());
+   environment = std::make_shared<sim::Environment>();
 
    rocket.first =
       std::make_shared<model::RocketModel>();
    
    rocket.second =
-      std::make_shared<sim::Propagator>(rocket.first);
+      std::make_shared<sim::Propagator>(rocket.first, environment);
 
    motorDatabase = std::make_shared<utils::MotorModelDatabase>();
 }

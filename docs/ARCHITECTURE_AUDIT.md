@@ -130,7 +130,7 @@ The architectural smell: code *underneath* the controller reaches back up into i
 - `model/RocketModel.cpp:56,67` call `QtRocket::getInstance()->getEnvironment()` to fetch gravity/atmosphere during force evaluation;
 - `utils/MotorModelDatabase.cpp:33,48` call `QtRocket::getInstance()->getLogger()`.
 
-So `utils`/`model` (libraries) reference symbols defined in `QtRocket.cpp` (application layer). The build resolves this by **compiling `QtRocket.cpp` directly into each executable that needs it** instead of putting it in a library — explained verbatim in the build file (`CMakeLists.txt:171-174`): the GUI exe lists it as a source (`CMakeLists.txt:93`), the CLI exe does (`CMakeLists.txt:175-180`), and the integration tests do (`tests/CMakeLists.txt:5-9`). `model_tests`/`sim_tests` link without it only because they never pull in the objects that reference it. Any new executable touching `RocketModel` or `MotorModelDatabase` must repeat this pattern — or the back-calls must be inverted (dependency injection) to break the cycle.
+So `utils`/`model` (libraries) reference symbols defined in `QtRocket.cpp` (application layer). The build resolves this by **compiling `QtRocket.cpp` directly into each executable that needs it** instead of putting it in a library — explained verbatim in the build file (`CMakeLists.txt:171-174`): the GUI exe lists it as a source (`CMakeLists.txt:93`), the CLI exe does (`CMakeLists.txt:175-180`), and the integration tests do (`tests/CMakeLists.txt:5-9`). `model_tests`/`sim_tests` link without it only because they never pull in the objects that reference it. Any new executable touching `RocketModel` or `MotorModelDatabase` must repeat this pattern — or the back-calls must be inverted (dependency injection) to break the cycle. The compile database confirms the pattern at build level: `QtRocket.cpp` appears as exactly **three** translation units in `build/compile_commands.json`, one per consumer executable.
 
 ---
 
@@ -144,7 +144,7 @@ So `utils`/`model` (libraries) reference symbols defined in `QtRocket.cpp` (appl
 | `model/parts/HollowSphere.h` / `.cpp` | The **only** concrete part type (closed-form hollow-sphere geometry) |
 | `model/parts/Parts.h` | Umbrella header for concrete parts (`model/parts/Parts.h:4-8`) |
 | `model/RocketModel.h` / `.cpp` | `Propagatable` implementation; owns the part tree root + motor |
-| `model/Propagatable.h` | The model↔sim bridge interface |
+| `model/Propagatable.h` (+ `model/Propagatable.cpp` — empty, 1 blank line, still compiled) | The model↔sim bridge interface |
 | `model/MotorModel.h` / `.cpp` | Motor metadata + time-varying mass/thrust |
 | `model/ThrustCurve.h` / `.cpp` | Sampled thrust curve with linear interpolation (`model/ThrustCurve.cpp:53-89`) |
 
@@ -248,7 +248,7 @@ Quirks worth knowing: `AnalysisWindow` sets itself `Qt::NonModal` then `hide()`/
 
 `qtrocket-cli` is a Qt-free REPL over the same core. `cli/CliMain.cpp:13-28` silences the logger to ERROR (stdout stays machine-readable), grabs the `QtRocket` singleton, and loops `Repl::run` over stdin (`cli/Repl.cpp:101-112`). `Repl::execute` is a 25-branch `if/else if` dispatch (`cli/Repl.cpp:114-654`; `grep -c 'cmd == ' cli/Repl.cpp` = 25, with `quit`/`exit` sharing a branch): motor DB management (`loadmotors`, `savedb`, `loaddb`, `tcfacets`, `tcsearch`, `listmotors`, `setmotor`), staged flight configuration kept in plain members that mirror the core's defaults (`cli/Repl.h:52-61`), environment/integrator selection, `status`, and `launch`.
 
-`launch` (`cli/Repl.cpp:527-605`) decomposes the angle exactly like the GUI (shared constant `DEG_PER_RAD`, `cli/Repl.cpp:31,537-539`), runs the identical `setInitialState` → `launchRocket` path (`:544-545`), then derives apogee / max-speed / downrange / landing from the state series (`:554-575`) and writes the full trajectory to `qtrocket_run.csv` (`:577-591`, CSV writer `:78-90`). The CLI's significance to this audit: it demonstrates the controller+model+sim stack runs headless, so the editor gap is purely a GUI-layer problem.
+`launch` (`cli/Repl.cpp:527-605`) decomposes the angle exactly like the GUI (shared constant `DEG_PER_RAD`, `cli/Repl.cpp:31,537-539`), runs the identical `setInitialState` → `launchRocket` path (`:544-545`), then derives apogee / max-speed / downrange / landing from the state series (`:554-575`) and writes the full trajectory to `qtrocket_run.csv` (`:577-591`, CSV writer `:78-90`). The CLI's significance to this audit: it demonstrates the controller+model+sim stack runs headless, so the editor gap is purely a GUI-layer problem. The compile database proves the Qt-freeness directly — the `cli/` translation units carry no Qt defines or include paths at all (`build/compile_commands.json`).
 
 ### 3.7 Build & Test Topology
 
@@ -264,6 +264,8 @@ C++23 (`CMakeLists.txt:5`), Qt AUTOMOC/AUTOUIC/AUTORCC globally on (`CMakeLists.
 | `model_tests`, `sim_tests`, `integration_tests` | gtest exes | registered with ctest as `qtrocket_*`; CI runs `ctest -R 'qtrocket_*'` (`.github/workflows/cmake-multi-platform.yml:86`) |
 
 All third-party deps except Qt6 arrive via FetchContent and build from source on first configure (§6.1) — so the first build is slow by design.
+
+**Compile-database corroboration (build of 2026-06-10).** `build/compile_commands.json` holds 551 entries: **49 project TUs vs 502 dependency TUs** (curl 419, boost 65, jsoncpp 9, gtest 4) — the slow first build, quantified. Three hygiene facts fall out of it: **(a) no warning flags at all** — zero of the 49 project TUs carry any `-W*` option, and no `CMAKE_CXX_FLAGS`/`add_compile_options` exists in any project CMakeLists (grep: no matches); **(b)** curl's own test harness is compiled (`_deps/curl-build/tests/*` TUs) because curl defaults `option(BUILD_TESTING "Build tests" ON)` **itself** (`_deps/curl-src/CMakeLists.txt:1925`, gated by `Perl_FOUND`) — not, as an earlier revision of this paragraph claimed, because of the parent's `enable_testing()`, which never sets `BUILD_TESTING`; **(c)** the global AUTOMOC (`CMakeLists.txt:70-72`) emits a `mocs_compilation.cpp` for every target, including the Qt-free libraries. Toolchain observed in the DB: `clang++` via ccache, `-std=gnu++23`, system Qt **6.10.3** — while CI builds with gcc-13/MSVC (`.github/workflows/cmake-multi-platform.yml:30-37`), a local/CI compiler divergence worth knowing about.
 
 **Test coverage.** `model_tests`: 19 tests on Part/HollowSphere composition — closed-form inertia, parallel-axis correctness at depth, clone semantics, dirty propagation (`model/tests/PartTests.cpp:53-418`). `sim_tests`: US-Standard-Atmosphere density/pressure/temperature and 7 RK45 properties incl. the hMax regression (`sim/tests/USStandardAtmosphereTests.cpp:5-64`, `sim/tests/RK45SolverTests.cpp:43-195`). `integration_tests`: end-to-end physics on a real Aerotech G80T loaded from the bundled RSE via a compile-time data path (`tests/CMakeLists.txt:13`, fixture `tests/PhysicsIntegrationTests.cpp:56-59`) — timestep invariance in vacuum, RK45-vs-RK4 agreement, downrange from tilted launch, drag-reduces-apogee, terminal-velocity force balance (`tests/PhysicsIntegrationTests.cpp:120-278`); plus motor-DB enum and save/load round-trips (`tests/MotorDatabasePersistenceTests.cpp:25-77`). **Gap:** nothing exercises the GUI, and nothing can exercise design editing because it doesn't exist.
 
@@ -358,6 +360,7 @@ Every 🟡/❌/⛔ from sections 2–4, consolidated. This is an audit inventory
 | 14 | Hardcoded one-part default rocket; GUI `setMass` not composite-aware once children exist | 🟡 | §3.1 | `model/RocketModel.cpp:10-18`; `model/RocketModel.h:120-127` |
 | 15 | `USStandardAtmosphere` self-flagged "overly simplistic and wrong"; constant gravity −9.8 disagrees with `g0 = 9.80665` | 🟡 | §3.2 | `sim/USStandardAtmosphere.h:19-21`; `sim/ConstantGravityModel.h:19` vs `utils/math/Constants.h:10` |
 | 16 | TLS certificate verification disabled for thrustcurve.org requests | 🟡 | §3.4 | `utils/CurlConnection.cpp:43` |
+| 17 | Build hygiene: no compiler warnings enabled anywhere; dependency test suites (curl) get compiled — **both addressed in the working tree 2026-06-10** (`-Wall -Wextra -Wpedantic`/`/W4`; `set(BUILD_TESTING OFF)`; `-Werror` deferred, warning sweep pending) | 🟡 | §3.7 | `build/compile_commands.json` (0 of 49 project TUs carry `-W*`; `_deps/curl-build/tests/*` TUs); no flag config in any CMakeLists (grep) — all at the pinned commit |
 
 ---
 
@@ -367,9 +370,9 @@ Every 🟡/❌/⛔ from sections 2–4, consolidated. This is an audit inventory
 
 | Dependency | Version | Acquired via | Used by / for | Evidence |
 |---|---|---|---|---|
-| Qt6 (Widgets, PrintSupport, LinguistTools) | system | `find_package` | all of `gui/` | `CMakeLists.txt:81-82,164-169` |
+| Qt6 (Widgets, PrintSupport, LinguistTools) | system — 6.10.3 on the audited machine | `find_package` | all of `gui/` | `CMakeLists.txt:81-82,164-169`; `build/compile_commands.json` |
 | Eigen | 5.0.1 | FetchContent | all math types (`Vector3`, `Matrix3`, `Quaternion`) | `CMakeLists.txt:55-58`; `utils/math/MathTypes.h:4-22` |
-| Boost (property_tree only) | 1.91.0 | FetchContent | RSE + `.qmd` XML parse/write | `CMakeLists.txt:62-66`; `utils/RSEDatabaseLoader.cpp:24` |
+| Boost (property_tree requested; 6 libs compile transitively — 65 TUs, 48 of them Serialization) | 1.91.0 | FetchContent | RSE + `.qmd` XML parse/write | `CMakeLists.txt:62-66`; `utils/RSEDatabaseLoader.cpp:24`; `build/compile_commands.json` |
 | libcurl | 8.20.0 | FetchContent | thrustcurve.org HTTP | `CMakeLists.txt:41-52`; `utils/CurlConnection.cpp:28-29` |
 | jsoncpp | 1.9.7 | FetchContent | thrustcurve.org JSON | `CMakeLists.txt:29-38` |
 | GoogleTest | 1.17.0 | FetchContent | all three test suites | `CMakeLists.txt:14-20` |
@@ -378,7 +381,7 @@ Every 🟡/❌/⛔ from sections 2–4, consolidated. This is an audit inventory
 
 ### 6.2 Maintaining this document
 
-Line numbers are pinned to commit `b6e1321`. After meaningful changes, re-verify citations by extracting them (`grep -oE '[A-Za-z0-9_./-]+\.(h|cpp|txt|ui|rse|md|yml):[0-9]+(-[0-9]+)?' docs/ARCHITECTURE_AUDIT.md | sort -u`) and dumping each cited range (`sed -n 'START,ENDp' <file>`) to confirm the named symbol still lives there. Update §1.2 / §5 marks as gaps close; the legend and citation conventions are defined in §1.3.
+Line numbers are pinned to commit `b6e1321`; corroborated against `build/compile_commands.json` on 2026-06-10 at HEAD `d89305c` (`git diff --name-only b6e1321 d89305c` touches only docs — no source files, so every pin remains valid). **Exception:** `CMakeLists.txt` changed in the working tree later on 2026-06-10 (warnings, `BUILD_TESTING OFF`, `enable_testing()` moved; plus new `CMakePresets.json` pinning Ninja+Debug) — this document's `CMakeLists.txt:N` citations apply at the pin, not the working tree. After meaningful changes, re-verify citations by extracting them (`grep -oE '[A-Za-z0-9_./-]+\.(h|cpp|txt|ui|rse|md|yml):[0-9]+(-[0-9]+)?' docs/ARCHITECTURE_AUDIT.md | sort -u`) and dumping each cited range (`sed -n 'START,ENDp' <file>`) to confirm the named symbol still lives there. Update §1.2 / §5 marks as gaps close; the legend and citation conventions are defined in §1.3.
 
 ---
 
@@ -452,7 +455,7 @@ Four of these point into `TODO.md`, which was deleted in the working tree when t
 
 **Commented-out code blocks (8):** multi-stage include (`model/RocketModel.h:21-22`); boost-archive serialization (`model/MotorModel.h:10-13`); the 6-DOF orientation integrator member (`sim/Propagator.h:93-97`); StateData accessors plus its `// private:` (`sim/StateData.h:65-75`); `getCurrentMotorModel()` by-const-ref accessor (`model/RocketModel.h:100`); `//maxTime += ignitionTime` (`model/ThrustCurve.cpp:50`); `//private:` over MotorModel's metadata (`model/MotorModel.h:371`); `//#include <format>` (`utils/Bin.cpp:17`).
 
-**Stub/placeholder bodies:** `sim/Aero.cpp` (empty file); `WindModel::getWindSpeed` → `(0,0,0)`; `RocketModel::getTorques` → zeros; `SphericalGeoidModel::getGroundLevel` → a constant; the two 6-line GUI view constructors. (`VacuumAtmosphere`'s zeros are deliberate design, not a stub — `sim/VacuumAtmosphere.h:22-30`.)
+**Stub/placeholder bodies:** `sim/Aero.cpp` (empty file); `model/Propagatable.cpp` (entire file: 1 blank line — compiled as an empty TU); `WindModel::getWindSpeed` → `(0,0,0)`; `RocketModel::getTorques` → zeros; `SphericalGeoidModel::getGroundLevel` → a constant; the two 6-line GUI view constructors. (`VacuumAtmosphere`'s zeros are deliberate design, not a stub — `sim/VacuumAtmosphere.h:22-30`.)
 
 ### 7.4 Patterns and APIs — candid critique
 

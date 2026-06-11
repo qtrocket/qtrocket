@@ -9,9 +9,11 @@ QtRocket is an open-source model rocket simulator: a Qt6 Widgets GUI (`qtrocket`
 ## Build
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug   # configure
-cmake --build build --parallel                  # build everything
+cmake --preset debug-clang             # configure (Ninja + Debug + clang, build/ dir)
+cmake --build --preset debug-clang     # build everything
 ```
+
+- Generator/compiler/build-type are pinned by `CMakePresets.json` (Ninja everywhere — CLI, VS Code CMake Tools, and the .vscode tasks all use the presets). Use the `debug` preset for the default system compiler. **Don't configure with ad-hoc `cmake -B build` invocations** — mixing generators in an existing `build/` breaks the FetchContent sub-builds.
 
 - All dependencies except Qt6 (system-installed) are pulled via FetchContent (GoogleTest, jsoncpp, curl, Eigen, Boost.property_tree), so the **first configure/build downloads and compiles them — it is slow**. Don't delete `build/` casually.
 - Executables: `build/qtrocket` (GUI), `build/qtrocket-cli` (headless REPL — useful for exercising the sim core without a display).

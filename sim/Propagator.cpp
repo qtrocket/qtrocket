@@ -4,6 +4,7 @@
 // C++ headers
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <utility>
 
@@ -13,15 +14,17 @@
 // qtrocket headers
 #include "Propagator.h"
 
+#include "sim/Environment.h"
 #include "sim/Integrator.h"
 #include "utils/Logger.h"
 
 namespace sim
 {
 
-Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
+Propagator::Propagator(std::shared_ptr<model::Propagatable> r, std::shared_ptr<sim::Environment> e)
    : linearIntegrator(),
      object(r),
+     environment(e),
      saveStates(true),
      timeStep(0.01)
 {
@@ -36,7 +39,7 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r)
         dPosition = rate;
 
         // dvx/dt
-        dVelocity = object->getForces(t, state, rate) / object->getMass(t);
+        dVelocity = object->getForces(t, state, rate, *environment) / object->getMass(t);
 
         return std::make_pair(dPosition, dVelocity);
     };

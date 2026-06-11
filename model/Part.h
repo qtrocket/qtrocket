@@ -96,7 +96,7 @@ public:
     * @brief This part's own mass at simulation time @p t (kg).
     * @param t simulation time (seconds); lets overrides model time-varying mass (e.g. a motor)
     */
-   virtual double getMass(double t)
+   virtual double getMass(double t [[maybe_unused]])
    {
       return mass;
    }
@@ -105,7 +105,7 @@ public:
     * @brief Composite mass of this part plus all attached child parts at time @p t (kg).
     * @param t simulation time (seconds)
     */
-   virtual double getCompositeMass(double t)
+   virtual double getCompositeMass(double t [[maybe_unused]])
    {
       if(needsRecomputing)
       {

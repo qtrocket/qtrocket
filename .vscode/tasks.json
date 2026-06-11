@@ -2,31 +2,47 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "cmake configure (Debug)",
+            "label": "cmake configure (debug-clang preset)",
             "type": "shell",
             "command": "cmake",
             "args": [
-                "-S", "${workspaceFolder}",
-                "-B", "${workspaceFolder}/build",
-                "-DCMAKE_BUILD_TYPE=Debug",
-                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+                "--preset", "debug-clang"
             ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "problemMatcher": []
         },
         {
-            "label": "cmake build (Debug)",
+            "label": "cmake build (debug-clang preset)",
             "type": "shell",
             "command": "cmake",
             "args": [
-                "--build", "${workspaceFolder}/build",
+                "--build", "--preset", "debug-clang",
                 "--parallel"
             ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "dependsOn": "cmake configure (Debug)",
+            "dependsOn": "cmake configure (debug-clang preset)",
             "problemMatcher": "$gcc"
+        },
+        {
+            "label": "ctest (debug-clang preset)",
+            "type": "shell",
+            "command": "ctest",
+            "args": [
+                "--preset", "debug-clang"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "test",
+            "problemMatcher": []
         }
     ]
 }

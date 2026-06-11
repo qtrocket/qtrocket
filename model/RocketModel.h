@@ -48,7 +48,7 @@ public:
     */
    void launch();
 
-   Vector3 getForces(double t, const Vector3& position, const Vector3& velocity) override;
+   Vector3 getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment) override;
    Vector3 getTorques(double t) override;
    /**
     * @brief getMass returns current rocket mass
