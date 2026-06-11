@@ -17,7 +17,9 @@ namespace sim
 class Aero
 {
 public:
+   Aero();
 
+   ~Aero();
 private:
 /*
    Vector3 cp; /// center of pressure

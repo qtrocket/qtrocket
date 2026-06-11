@@ -22,7 +22,7 @@ namespace model
 class Propagatable
 {
 public:
-   Propagatable() {}
+   Propagatable();
    virtual ~Propagatable() {}
 
    virtual Vector3 getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment) = 0;
