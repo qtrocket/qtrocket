@@ -16,7 +16,7 @@
 #include "sim/Environment.h"
 #include "sim/StateData.h"
 #include "utils/Logger.h"
-#include "utils/RSEDatabaseLoader.h"
+#include "model/RSEDatabaseLoader.h"
 #include "utils/math/MathTypes.h"
 
 // Integration tests for the aerodynamic-drag + atmosphere-selection physics.
@@ -52,7 +52,7 @@ protected:
       // Load the bundled motor DB (absolute path injected by CMake) and arm a
       // known motor + airframe. The loader is a pure parser; we pull the motor
       // from it directly via getMotorModelByName.
-      loader = std::make_unique<utils::RSEDatabaseLoader>(
+      loader = std::make_unique<model::RSEDatabaseLoader>(
          std::string(QTROCKET_DATA_DIR) + "/Aerotech.rse");
 
       auto rocket = qtRocket->getRocket();
@@ -109,7 +109,7 @@ protected:
    }
 
    QtRocket* qtRocket{nullptr};
-   std::unique_ptr<utils::RSEDatabaseLoader> loader;
+   std::unique_ptr<model::RSEDatabaseLoader> loader;
 };
 
 // The bug that started this effort: Propagator::setTimeStep must reach the RK4

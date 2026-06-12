@@ -18,7 +18,7 @@
 #include "sim/Environment.h"
 #include "sim/Propagator.h"
 #include "utils/Logger.h"
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 #include "utils/math/MathTypes.h"
 
 /**
@@ -36,7 +36,7 @@ public:
    void setIntegratorModel(const std::string& m) { rocket.second->setIntegratorModel(m); }
    std::shared_ptr<model::RocketModel> getRocket() { return rocket.first; }
 
-   std::shared_ptr<utils::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
+   std::shared_ptr<model::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
    void addRocket(std::shared_ptr<model::RocketModel> r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r, environment); }
 
@@ -66,7 +66,7 @@ private:
    Rocket rocket;
 
    std::shared_ptr<sim::Environment> environment;
-   std::shared_ptr<utils::MotorModelDatabase> motorDatabase;
+   std::shared_ptr<model::MotorModelDatabase> motorDatabase;
 
 };
 

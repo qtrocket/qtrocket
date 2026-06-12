@@ -1,5 +1,5 @@
 // class header
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 
 /// \cond
 // C headers
@@ -13,10 +13,10 @@
 
 // qtrocket project headers
 #include "utils/Logger.h"
-#include "utils/RSEDatabaseLoader.h"
-#include "utils/ThrustCurveAPI.h"
+#include "model/RSEDatabaseLoader.h"
+#include "model/ThrustCurveAPI.h"
 
-namespace utils
+namespace model
 {
 
 MotorModelDatabase::MotorModelDatabase()
@@ -33,11 +33,11 @@ void MotorModelDatabase::addMotorModel(const model::MotorModel& m)
    std::string name = m.data.commonName;
    if(motorModelMap.find(name) != motorModelMap.end())
    {
-      Logger::getInstance()->debug("Replacing MotorModel " + name + " in MotorModelDatabase");
+      utils::Logger::getInstance()->debug("Replacing MotorModel " + name + " in MotorModelDatabase");
    }
    else
    {
-      Logger::getInstance()->info("Adding MotorModel " + name + " to MotorModelDatabase");
+      utils::Logger::getInstance()->info("Adding MotorModel " + name + " to MotorModelDatabase");
    }
    motorModelMap[name] = m;
 }
@@ -71,14 +71,14 @@ std::optional<model::MotorModel> MotorModelDatabase::getMotorModel(const std::st
    auto mm = motorModelMap.find(name);
    if(mm == motorModelMap.end())
    {
-      Logger::getInstance()->debug("Unable to locate " + name + " in MotorModel database");
+      utils::Logger::getInstance()->debug("Unable to locate " + name + " in MotorModel database");
 
       return std::nullopt;
 
    }
    else
    {
-      Logger::getInstance()->debug("Retrieved " + name + " from MotorModel database");
+      utils::Logger::getInstance()->debug("Retrieved " + name + " from MotorModel database");
       return motorModelMap[name];
    }
 }
@@ -296,4 +296,4 @@ void MotorModelDatabase::loadMotorDatabase(const std::string& filename)
    }
 }
 
-} // namespace utils
+} // namespace model

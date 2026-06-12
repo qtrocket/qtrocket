@@ -48,7 +48,7 @@ QtRocket::QtRocket()
    rocket.second =
       std::make_shared<sim::Propagator>(rocket.first, environment);
 
-   motorDatabase = std::make_shared<utils::MotorModelDatabase>();
+   motorDatabase = std::make_shared<model::MotorModelDatabase>();
 }
 
 void QtRocket::launchRocket()

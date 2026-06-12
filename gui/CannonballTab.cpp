@@ -21,7 +21,7 @@
 #include "model/MotorModel.h"
 #include "model/RocketModel.h"
 #include "sim/StateData.h"
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 
 
 CannonballTab::CannonballTab(QtRocket* _qtRocket, QWidget* parent)

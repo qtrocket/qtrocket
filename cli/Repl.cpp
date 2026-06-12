@@ -23,7 +23,7 @@
 #include "model/RocketModel.h"
 #include "sim/Integrator.h"
 #include "sim/StateData.h"
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 
 namespace
 {
@@ -226,7 +226,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
    }
    else if(cmd == "tcfacets")
    {
-      utils::MotorSearchFacets facets;
+      model::MotorSearchFacets facets;
       try
       {
          facets = qtRocket->getMotorDatabase()->getOnlineSearchFacets();
@@ -248,7 +248,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
    else if(cmd == "tcsearch")
    {
       // Parse key=value tokens into a source-agnostic query.
-      utils::MotorQuery query;
+      model::MotorQuery query;
       std::string tok;
       while(iss >> tok)
       {
@@ -267,7 +267,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
             catch(const std::exception&) { out << "ERR tcsearch: bad diameter '" << val << "'\n"; return true; }
          }
       }
-      std::vector<utils::MotorSummary> motors;
+      std::vector<model::MotorSummary> motors;
       try
       {
          motors = qtRocket->getMotorDatabase()->searchOnline(query);
@@ -291,10 +291,10 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
       const std::string filter = restOfLine(iss);
-      utils::MotorQuery query;
+      model::MotorQuery query;
       if(!filter.empty())
          query.nameContains = filter;
-      const std::vector<utils::MotorSummary> motors = db->listMotors(query);
+      const std::vector<model::MotorSummary> motors = db->listMotors(query);
       std::ostringstream entries;
       for(const auto& s : motors)
       {

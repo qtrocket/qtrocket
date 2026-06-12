@@ -12,10 +12,10 @@
 /// \endcond
 
 // qtrocket headers
-#include "utils/RSEDatabaseLoader.h"
-#include "Logger.h"
+#include "model/RSEDatabaseLoader.h"
+#include "utils/Logger.h"
 
-namespace utils {
+namespace model {
 
 RSEDatabaseLoader::RSEDatabaseLoader(const std::string& filename)
    : motors(),
@@ -40,7 +40,7 @@ model::MotorModel RSEDatabaseLoader::getMotorModelByName(const std::string &name
                                         [&name](const auto& i) { return name == i.data.commonName; });
    if(mm == motors.end())
    {
-      Logger::getInstance()->error("Unable to locate " + name + " in RSE database");
+      utils::Logger::getInstance()->error("Unable to locate " + name + " in RSE database");
       return model::MotorModel();
    }
    return *mm;
@@ -102,4 +102,4 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
 }
 
 
-} // namespace utils
+} // namespace model

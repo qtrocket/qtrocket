@@ -1,5 +1,5 @@
-#ifndef UTILS_RSEDATABASELOADER_H
-#define UTILS_RSEDATABASELOADER_H
+#ifndef MODEL_RSEDATABASELOADER_H
+#define MODEL_RSEDATABASELOADER_H
 
 
 /// \cond
@@ -15,7 +15,7 @@
 // qtrocket headers
 #include "model/MotorModel.h"
 
-namespace utils {
+namespace model {
 
 class RSEDatabaseLoader
 {
@@ -35,6 +35,6 @@ private:
    boost::property_tree::ptree tree;
 };
 
-} // namespace utils
+} // namespace model
 
-#endif // UTILS_RSEDATABASELOADER_H
+#endif // MODEL_RSEDATABASELOADER_H

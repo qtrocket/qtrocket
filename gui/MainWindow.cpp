@@ -15,7 +15,7 @@
 #include "gui/CannonballTab.h"
 #include "gui/MainWindow.h"
 #include "gui/SimOptionsTab.h"
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 
 
 

@@ -11,7 +11,7 @@
 #include "ThrustCurveMotorSelector.h"
 #include "ui_ThrustCurveMotorSelector.h"
 #include "QtRocket.h"
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 
 ThrustCurveMotorSelector::ThrustCurveMotorSelector(QWidget *parent) :
    QDialog(parent),
@@ -50,7 +50,7 @@ void ThrustCurveMotorSelector::onButton_getMetadata_clicked()
    // When the user clicks "Get Metadata", we want to pull in Metadata from thrustcurve.org
    // and populate the Manufacturer, Diameter, and Impulse Class combo boxes
 
-   utils::MotorSearchFacets facets =
+   model::MotorSearchFacets facets =
          QtRocket::getInstance()->getMotorDatabase()->getOnlineSearchFacets();
 
    for(double d : facets.diameters)
@@ -65,7 +65,7 @@ void ThrustCurveMotorSelector::onButton_getMetadata_clicked()
 void ThrustCurveMotorSelector::onButton_searchButton_clicked()
 {
    // Build a source-agnostic query from the chosen facets (leave unset facets unconstrained).
-   utils::MotorQuery query;
+   model::MotorQuery query;
    const QString diameter     = ui->diameter->currentText();
    const QString manufacturer = ui->manufacturer->currentText();
    const QString impulseClass = ui->impulseClass->currentText();
@@ -73,7 +73,7 @@ void ThrustCurveMotorSelector::onButton_searchButton_clicked()
    if(!manufacturer.isEmpty()) query.manufacturer = manufacturer.toStdString();
    if(!impulseClass.isEmpty()) query.impulseClass = impulseClass.toStdString();
 
-   const std::vector<utils::MotorSummary> motors =
+   const std::vector<model::MotorSummary> motors =
          QtRocket::getInstance()->getMotorDatabase()->searchOnline(query);
 
    ui->motorSelection->clear();

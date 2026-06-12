@@ -1,5 +1,5 @@
-#ifndef UTILS_THRUSTCURVEAPI_H
-#define UTILS_THRUSTCURVEAPI_H
+#ifndef MODEL_THRUSTCURVEAPI_H
+#define MODEL_THRUSTCURVEAPI_H
 
 
 /// \cond
@@ -18,7 +18,7 @@
 #include "utils/CurlConnection.h"
 #include "model/MotorModel.h"
 
-namespace utils
+namespace model
 {
 
 class ThrustcurveMetadata
@@ -105,11 +105,11 @@ public:
 private:
 
    const std::string hostname;
-   CurlConnection curlConnection;
+   utils::CurlConnection curlConnection;
 
    std::optional<ThrustCurve> getThrustCurve(const std::string& id);
 };
 
-} // namespace utils
+} // namespace model
 
-#endif // UTILS_THRUSTCURVEAPI_H
+#endif // MODEL_THRUSTCURVEAPI_H

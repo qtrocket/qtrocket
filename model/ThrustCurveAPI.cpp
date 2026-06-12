@@ -10,7 +10,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "utils/ThrustCurveAPI.h"
+#include "model/ThrustCurveAPI.h"
 #include "utils/Logger.h"
 
 namespace
@@ -49,7 +49,7 @@ void logApiError(const Json::Value& root, const char* context)
 
 } // namespace
 
-namespace utils
+namespace model
 {
 
 std::optional<std::vector<std::pair<double, double>>>
@@ -94,7 +94,7 @@ parseDownloadResponse(const std::string& json)
    }
    catch(const std::exception& e)
    {
-      Logger::getInstance()->error(
+      utils::Logger::getInstance()->error(
          std::string("Unexpected JSON in thrustcurve.org motor data response. Error: ") +
          e.what());
       return std::nullopt;
@@ -159,7 +159,7 @@ std::optional<ThrustcurveMetadata> parseMetadataResponse(const std::string& json
    }
    catch(const std::exception& e)
    {
-      Logger::getInstance()->error(
+      utils::Logger::getInstance()->error(
          std::string("Unexpected JSON in thrustcurve.org metadata response. Error: ") +
          e.what());
       return std::nullopt;
@@ -224,7 +224,7 @@ std::optional<SearchResponse> parseSearchResponse(const std::string& json)
    }
    catch(const std::exception& e)
    {
-      Logger::getInstance()->error(
+      utils::Logger::getInstance()->error(
          std::string("Unexpected JSON in thrustcurve.org search response. Error: ") +
          e.what());
       return std::nullopt;
@@ -297,7 +297,7 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
    else
       endpoint += "maxResults=100";
 
-   Logger::getInstance()->debug("endpoint: " + endpoint);
+   utils::Logger::getInstance()->debug("endpoint: " + endpoint);
    std::string result = curlConnection.get(endpoint);
    if(result.empty())
    {
@@ -311,7 +311,7 @@ std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria
    }
    if(response->matches > static_cast<int>(response->motors.size()))
    {
-      Logger::getInstance()->warn(
+      utils::Logger::getInstance()->warn(
          "thrustcurve.org search matched " + std::to_string(response->matches) +
          " motors but only " + std::to_string(response->motors.size()) +
          " were returned; refine the search to see the rest");
@@ -339,4 +339,4 @@ void SearchCriteria::addCriteria(const std::string& name,
    criteria[name] = value;
 }
 
-} // namespace utils
+} // namespace model

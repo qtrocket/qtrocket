@@ -1,6 +1,8 @@
 add_library(model
    MotorModel.cpp
    MotorModel.h
+   MotorModelDatabase.cpp
+   MotorModelDatabase.h
    Part.cpp
    Part.h
    parts/HollowSphere.cpp
@@ -10,16 +12,22 @@ add_library(model
    Propagatable.h
    RocketModel.cpp
    RocketModel.h
+   RSEDatabaseLoader.cpp
+   RSEDatabaseLoader.h
    ThrustCurve.cpp
    ThrustCurve.h
+   ThrustCurveAPI.cpp
+   ThrustCurveAPI.h
    InertiaTensors.h)
 
 # sim is a real dependency: Propagatable/RocketModel use sim::Aero and
-# sim/StateData.h. Together with utils -> model this forms a declared
-# static-library cycle, which CMake resolves by repeating the archives.
+# sim/StateData.h. Boost/jsoncpp serve the motor-database ingest paths
+# (RockSim .rse XML and the thrustcurve.org REST API).
 target_link_libraries(model PUBLIC
    utils
-   sim)
+   sim
+   Boost::property_tree
+   jsoncpp_static)
 
 # Unit tests
 add_subdirectory(tests)

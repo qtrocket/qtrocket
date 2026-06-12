@@ -1,4 +1,4 @@
-// Tests for the pure thrustcurve.org response parsers in utils/ThrustCurveAPI.h,
+// Tests for the pure thrustcurve.org response parsers in model/ThrustCurveAPI.h,
 // using canned JSON shaped like real API responses (see the OpenAPI spec at
 // https://www.thrustcurve.org/api/v1/swagger.json). No network involved.
 
@@ -11,7 +11,7 @@
 
 #include "model/MotorModel.h"
 #include "utils/Logger.h"
-#include "utils/ThrustCurveAPI.h"
+#include "model/ThrustCurveAPI.h"
 
 namespace
 {
@@ -46,7 +46,7 @@ TEST_F(ThrustCurveParserTest, DownloadPrefersRaspRegardlessOfOrder)
    for(const std::string& json : {"{\"results\": [" + rockSimEntry + "," + raspEntry + "]}",
                                   "{\"results\": [" + raspEntry + "," + rockSimEntry + "]}"})
    {
-      auto samples = utils::parseDownloadResponse(json);
+      auto samples = model::parseDownloadResponse(json);
       ASSERT_TRUE(samples.has_value());
       ASSERT_EQ(samples->size(), 2u) << "expected exactly the RASP file's samples";
       EXPECT_DOUBLE_EQ((*samples)[0].first, 0.016);
@@ -57,7 +57,7 @@ TEST_F(ThrustCurveParserTest, DownloadPrefersRaspRegardlessOfOrder)
 TEST_F(ThrustCurveParserTest, DownloadNeverConcatenatesSimfiles)
 {
    const std::string json = "{\"results\": [" + raspEntry + "," + rockSimEntry + "]}";
-   auto samples = utils::parseDownloadResponse(json);
+   auto samples = model::parseDownloadResponse(json);
    ASSERT_TRUE(samples.has_value());
    // Concatenation would yield 5 samples with time jumping back to 0 mid-curve.
    ASSERT_EQ(samples->size(), 2u);
@@ -68,7 +68,7 @@ TEST_F(ThrustCurveParserTest, DownloadNeverConcatenatesSimfiles)
 TEST_F(ThrustCurveParserTest, DownloadFallsBackToNonRaspWhenNoRasp)
 {
    const std::string json = "{\"results\": [" + rockSimEntry + "]}";
-   auto samples = utils::parseDownloadResponse(json);
+   auto samples = model::parseDownloadResponse(json);
    ASSERT_TRUE(samples.has_value());
    EXPECT_EQ(samples->size(), 3u);
 }
@@ -76,7 +76,7 @@ TEST_F(ThrustCurveParserTest, DownloadFallsBackToNonRaspWhenNoRasp)
 TEST_F(ThrustCurveParserTest, DownloadEmptyResultsYieldsEmptySamples)
 {
    // download.json returns an empty results list for motors with no data files.
-   auto samples = utils::parseDownloadResponse(R"({"results": []})");
+   auto samples = model::parseDownloadResponse(R"({"results": []})");
    ASSERT_TRUE(samples.has_value());
    EXPECT_TRUE(samples->empty());
 }
@@ -94,7 +94,7 @@ TEST_F(ThrustCurveParserTest, MetadataTypesParsedAsPlainStrings)
       "diameters": [13, 18, 24],
       "impulseClasses": ["A", "B", "C"]
    })";
-   auto meta = utils::parseMetadataResponse(json);
+   auto meta = model::parseMetadataResponse(json);
    ASSERT_TRUE(meta.has_value());
 
    ASSERT_EQ(meta->types.size(), 3u);
@@ -133,7 +133,7 @@ TEST_F(ThrustCurveParserTest, SearchReportsMatchesBeyondResults)
    // count, which is how callers detect truncation.
    const std::string json = R"({"matches": 23, "results": [)" +
       searchResult("A8", "regular") + "," + searchResult("B6", "regular") + "]}";
-   auto response = utils::parseSearchResponse(json);
+   auto response = model::parseSearchResponse(json);
    ASSERT_TRUE(response.has_value());
    EXPECT_EQ(response->matches, 23);
    ASSERT_EQ(response->motors.size(), 2u);
@@ -149,7 +149,7 @@ TEST_F(ThrustCurveParserTest, SearchMapsAllThreeAvailabilityValues)
       searchResult("A8", "regular") + "," +
       searchResult("B6", "occasional") + "," +
       searchResult("C6", "OOP") + "]}";
-   auto response = utils::parseSearchResponse(json);
+   auto response = model::parseSearchResponse(json);
    ASSERT_TRUE(response.has_value());
    ASSERT_EQ(response->motors.size(), 3u);
    EXPECT_EQ(response->motors[0].availability.availability, MM::AVAILABILITY::REGULAR);
@@ -162,19 +162,19 @@ TEST_F(ThrustCurveParserTest, SearchMapsAllThreeAvailabilityValues)
 TEST_F(ThrustCurveParserTest, MalformedJsonReturnsNullopt)
 {
    const std::string garbage = "this is not json";
-   EXPECT_FALSE(utils::parseSearchResponse(garbage).has_value());
-   EXPECT_FALSE(utils::parseMetadataResponse(garbage).has_value());
-   EXPECT_FALSE(utils::parseDownloadResponse(garbage).has_value());
+   EXPECT_FALSE(model::parseSearchResponse(garbage).has_value());
+   EXPECT_FALSE(model::parseMetadataResponse(garbage).has_value());
+   EXPECT_FALSE(model::parseDownloadResponse(garbage).has_value());
 }
 
 TEST_F(ThrustCurveParserTest, ErrorFieldYieldsEmptyButValidResults)
 {
    const std::string json = R"({"error": "invalid query", "results": []})";
-   auto search = utils::parseSearchResponse(json);
+   auto search = model::parseSearchResponse(json);
    ASSERT_TRUE(search.has_value());
    EXPECT_TRUE(search->motors.empty());
 
-   auto download = utils::parseDownloadResponse(json);
+   auto download = model::parseDownloadResponse(json);
    ASSERT_TRUE(download.has_value());
    EXPECT_TRUE(download->empty());
 }

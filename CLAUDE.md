@@ -52,12 +52,13 @@ utils/
   - `RocketModel` implements `Propagatable` (the model↔sim bridge interface: `getForces()`, `getTorques()`, `getMass(t)`, `terminateCondition()`...).
   - `Part` (`model/Part.h`) is the base of a composite tree of rocket components (concrete types in `model/parts/`, e.g. `HollowSphere`). Composite mass/CM/inertia are recomputed lazily via a dirty-flag that propagates up the tree; child inertia tensors are shifted to the composite CM with the parallel-axis theorem. Parts store *per-unit-mass* geometric tensors (m²); composites are full mass-weighted tensors (kg·m²). Children are added by move; `clone()` deep-copies.
   - `MotorModel` + `ThrustCurve`: time-aware thrust and burning mass (ignition at t=0, linear interpolation between thrust samples).
+  - `MotorModelDatabase` (motor storage/search, XML save/load) with two ingest paths: local RockSim `.rse` files (`RSEDatabaseLoader`, Boost property_tree XML) and the thrustcurve.org REST API (`ThrustCurveAPI`, jsoncpp + `utils::CurlConnection`). Clients (GUI/CLI) go through the database; they never touch the loader or API directly. Bundled motor data lives in `data/` (tests locate it via the `QTROCKET_DATA_DIR` compile definition).
 - **sim/** — the numerics:
   - `Propagator` drives the ODE loop (`runUntilTerminate()` until altitude z < 0) and records the state history.
   - `Integrator` selects the `DESolver` backend at runtime: `RK4Solver` (fixed step) or `RK45Solver` (adaptive Runge-Kutta-Fehlberg).
   - `Environment` holds pluggable physics models: `GravityModel` (Constant / Spherical), `AtmosphericModel` (Constant / USStandardAtmosphere / Vacuum), geoid model.
   - `StateData` carries position/velocity plus quaternion orientation, but currently only the 3 linear DOF are integrated (6-DOF is planned).
-- **utils/** — `Logger` singleton (stdout + `log.txt`), math typedefs over Eigen (`Vector3`, `Matrix3`, `Quaternion`), and `MotorModelDatabase` with two ingest paths: local RockSim `.rse` files (Boost property_tree XML) and the thrustcurve.org REST API (libcurl + jsoncpp). Bundled motor data lives in `data/` (tests locate it via the `QTROCKET_DATA_DIR` compile definition).
+- **utils/** — `Logger` singleton (stdout + `log.txt`), math typedefs over Eigen (`Vector3`, `Matrix3`, `Quaternion`), and `CurlConnection` (libcurl HTTP GET wrapper: TLS verification, timeouts, status checks). The bottom layer: utils must never include model/ or sim/ headers — that's what keeps the dependency graph acyclic.
 
 ## Conventions
 

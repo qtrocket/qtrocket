@@ -1,5 +1,5 @@
-#ifndef UTILS_MOTORMODELDATABASE_H
-#define UTILS_MOTORMODELDATABASE_H
+#ifndef MODEL_MOTORMODELDATABASE_H
+#define MODEL_MOTORMODELDATABASE_H
 
 /// \cond
 // C headers
@@ -17,7 +17,7 @@
 #include "model/MotorModel.h"
 
 
-namespace utils
+namespace model
 {
 
 // Owned internally so client code depends only on MotorModelDatabase, never on the API directly.
@@ -162,6 +162,6 @@ private:
    std::unique_ptr<ThrustCurveAPI> tcApi;
 };
 
-} // namespace utils
+} // namespace model
 
-#endif // UTILS_MOTORMODELDATABASE_H
+#endif // MODEL_MOTORMODELDATABASE_H

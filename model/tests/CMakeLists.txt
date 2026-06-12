@@ -2,6 +2,7 @@
 add_executable(model_tests
    PartTests.cpp
    ThrustCurveTests.cpp
+   ThrustCurveParserTests.cpp
 )
 
 target_link_libraries(model_tests PRIVATE

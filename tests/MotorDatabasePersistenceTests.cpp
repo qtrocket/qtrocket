@@ -1,4 +1,4 @@
-// Tests for utils::MotorModelDatabase persistence: the str()<->toEnum() invariants
+// Tests for model::MotorModelDatabase persistence: the str()<->toEnum() invariants
 // the XML format relies on, and a full saveMotorDatabase()/loadMotorDatabase() round trip.
 
 /// \cond
@@ -13,7 +13,7 @@
 #include "QtRocket.h"
 #include "model/MotorModel.h"
 #include "utils/Logger.h"
-#include "utils/MotorModelDatabase.h"
+#include "model/MotorModelDatabase.h"
 
 namespace
 {
@@ -80,12 +80,12 @@ TEST_F(MotorDatabaseRoundTrip, SaveThenLoadReproducesTheDatabase)
    const std::string tmp =
       (std::filesystem::temp_directory_path() / "qtrocket_motordb_roundtrip.qmd").string();
 
-   utils::MotorModelDatabase original;
+   model::MotorModelDatabase original;
    ASSERT_GT(original.importRSEFile(rse), 0u);
 
    original.saveMotorDatabase(tmp);
 
-   utils::MotorModelDatabase reloaded;
+   model::MotorModelDatabase reloaded;
    reloaded.loadMotorDatabase(tmp);
    std::remove(tmp.c_str());
 
