@@ -54,6 +54,15 @@
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++"
       }
+    },
+    {
+      "name": "release-msvc",
+      "displayName": "Release (Ninja, MSVC)",
+      "inherits": "release",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
     }
   ],
   "buildPresets": [
@@ -62,7 +71,8 @@
     { "name": "debug-clang", "configurePreset": "debug-clang" },
     { "name": "release-clang", "configurePreset": "release-clang" },
     { "name": "debug-gcc", "configurePreset": "debug-gcc" },
-    { "name": "release-gcc", "configurePreset": "release-gcc" }
+    { "name": "release-gcc", "configurePreset": "release-gcc" },
+    { "name": "release-msvc", "configurePreset": "release-msvc" }
   ],
   "testPresets": [
     {
@@ -93,6 +103,11 @@
     {
       "name": "release-gcc",
       "configurePreset": "release-gcc",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "release-msvc",
+      "configurePreset": "release-msvc",
       "output": { "outputOnFailure": true }
     }
   ]
