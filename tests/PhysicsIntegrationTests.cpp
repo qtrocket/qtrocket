@@ -301,3 +301,32 @@ TEST_F(PhysicsIntegrationTest, TrajectoryStatisticsMatchSeriesAndReportNominal)
    EXPECT_NEAR(stats.totalFlightTime, r.tFinal, 1e-9);
    EXPECT_EQ(qtRocket->getTerminationReason(), sim::Propagator::TerminationReason::Nominal);
 }
+
+// Spherical gravity must now fly cleanly end-to-end. The old SphericalGravityModel divided by
+// r = 0 at the (0,0,0) pad -> NaN -> the F1 hang (now caught as a NonFiniteState abort). With
+// the geoid bridge the run terminates Nominal, and -- same launch, Vacuum so drag can't
+// confound -- its apogee tracks the constant-gravity baseline within a few percent (spherical
+// g ~ 9.82 m/s^2 near the surface vs the constant model's 9.8). See TODO.md P0 / F1.
+TEST_F(PhysicsIntegrationTest, SphericalGravityFliesNominallyNearConstantGravity)
+{
+   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+
+   qtRocket->getEnvironment()->setGravityModel("Constant Gravity");
+   const FlightResult constG = runFlight(0.01, 0.0, 0.0);
+
+   qtRocket->getEnvironment()->setGravityModel("Spherical Gravity");
+   const FlightResult sphG = runFlight(0.01, 0.0, 0.0);
+   const auto sphTermination = qtRocket->getTerminationReason();
+
+   // Restore the default gravity model BEFORE asserting so a failure here can't leak the
+   // Spherical selection into the other tests that rely on the default Constant Gravity.
+   qtRocket->getEnvironment()->setGravityModel("Constant Gravity");
+
+   ASSERT_GT(constG.steps, 0u);
+   ASSERT_GT(sphG.steps, 0u);
+   EXPECT_EQ(sphTermination, sim::Propagator::TerminationReason::Nominal); // no NaN abort
+   EXPECT_GT(sphG.apogee, 0.0);
+   EXPECT_TRUE(std::isfinite(sphG.apogee));
+   EXPECT_TRUE(std::isfinite(sphG.tFinal));
+   EXPECT_NEAR(sphG.apogee, constG.apogee, 0.05 * constG.apogee); // within a few percent
+}

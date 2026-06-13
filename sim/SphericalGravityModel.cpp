@@ -1,50 +1,45 @@
 
 /// \cond
-// C headers
 // C++ headers
 #include <cmath>
-
-// 3rd party headers
+#include <utility>
 /// \endcond
 
 // qtrocket headers
 #include "sim/SphericalGravityModel.h"
+#include "sim/GeoidModel.h"
 #include "utils/math/Constants.h"
-
 
 namespace sim
 {
 
-SphericalGravityModel::SphericalGravityModel()
+SphericalGravityModel::SphericalGravityModel(std::shared_ptr<GeoidModel> geoidModel)
+   : geoid(std::move(geoidModel)),
+     // Cache the launch-site ground radius once: it is constant for a launch site and
+     // getAccel runs on every integrator stage. The spherical geoid ignores lat/lon;
+     // (0, 0) is the placeholder pad location until a real launch site is plumbed in
+     // (see TODO.md P6).
+     groundLevel(geoid->getGroundLevel(0.0, 0.0))
 {
-
 }
 
 SphericalGravityModel::~SphericalGravityModel()
 {
-
 }
 
 Vector3 SphericalGravityModel::getAccel(double x, double y, double z)
 {
-   // Convert x, y, z from meters to km. This is to avoid potential precision losses
-   // with using the earth's gravitation parameter in meters (14 digit number).
-   // GM in kilometers is much more manageable.
-   // An alternative is to use quadruple precision, but that may
-   // take a lot more computation time and I think this will be fine.
-   double x_km = x / 1000.0;
-   double y_km = y / 1000.0;
-   double z_km = z / 1000.0;
+   // Local launch frame -> geocentric: the pad sits a distance groundLevel from
+   // Earth's center, straight below the origin, so the geocentric position is
+   // (x, y, z + groundLevel). Newtonian inverse-square: a = -GM * rvec / |rvec|^3.
+   // double precision is ample here (GM ~ 3.99e14, r ~ 6.37e6), so there is no need
+   // for the earlier km-scaling. |rvec| >= groundLevel, so it can never be zero.
+   const double gz = z + groundLevel;
+   const double r2 = x * x + y * y + gz * gz;
+   const double r = std::sqrt(r2);
+   const double factor = -static_cast<double>(utils::math::Constants::earthGM) / (r2 * r);
 
-   double r_km = std::sqrt(x_km * x_km + y_km * y_km + z_km * z_km);
-   
-   double accelFactor = - utils::math::Constants::earthGM_km / std::sqrt(r_km * r_km * r_km);
-   double ax = accelFactor * x_km * 1000.0;
-   double ay = accelFactor * y_km * 1000.0;
-   double az = accelFactor * z_km * 1000.0;
-
-   return Vector3(ax, ay, az);
+   return Vector3(factor * x, factor * y, factor * gz);
 }
 
-
-}
+} // namespace sim

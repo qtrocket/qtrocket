@@ -15,6 +15,8 @@
 #include "sim/ConstantGravityModel.h"
 #include "sim/SphericalGravityModel.h"
 
+#include "sim/SphericalGeoidModel.h"
+
 #include "sim/ConstantAtmosphere.h"
 #include "sim/USStandardAtmosphere.h"
 #include "sim/VacuumAtmosphere.h"
@@ -69,7 +71,7 @@ public:
         else if(model == "Spherical Gravity")
         {
             gravityModel = model;
-            gravityModels[gravityModel].reset(new sim::SphericalGravityModel);
+            gravityModels[gravityModel].reset(new sim::SphericalGravityModel(geoidModel));
         }
     }
 
@@ -98,6 +100,7 @@ public:
         return retVal;
     }
     std::shared_ptr<sim::GravityModel> getGravityModel() { return gravityModels[gravityModel]; }
+    std::shared_ptr<sim::GeoidModel> getGeoidModel() { return geoidModel; }
 
 private:
 
@@ -112,6 +115,11 @@ private:
 
     std::string gravityModel{"Constant Gravity"}; /// Constant Gravity Model is the default
     std::string atmosphereModel{"Constant Atmosphere"}; /// Constant Atmosphere Model is the default
+
+    /// Supplies the launch-site ground radius the Spherical Gravity model needs to map the
+    /// local launch frame to a geocentric distance. Only one geoid exists today; a
+    /// selector/registry can follow if more are added (see TODO.md P6).
+    std::shared_ptr<sim::GeoidModel> geoidModel{std::make_shared<sim::SphericalGeoidModel>()};
 };
 
 } // namespace sim
