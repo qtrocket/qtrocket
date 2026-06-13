@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.25)
 
 project(qtrocket VERSION 0.1 LANGUAGES CXX)
 
@@ -51,14 +51,14 @@ set(BUILD_TESTING OFF)
 # the build non-hermetic: curl links whatever it auto-detects on the build host
 # (e.g. Homebrew libssh2/nghttp2/brotli/zstd on the macOS CI runner) and the
 # final link then fails because those libs aren't on the linker search path
-# (ld: library 'ssh2' not found). Forcing them off keeps the build identical on
-# every platform.
+# Forcing them off keeps the build identical on every platform.
 set(CURL_USE_LIBSSH2 OFF)
 set(CURL_USE_LIBSSH OFF)
 set(USE_NGHTTP2 OFF)
 set(USE_LIBIDN2 OFF)
-set(CURL_BROTLI OFF)
-set(CURL_ZSTD OFF)
+# The BROTLI and ZSTD are to get Github CI actions to work on macos-latest.
+set(CURL_BROTLI OFF CACHE STRING "" FORCE)
+set(CURL_ZSTD OFF CACHE STRING "" FORCE)
 if(WIN32)
    set(CURL_USE_SCHANNEL ON)
 endif()
