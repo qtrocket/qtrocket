@@ -48,3 +48,4 @@ log.txt
 
 # Default output file written by qtrocket-cli's `launch` command
 qtrocket_run.csv
+.claude/
