@@ -199,11 +199,11 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
       // delays tag is a csv string. Guard against an empty delays vector (thrustcurve.org search
       // results carry none): the old size()-1 form underflowed and indexed out of bounds.
       std::stringstream delays;
-      for (std::size_t i = 0; i < m.data.delays.size(); ++i)
+      for (std::size_t j = 0; j < m.data.delays.size(); ++j)
       {
-          if(i > 0)
+          if(j > 0)
               delays << ",";
-          delays << std::to_string(m.data.delays[i]);
+          delays << std::to_string(m.data.delays[j]);
       }
       motor.put("delays", delays.str());
 
@@ -211,11 +211,11 @@ void MotorModelDatabase::saveMotorDatabase(const std::string& filename)
       {
          pt::ptree tc;
          std::vector<std::pair<double, double>> thrust = m.getThrustCurve().getThrustCurveData();
-         for(const auto& j : thrust)
+         for(const auto& k : thrust)
          {
             pt::ptree thrustNode;
-            thrustNode.put("<xmlattr>.time", j.first);
-            thrustNode.put("<xmlattr>.force", j.second);
+            thrustNode.put("<xmlattr>.time", k.first);
+            thrustNode.put("<xmlattr>.force", k.second);
             tc.add_child("thrust", thrustNode);
          }
          motor.add_child("thrustCurve", tc);
