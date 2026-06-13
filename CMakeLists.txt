@@ -46,6 +46,19 @@ set(HTTP_ONLY ON)
 set(SSL_ENABLED ON)
 set(CURL_USE_LIBPSL OFF)
 set(BUILD_TESTING OFF)
+# Disable curl's optional third-party dependencies. We only use HTTPS GET, 
+# so none of these are needed. Several default to ON/AUTO, which makes
+# the build non-hermetic: curl links whatever it auto-detects on the build host
+# (e.g. Homebrew libssh2/nghttp2/brotli/zstd on the macOS CI runner) and the
+# final link then fails because those libs aren't on the linker search path
+# (ld: library 'ssh2' not found). Forcing them off keeps the build identical on
+# every platform.
+set(CURL_USE_LIBSSH2 OFF)
+set(CURL_USE_LIBSSH OFF)
+set(USE_NGHTTP2 OFF)
+set(USE_LIBIDN2 OFF)
+set(CURL_BROTLI OFF)
+set(CURL_ZSTD OFF)
 if(WIN32)
    set(CURL_USE_SCHANNEL ON)
 endif()
