@@ -37,11 +37,8 @@ Matrix3 RocketModel::getCompositeInertiaTensor(double)
 
 bool RocketModel::terminateCondition(double)
 {
-   // Terminate propagation when the z coordinate drops below zero
-    if(currentState.position[2] < 0)
-        return true;
-    else
-        return false;
+   // Nominal end of flight: descending (vz < 0) AND below the launch site (z < 0).
+   return currentState.position[2] < 0.0 && currentState.velocity[2] < 0.0;
 }
 
 Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment)

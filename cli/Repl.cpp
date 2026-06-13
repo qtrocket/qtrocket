@@ -22,6 +22,7 @@
 #include "model/MotorModel.h"
 #include "model/RocketModel.h"
 #include "sim/Integrator.h"
+#include "sim/Propagator.h"
 #include "sim/StateData.h"
 #include "model/MotorModelDatabase.h"
 
@@ -31,6 +32,21 @@ namespace
 constexpr double DEG_PER_RAD = 57.2958; // matches gui/MainWindow.cpp
 
 using StateSeries = std::vector<std::pair<double, StateData>>;
+
+// Human-readable description of why a run stopped, for the launch command's output. The full
+// case list with no default makes adding a future TerminationReason a compile error here.
+const char* terminationReasonText(sim::Propagator::TerminationReason r)
+{
+   switch(r)
+   {
+      case sim::Propagator::TerminationReason::Nominal:            return "nominal";
+      case sim::Propagator::TerminationReason::NoLiftoff:          return "no liftoff: never cleared 1 m after 3 s (check thrust vs weight)";
+      case sim::Propagator::TerminationReason::NonFiniteState:     return "non-finite state: NaN/Inf in the trajectory";
+      case sim::Propagator::TerminationReason::MaxSimTimeExceeded: return "max simulation time / iteration cap exceeded (flight never descended)";
+      case sim::Propagator::TerminationReason::IntegratorError:    return "integrator error";
+   }
+   return "unknown";
+}
 
 // Trim leading/trailing whitespace.
 std::string trim(const std::string& s)
@@ -547,29 +563,21 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       const StateSeries& states = qtRocket->getStates();
       if(states.empty())
       {
-         out << "ERR launch: no states produced\n";
+         out << "ERR launch: no states produced";
+         const sim::Propagator::TerminationReason reason = qtRocket->getTerminationReason();
+         if(reason != sim::Propagator::TerminationReason::Nominal)
+            out << " (run aborted: " << terminationReasonText(reason) << ")";
+         out << "\n";
          return true;
       }
 
-      // Derive a compact summary from the full time series.
-      double apogee = states.front().second.position[2];
-      double apogeeT = states.front().first;
-      double maxSpeed = 0.0;
-      double maxSpeedT = states.front().first;
-      for(const auto& [t, s] : states)
-      {
-         if(s.position[2] > apogee)
-         {
-            apogee = s.position[2];
-            apogeeT = t;
-         }
-         const double speed = s.velocity.norm();
-         if(speed > maxSpeed)
-         {
-            maxSpeed = speed;
-            maxSpeedT = t;
-         }
-      }
+      // Whole-trajectory statistics are tracked live during the run; read them back instead of
+      // re-deriving from the series. Downrange and landing still come from the final sample below.
+      const sim::TrajectoryStatistics& stats = qtRocket->getTrajectoryStatistics();
+      const double apogee = stats.maxAltitude;
+      const double apogeeT = stats.timeOfMaxAltitude;
+      const double maxSpeed = stats.maxSpeed;
+      const double maxSpeedT = stats.timeOfMaxSpeed;
       const double tFinal = states.back().first;
       const Vector3& last = states.back().second.position;
       const double downrange = std::hypot(last[0], last[1]);
@@ -599,6 +607,9 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          << "  landing   = t=" << tFinal << "s, pos=(" << last[0] << ", " << last[1] << ", "
          << last[2] << ")\n";
       out << ss.str();
+      const sim::Propagator::TerminationReason reason = qtRocket->getTerminationReason();
+      if(reason != sim::Propagator::TerminationReason::Nominal)
+         out << "WARN: run aborted (" << terminationReasonText(reason) << ")\n";
       if(!csvPath.empty())
          out << "CSV " << csvPath << "\n";
       return true;

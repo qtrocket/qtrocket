@@ -14,7 +14,9 @@
 #include "QtRocket.h"
 #include "model/RocketModel.h"
 #include "sim/Environment.h"
+#include "sim/Propagator.h"
 #include "sim/StateData.h"
+#include "sim/TrajectoryStatistics.h"
 #include "utils/Logger.h"
 #include "model/RSEDatabaseLoader.h"
 #include "utils/math/MathTypes.h"
@@ -281,4 +283,21 @@ TEST_F(PhysicsIntegrationTest, USStandardAtmosphereCompletesWithoutCrash)
    const FlightResult r = runFlight(0.01, 0.0, 0.0);
    EXPECT_GT(r.steps, 0u);
    EXPECT_GT(r.apogee, 0.0);
+}
+
+// The trajectory statistics tracked live during the run (and surfaced through QtRocket) must
+// agree with what we derive post-hoc from the recorded series, and a normal flight must report
+// a Nominal termination. This locks the wiring from the Propagator's per-step updates through
+// Propagatable into QtRocket's accessors.
+TEST_F(PhysicsIntegrationTest, TrajectoryStatisticsMatchSeriesAndReportNominal)
+{
+   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+   const FlightResult r = runFlight(0.01, 0.0, 0.0);
+   ASSERT_GT(r.steps, 0u);
+
+   const sim::TrajectoryStatistics& stats = qtRocket->getTrajectoryStatistics();
+   // Same samples and the same strict-max rule -> exact agreement with the post-hoc summary.
+   EXPECT_NEAR(stats.maxAltitude, r.apogee, 1e-9);
+   EXPECT_NEAR(stats.totalFlightTime, r.tFinal, 1e-9);
+   EXPECT_EQ(qtRocket->getTerminationReason(), sim::Propagator::TerminationReason::Nominal);
 }

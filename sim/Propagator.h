@@ -4,6 +4,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -19,11 +20,29 @@
 
 namespace sim
 {
-static constexpr double minFlightTime = 4.0;
+// Termination thresholds for runUntilTerminate.
+// A flight that has not climbed past noLiftoffAltitude after noLiftoffTime is aborted
+// as NoLiftoff; the maxIterations counter and the settable maxSimTime member (below) are the
+// hard backstops for a flight that never descends or collapses into vanishingly small steps.
+static constexpr double noLiftoffTime = 3.0;     // s
+static constexpr double noLiftoffAltitude = 1.0; // m
+static constexpr std::uint64_t maxIterations = 100'000'000;
 
 class Propagator
 {
 public:
+    /// Why runUntilTerminate stopped. Nominal is the normal end of flight (descent below the
+    /// launch site); the rest are safety aborts that turn a would-be infinite loop into a
+    /// clean, reportable stop.
+    enum class TerminationReason
+    {
+        Nominal,
+        NoLiftoff,
+        NonFiniteState,
+        MaxSimTimeExceeded,
+        IntegratorError
+    };
+
     Propagator(std::shared_ptr<model::Propagatable> o, std::shared_ptr<sim::Environment> environment);
     ~Propagator();
 
@@ -38,6 +57,9 @@ public:
     }
 
     void runUntilTerminate();
+
+    /// Why the most recent runUntilTerminate stopped. Nominal unless a safety guard fired.
+    TerminationReason getTerminationReason() const { return terminationReason; }
 
     void retainStates(bool s)
     {
@@ -70,6 +92,9 @@ public:
             linearIntegrator->setTimeStep(ts);
         }
     }
+    /// Sim-time cap (s) after which runUntilTerminate aborts as MaxSimTimeExceeded -- a backstop
+    /// against a flight that never descends. Generous by default; non-positive is ignored.
+    void setMaxSimTime(double s) { if(s > 0.0) maxSimTime = s; }
     void setIntegratorModel(const std::string& model)
     {
         if(linearIntegrator)
@@ -94,6 +119,11 @@ private:
    bool saveStates{true};
    double currentTime{0.0};
    double timeStep{0.01};
+
+   /// Why runUntilTerminate last stopped; reset to Nominal at the top of each run.
+   TerminationReason terminationReason{TerminationReason::Nominal};
+   /// Sim-time cap (s) enforced by runUntilTerminate's backstop guard (settable via setMaxSimTime).
+   double maxSimTime{7200.0};
 
 };
 

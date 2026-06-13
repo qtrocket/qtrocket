@@ -48,6 +48,20 @@ public:
    const std::vector<std::pair<double, StateData>>& getStates() const { return rocket.first->getStates(); }
 
    /**
+    * @brief getTrajectoryStatistics returns the whole-trajectory summary (max altitude/speed,
+    *        time to apogee, total flight time) from the most recent launchRocket(). Mirrors
+    *        getStates(): it summarises the same run.
+    */
+   const sim::TrajectoryStatistics& getTrajectoryStatistics() const { return rocket.first->getTrajectoryStatistics(); }
+
+   /**
+    * @brief getTerminationReason reports why the most recent launchRocket() stopped -- Nominal
+    *        for a normal flight, otherwise a safety abort (no liftoff, non-finite state, time
+    *        cap, or integrator error).
+    */
+   sim::Propagator::TerminationReason getTerminationReason() const { return rocket.second->getTerminationReason(); }
+
+   /**
     * @brief setInitialState sets the initial state of the Rocket.
     * @param initState initial state vector (x, y, z, xDot, yDot, zDot, pitch, yaw, roll, pitchDot, yawDot, rollDot)
     */

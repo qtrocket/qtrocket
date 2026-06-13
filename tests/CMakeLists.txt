@@ -19,3 +19,19 @@ include(GoogleTest)
 gtest_discover_tests(integration_tests)
 
 add_test(NAME qtrocket_integration_tests COMMAND integration_tests)
+
+# Unit tests for the Propagator's hang-proof termination guards and trajectory statistics,
+# driven by a mock Propagatable (no motor DB, no Qt). Links model, which transitively pulls in
+# sim + utils and provides the out-of-line model::Propagatable constructor symbol.
+add_executable(propagator_tests
+   PropagatorTests.cpp
+)
+
+target_link_libraries(propagator_tests
+   model
+   GTest::gtest_main
+)
+
+gtest_discover_tests(propagator_tests)
+
+add_test(NAME qtrocket_propagator_tests COMMAND propagator_tests)

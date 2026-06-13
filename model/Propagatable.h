@@ -11,6 +11,7 @@
 // qtrocket headers
 #include "sim/Aero.h"
 #include "sim/StateData.h"
+#include "sim/TrajectoryStatistics.h"
 #include "utils/math/MathTypes.h"
 
 // Forward declarations
@@ -45,6 +46,14 @@ public:
 
    void clearStates() { states.clear(); }
 
+   /// Running whole-trajectory statistics (max altitude/speed, time to apogee, total flight
+   /// time). The Propagator updates these every step during runUntilTerminate -- independently
+   /// of the state history above, so the summary and hang detection work even when state
+   /// saving is off.
+   void updateTrajectoryStatistics(double t, const StateData& st) { stats.update(t, st); }
+   void resetTrajectoryStatistics() { stats.reset(); }
+   const sim::TrajectoryStatistics& getTrajectoryStatistics() const { return stats; }
+
 protected:
 
    sim::Aero aeroData;
@@ -54,6 +63,8 @@ protected:
    StateData nextState;
 
    std::vector<std::pair<double, StateData>> states;
+
+   sim::TrajectoryStatistics stats;
 };
 
 }
