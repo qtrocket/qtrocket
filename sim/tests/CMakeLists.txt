@@ -3,6 +3,7 @@ add_executable(sim_tests
    USStandardAtmosphereTests.cpp
    RK45SolverTests.cpp
    SphericalGeoidAndGravityTests.cpp
+   IntegratorTests.cpp
 )
 
 target_link_libraries(sim_tests

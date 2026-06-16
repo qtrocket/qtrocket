@@ -15,6 +15,7 @@
 #include "sim/DESolver.h"
 #include "sim/RK4Solver.h"
 #include "sim/RK45Solver.h"
+#include "utils/Logger.h"
 #include "utils/math/MathTypes.h"
 
 namespace sim
@@ -65,8 +66,10 @@ public:
             integratorModels[integratorModel].reset(new sim::RK45Solver<Vector3>(odes));
         }
         else {
-            integratorModel = "None";
-            integratorModels[integratorModel].reset(nullptr);
+            // Unknown name: logged no-op, keeping the current valid model.
+            utils::Logger::getInstance()->error(
+                "Integrator::setIntegratorModel: unknown model '" + model
+                + "'; keeping the current model '" + integratorModel + "'.");
         }
     }
 
@@ -95,4 +98,4 @@ private:
 } // namespace sim
 
 
-#endif // SIM_ENVIRONMENT_H
+#endif // SIM_INTEGRATOR_H
