@@ -12,15 +12,13 @@
 
 namespace utils
 {
-Logger* Logger::instance = nullptr;
 
 Logger* Logger::getInstance()
 {
-   if(!instance)
-   {
-      instance = new Logger();
-   }
-   return instance;
+   // Function-local static: C++11 guarantees its initialization is thread-safe and
+   // happens exactly once
+   static Logger instance;
+   return &instance;
 }
 
 Logger::Logger()

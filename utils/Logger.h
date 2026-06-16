@@ -53,7 +53,6 @@ private:
 
    LogLevel currentLevel{INFO_}; // sane default if no front-end calls setLogLevel()
    std::ofstream outFile;
-   static Logger* instance;
    std::mutex mtx;
    Logger();
 };

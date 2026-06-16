@@ -102,7 +102,6 @@ public:
             linearIntegrator->setIntegratorModel(model);
         }
     }
-    void setSaveStats(bool s) { saveStates = s; }
 
 private:
 

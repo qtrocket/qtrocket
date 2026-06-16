@@ -49,22 +49,6 @@
     <string>Plot Velocity</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="plotAtmosphereBtn">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>20</x>
-     <y>170</y>
-     <width>121</width>
-     <height>36</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Plot Atmosphere</string>
-   </property>
-  </widget>
   <widget class="QPushButton" name="plotMotorCurveBtn">
    <property name="geometry">
     <rect>

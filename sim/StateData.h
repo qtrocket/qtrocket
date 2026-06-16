@@ -4,7 +4,6 @@
 /// \cond
 // C headers
 // C++ headers
-#include <vector>
 // 3rd party headers
 /// \endcond
 
@@ -51,16 +50,6 @@ public:
       }
       return *this;
    }
-
-   std::vector<double> getPosStdVector() const
-   {
-      return std::vector<double>{position[0], position[1], position[2]};
-   }
-   std::vector<double> getVelStdVector() const
-   {
-      return std::vector<double>{velocity[0], velocity[1], velocity[2]};
-   }
-
 
 /// TODO: Put these behind an interface
    //Vector3 getPosition() const

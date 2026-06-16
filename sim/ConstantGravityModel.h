@@ -3,6 +3,7 @@
 
 // qtrocket headers
 #include "sim/GravityModel.h"
+#include "utils/math/Constants.h"
 #include "utils/math/MathTypes.h"
 
 namespace sim {
@@ -16,7 +17,7 @@ public:
 
    Vector3 getAccel(double, double, double) override
    {
-      return Vector3(0.0, 0.0, -9.8);
+      return Vector3(0.0, 0.0, -utils::math::Constants::g0);
    }
 };
 

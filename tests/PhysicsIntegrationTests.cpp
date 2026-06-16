@@ -306,7 +306,7 @@ TEST_F(PhysicsIntegrationTest, TrajectoryStatisticsMatchSeriesAndReportNominal)
 // r = 0 at the (0,0,0) pad -> NaN -> the F1 hang (now caught as a NonFiniteState abort). With
 // the geoid bridge the run terminates Nominal, and -- same launch, Vacuum so drag can't
 // confound -- its apogee tracks the constant-gravity baseline within a few percent (spherical
-// g ~ 9.82 m/s^2 near the surface vs the constant model's 9.8). See TODO.md P0 / F1.
+// g ~ 9.82 m/s^2 near the surface vs the constant model's 9.80665).
 TEST_F(PhysicsIntegrationTest, SphericalGravityFliesNominallyNearConstantGravity)
 {
    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
