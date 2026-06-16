@@ -51,7 +51,7 @@ private:
 
    void log(std::string_view msg, const LogLevel& lvl);
 
-   LogLevel currentLevel;
+   LogLevel currentLevel{INFO_}; // sane default if no front-end calls setLogLevel()
    std::ofstream outFile;
    static Logger* instance;
    std::mutex mtx;

@@ -13,8 +13,8 @@ int main(int argc, char *argv[])
 
    // Instantiate logger
    utils::Logger* logger = utils::Logger::getInstance();
-   logger->setLogLevel(utils::Logger::PERF_);
-   logger->info("Logger instantiated at PERF level");
+   logger->setLogLevel(utils::Logger::INFO_);
+   logger->info("Logger instantiated at INFO level");
    // instantiate QtRocket
    logger->debug("Starting QtRocket");
    QtRocket* qtrocket = QtRocket::getInstance();

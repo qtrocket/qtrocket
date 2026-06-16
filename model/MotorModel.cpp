@@ -60,7 +60,7 @@ double MotorModel::getMass(double simTime) const
       double propMassEnd   = i->second;
       double slope = (propMassEnd - propMassStart) / (tEnd - tStart);
       double currentMass = emptyMass + propMassStart + (thrustTime - tStart) * slope;
-      utils::Logger::getInstance()->info("simTime: " + std::to_string(simTime) + ": motor mass: " + std::to_string(currentMass));
+      utils::Logger::getInstance()->perf("simTime: " + std::to_string(simTime) + ": motor mass: " + std::to_string(currentMass));
       return currentMass;
 
    }
@@ -83,7 +83,7 @@ double MotorModel::getThrust(double simTime)
       }
       return 0.0;
    }
-   utils::Logger::getInstance()->info("simTime: " + std::to_string(simTime) + ": thrust: " + std::to_string(thrust.getThrust(simTime)));
+   utils::Logger::getInstance()->perf("simTime: " + std::to_string(simTime) + ": thrust: " + std::to_string(thrust.getThrust(simTime)));
    return thrust.getThrust(simTime);
 }
 
