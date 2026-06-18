@@ -1,5 +1,5 @@
-#ifndef MODEL_PART_H
-#define MODEL_PART_H
+#ifndef MODEL_PARTS_PART_H
+#define MODEL_PARTS_PART_H
 
 /// \cond
 // C headers
@@ -14,7 +14,7 @@
 // qtrocket headers
 #include "utils/math/MathTypes.h"
 
-namespace model
+namespace model::part
 {
 
 /**
@@ -239,6 +239,6 @@ private:
    std::vector<std::tuple<std::shared_ptr<Part>, Vector3>> childParts;
 };
 
-}
+} // namespace model::part
 
-#endif // MODEL_PART_H
+#endif // MODEL_PARTS_PART_H

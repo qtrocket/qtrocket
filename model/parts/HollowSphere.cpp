@@ -9,7 +9,7 @@
 // qtrocket headers
 #include "model/InertiaTensors.h"
 
-namespace model
+namespace model::part
 {
 
 HollowSphere::HollowSphere(const std::string& name,
@@ -48,4 +48,4 @@ double HollowSphere::computeMass(double innerRadius, double outerRadius, double 
    return density * computeVolume(innerRadius, outerRadius);
 }
 
-} // namespace model
+} // namespace model::part

@@ -11,10 +11,10 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/Part.h"
+#include "model/parts/Part.h"
 #include "utils/math/MathTypes.h"
 
-namespace model
+namespace model::part
 {
 
 /**
@@ -90,6 +90,6 @@ private:
    double volume;      ///< Cached shell volume (m^3).
 };
 
-} // namespace model
+} // namespace model::part
 
 #endif // MODEL_PARTS_HOLLOWSPHERE_H

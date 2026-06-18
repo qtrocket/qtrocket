@@ -1,4 +1,4 @@
-#include "Part.h"
+#include "model/parts/Part.h"
 #include "utils/Logger.h"
 
 /// \cond
@@ -7,7 +7,7 @@
 #include <cstdint>
 /// \endcond
 
-namespace model
+namespace model::part
 {
 
 namespace
@@ -192,4 +192,4 @@ Part* Part::findById(Id targetId)
    return nullptr;
 }
 
-} // namespace model
+} // namespace model::part

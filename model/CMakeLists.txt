@@ -3,8 +3,8 @@ add_library(model
    MotorModel.h
    MotorModelDatabase.cpp
    MotorModelDatabase.h
-   Part.cpp
-   Part.h
+   parts/Part.cpp
+   parts/Part.h
    parts/HollowSphere.cpp
    parts/HollowSphere.h
    parts/Parts.h

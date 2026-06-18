@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <tuple>
 
-#include "model/Part.h"
+#include "model/parts/Part.h"
 #include "model/InertiaTensors.h"
 #include "model/parts/Parts.h"
 
@@ -57,7 +57,7 @@ TEST(PartTest, CreationTests)
               0, 1, 0,
               0, 0, 1;
    Vector3 cm{1, 0, 0};
-   model::Part testPart("testPart",
+   model::part::Part testPart("testPart",
                         inertia,
                         1.0,
                         cm);
@@ -68,7 +68,7 @@ TEST(PartTest, CreationTests)
                0, 0, 1;
    Vector3 cm2{1, 0, 0};
    Vector3 R{2.0, 2.0, 2.0};
-   testPart.addChildPart(std::make_shared<model::Part>("testPart2", inertia2, 1.0, cm2), R);
+   testPart.addChildPart(std::make_shared<model::part::Part>("testPart2", inertia2, 1.0, cm2), R);
 
 
 }
@@ -97,7 +97,7 @@ TEST(HollowSphereTest, MassAndCompositeInertiaMatchClosedForm)
    const double ro = 0.05;
    const double density = 2700.0;
 
-   model::HollowSphere sphere("body", ri, ro, density);
+   model::part::HollowSphere sphere("body", ri, ro, density);
 
    const double expectedMass = expectedHollowSphereMass(ri, ro, density);
    EXPECT_NEAR(sphere.getMass(0.0), expectedMass, 1e-12);
@@ -123,7 +123,7 @@ TEST(HollowSphereTest, ReducesToSolidSphereWhenInnerRadiusZero)
    const double ro = 0.05;
    const double density = 2700.0;
 
-   model::HollowSphere sphere("solid", 0.0, ro, density);
+   model::part::HollowSphere sphere("solid", 0.0, ro, density);
 
    const double mass = sphere.getMass(0.0);
    // Solid sphere: I = (2/5) m ro^2 on each axis.
@@ -135,9 +135,9 @@ TEST(HollowSphereTest, ReducesToSolidSphereWhenInnerRadiusZero)
 
 TEST(HollowSphereTest, RejectsNonPhysicalGeometry)
 {
-   EXPECT_THROW(model::HollowSphere("bad", 0.05, 0.04, 2700.0), std::invalid_argument); // ri > ro
-   EXPECT_THROW(model::HollowSphere("bad", 0.04, 0.04, 2700.0), std::invalid_argument); // ri == ro
-   EXPECT_THROW(model::HollowSphere("bad", 0.00, 0.05, 0.0),    std::invalid_argument); // density 0
+   EXPECT_THROW(model::part::HollowSphere("bad", 0.05, 0.04, 2700.0), std::invalid_argument); // ri > ro
+   EXPECT_THROW(model::part::HollowSphere("bad", 0.04, 0.04, 2700.0), std::invalid_argument); // ri == ro
+   EXPECT_THROW(model::part::HollowSphere("bad", 0.00, 0.05, 0.0),    std::invalid_argument); // density 0
 }
 
 TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
@@ -145,7 +145,7 @@ TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
    // The bare tensor is per-unit-mass; the composite is full (mass * per-mass). With mass = 2.0 and
    // SolidSphere(1.0) = 0.4 on the diagonal, getI() = 0.4 but getCompositeI() = 0.8 -- this would be
    // 0.4 if Part stored the tensor un-weighted, so it locks the mass multiply in.
-   model::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
+   model::part::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
    EXPECT_DOUBLE_EQ(part.getI()(0, 0), 0.4);
    EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8);
 }
@@ -155,9 +155,9 @@ namespace
 // Build a massless-inertia "point mass": all the inertia comes from the parallel-axis shift, which
 // is exactly what the composite math is responsible for getting right. Returns a shared_ptr because
 // parts are owned through shared_ptr and addChildPart() takes ownership of one.
-std::shared_ptr<model::Part> pointMass(const std::string& name, double mass)
+std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
 {
-   return std::make_shared<model::Part>(name, Matrix3::Zero(), mass, Vector3::Zero());
+   return std::make_shared<model::part::Part>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 
 // Mass of a uniform hollow cylinder (tube): density * volume, volume = pi * (ro^2 - ri^2) * length.
@@ -168,10 +168,10 @@ double tubeMass(double ri, double ro, double length, double density)
 
 // Build a tube Part: longitudinal axis on z (per InertiaTensors::Tube), CM at the part origin. Used
 // to verify that tubes of equal radii stacked end-to-end along z reproduce a single longer tube.
-std::shared_ptr<model::Part> tube(const std::string& name, double ri, double ro, double length,
+std::shared_ptr<model::part::Part> tube(const std::string& name, double ri, double ro, double length,
                                   double density)
 {
-   return std::make_shared<model::Part>(name,
+   return std::make_shared<model::part::Part>(name,
                                         model::InertiaTensors::Tube(ri, ro, length),
                                         tubeMass(ri, ro, length, density),
                                         Vector3::Zero());
@@ -250,7 +250,7 @@ TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
 {
    // clone() must produce a fully independent deep copy that preserves the dynamic type (no slicing).
    // Build a HollowSphere with a child, clone it, then mutate the original -> the clone is untouched.
-   auto body = std::make_shared<model::HollowSphere>("body", 0.04, 0.05, 2700.0);
+   auto body = std::make_shared<model::part::HollowSphere>("body", 0.04, 0.05, 2700.0);
    body->addChildPart(pointMass("tip", 0.1), Vector3{0.2, 0.0, 0.0});
 
    auto copy = body->clone();
@@ -265,14 +265,14 @@ TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
    EXPECT_DOUBLE_EQ(copy->getCompositeI()(1, 1), iyyBefore);
 
    // Type preserved: the clone is still a HollowSphere, not a sliced base Part.
-   EXPECT_NE(dynamic_cast<model::HollowSphere*>(copy.get()), nullptr);
+   EXPECT_NE(dynamic_cast<model::part::HollowSphere*>(copy.get()), nullptr);
 }
 
 TEST(PartCompositionTest, SetMassAndSetIInvalidateCompositeCache)
 {
    // setMass() and setI() must flag the composite cache stale; before the fix setI() did not, so a
    // later getCompositeI() returned a value computed from the old tensor.
-   model::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
+   model::part::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
    EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8); // 2.0 * 0.4
 
    part.setMass(4.0);
@@ -373,7 +373,7 @@ TEST(PartCompositionTest, FindByIdLocatesAdoptedPartsAndRejectsAbsent)
 {
    auto root = pointMass("root", 1.0);
    auto child = pointMass("child", 1.0);
-   const model::Part::Id childId = child->getId();
+   const model::part::Part::Id childId = child->getId();
    root->addChildPart(child, Vector3{1.0, 0.0, 0.0}); // adopts: same object, same id, now in the tree
 
    EXPECT_EQ(root->findById(root->getId()), root.get());
@@ -382,10 +382,10 @@ TEST(PartCompositionTest, FindByIdLocatesAdoptedPartsAndRejectsAbsent)
    EXPECT_EQ(root->findById(123456789), nullptr);      // absent
 }
 
-namespace model
+namespace model::part
 {
 // White-box fixture: grants the re-parenting test access to Part's private parent pointers, child
-// list, and dirty flag. Lives in namespace model so the unqualified `friend class
+// list, and dirty flag. Lives in namespace model::part so the unqualified `friend class
 // PartCompositionAccess;` in Part.h refers to it, and so TEST_F below finds it by name.
 class PartCompositionAccess : public ::testing::Test
 {
@@ -441,4 +441,4 @@ TEST_F(PartCompositionAccess, CloneReparentsSubtreeWithFreshUniqueIds)
    // findById resolves cloned nodes from the clone's root.
    EXPECT_EQ(copy->findById(copyGrandchild.getId()), &copyGrandchild);
 }
-} // namespace model
+} // namespace model::part

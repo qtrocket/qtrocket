@@ -12,7 +12,7 @@ RocketModel::RocketModel()
     // rho=2700 kg/m^3) ~ 0.69 kg. Gives a real mass and a correct inertia tensor (consumed by
     // getInertiaTensor() for future 6-DOF); the GUI may still override the mass via setMass().
     // The geometry/material will eventually be GUI-driven. See TODO.md P2.
-    : topPart(std::make_shared<HollowSphere>("Body", 0.04, 0.05, 2700.0))
+    : topPart(std::make_shared<part::HollowSphere>("Body", 0.04, 0.05, 2700.0))
 {
 
 }

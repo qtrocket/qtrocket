@@ -13,7 +13,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/Part.h"
+#include "model/parts/Part.h"
 #include "sim/Propagator.h"
 #include "model/MotorModel.h"
 
@@ -138,7 +138,7 @@ private:
    /// Top of the part tree -- a polymorphic Part handle (a HollowSphere today). shared_ptr matches
    /// the childParts convention in Part and keeps RocketModel copyable. getMass(), setMass(), and
    /// getInertiaTensor() all delegate to it.
-   std::shared_ptr<model::Part> topPart;
+   std::shared_ptr<model::part::Part> topPart;
 
    /// Dimensionless drag coefficient consumed by the drag term in getForces().
    double dragCoefficient{1.0};
