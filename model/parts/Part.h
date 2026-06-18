@@ -7,6 +7,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <limits>
 
 // 3rd party headers
 /// \endcond
@@ -31,8 +32,10 @@ namespace model::part
  * is the FULL, mass-weighted tensor (kg*m^2) of this part plus every descendant, taken about the
  * COMPOSITE center of mass (getCompositeCm()) -- not about this part's own CM. It is formed by
  * shifting this part's own tensor and each child's composite tensor to the composite CM via the
- * parallel-axis theorem. Composite quantities (mass, CM, inertia) are cached and refreshed lazily
- * by recomputeInertiaTensor() once the tree has been flagged dirty.
+ * parallel-axis theorem. Composite quantities (mass, CM, inertia) are produced by one time-aware
+ * walk (computeCompositeAt()); the CM/inertia are cached behind a mass-delta gate (rebuilt when the
+ * tree is structurally dirty or the composite mass changes), so they track a burning motor and
+ * freeze once mass is constant. @see getCompositeI()
  *
  * Frame assumption: all parts share the same body-frame orientation, so child @p position offsets
  * are pure translations and tensors combine by addition (no rotation). This holds for a rigid
@@ -82,15 +85,16 @@ public:
    virtual void setI(const Matrix3& I) { inertiaTensor = I; markAsNeedsRecomputing(); }
    /// @brief Get the per-unit-mass (geometric) inertia tensor (m^2). @see getCompositeI()
    virtual Matrix3 getI() { return inertiaTensor; }
-   /// @brief Get the full, mass-weighted composite tensor of this part + children (kg*m^2).
-   virtual Matrix3 getCompositeI()
+
+   /// @brief The composite mass, CM (== CG), and full inertia tensor of a sub-tree at one instant,
+   ///        produced together by one walk (they are only meaningful together: the CM is the point
+   ///        the inertia tensor is taken about).
+   struct CompositeProperties
    {
-      if(needsRecomputing)
-      {
-         recomputeInertiaTensor();
-      }
-      return compositeInertiaTensor;
-   }
+      double  mass{0.0};                 ///< composite mass at t (kg)
+      Vector3 cm{Vector3::Zero()};       ///< composite CM (== CG) relative to this part's own CM
+      Matrix3 inertia{Matrix3::Zero()};  ///< full mass-weighted tensor (kg*m^2) about that CM
+   };
 
    /**
     * @brief This part's own mass at simulation time @p t (kg).
@@ -103,32 +107,34 @@ public:
 
    /**
     * @brief Composite mass of this part plus all attached child parts at time @p t (kg).
+    *
+    * A cheap, LIVE mass-only sum (this node's getMass(t) plus each child's composite mass) -- both
+    * the ODE divisor and the gate key for getCompositeI(t), so it is kept cheap (no tensor work).
+    * Reflects a time-varying override such as Motor.
     * @param t simulation time (seconds)
     */
-   virtual double getCompositeMass(double t [[maybe_unused]])
-   {
-      if(needsRecomputing)
-      {
-         recomputeInertiaTensor();
-      }
-      return compositeMass;
-   }
+   virtual double getCompositeMass(double t);
 
    /**
-    * @brief Composite center of mass of this part plus all descendants, expressed relative to this
-    *        part's own center of mass (the zero vector for a childless part).
+    * @brief Composite center of mass (== center of gravity) at @p t, relative to this part's own CM
+    *        (the zero vector for a childless part).
     *
-    * This is the point that getCompositeI() is taken about. Pairs with getCompositeMass() /
-    * getCompositeI(); recomputed lazily when the tree is dirty.
+    * This is the point getCompositeI(t) is taken about; as a child's mass changes (a burning motor)
+    * this CG(t) shifts. Served from the same mass-delta-gated cache as getCompositeI(t).
     */
-   virtual Vector3 getCompositeCm()
-   {
-      if(needsRecomputing)
-      {
-         recomputeInertiaTensor();
-      }
-      return compositeCm;
-   }
+   virtual Vector3 getCompositeCm(double t);
+
+   /**
+    * @brief Full, mass-weighted composite inertia tensor (kg*m^2) about the composite CM at @p t.
+    *
+    * Rebuilt only when the tree is structurally dirty OR the composite mass changed since the cache
+    * was last built (the mass-delta gate): recomputes every step while a child's mass varies (a
+    * burning motor) and FREEZES once mass is constant (post-burnout getMass returns the bit-identical
+    * empty mass, so the composite mass matches builtAtCompositeMass). Keying on mass -- a pure
+    * function of t -- makes the cache immune to the integrator's non-monotonic / repeated / rejected
+    * stage-time queries. CG (getCompositeCm) and this tensor come from one walk and never disagree.
+    */
+   virtual Matrix3 getCompositeI(double t);
 
    /**
     * @brief This part's unique identifier (unique within the process run, even across copies and
@@ -159,7 +165,7 @@ public:
     *
     * The tree adopts @p child as-is -- no copy, so its dynamic type and id are preserved -- and
     * re-parents it. This part and every ancestor are flagged dirty; the composite mass, CM, and
-    * inertia are rebuilt lazily on the next composite read (see recomputeInertiaTensor()). Logged
+    * inertia are rebuilt lazily on the next composite read (see computeCompositeAt()). Logged
     * no-op if @p child is null, already has a parent, or is this part or one of its ancestors (which
     * would form a cycle).
     *
@@ -170,17 +176,6 @@ public:
     *                 parent's center of mass
     */
    virtual void addChildPart(std::shared_ptr<Part> child, Vector3 position);
-
-   /**
-    * @brief Rebuild the cached composite mass, center of mass, and inertia tensor from this part
-    *        and its children.
-    *
-    * A no-op unless the part has been flagged dirty (see markAsNeedsRecomputing()). When it does
-    * run it recurses into each child, accumulates the composite mass and composite CM, then sums the
-    * parallel-axis-shifted composite inertia tensor about that composite CM, and clears the dirty
-    * flag. Does not propagate upward -- ancestors recompute themselves lazily on their next read.
-    */
-   virtual void recomputeInertiaTensor();
 
 protected:
    /// @brief Shallow node copy for clone()/cloneShallow() ONLY: copies this part's own mass
@@ -206,8 +201,15 @@ private:
 
    std::string name; ///< Human-facing label; need NOT be unique. Use id to identify a part.
 
-   /// @brief Sum of the masses of this part's direct child parts at simulation time @p t (seconds).
-   double getChildMasses(double t);
+   /// @brief THE single time-aware walk behind every composite accessor. Pass 1 accumulates the
+   ///        composite mass and CM from getMass(t); pass 2 sums the parallel-axis-shifted child
+   ///        tensors about that CM. CG and the tensor therefore come from ONE walk.
+   CompositeProperties computeCompositeAt(double t);
+
+   /// @brief Mass-delta gate: (re)build the cached compositeCm/compositeInertiaTensor via
+   ///        computeCompositeAt(t) iff structurally dirty OR the composite mass moved since the last
+   ///        build; then record builtAtCompositeMass and clear the dirty flag. No-op otherwise.
+   void ensureCompositeCache(double t);
 
    /// @brief Flag this part, and every ancestor, as needing a composite recompute.
    void markAsNeedsRecomputing()
@@ -219,6 +221,12 @@ private:
    Matrix3 compositeInertiaTensor; ///< FULL mass-weighted tensor of this part + children (kg*m^2).
    double mass;          ///< This part's own mass (kg).
    double compositeMass; ///< Mass of this part plus all attached child parts (kg).
+
+   /// @brief Composite mass the cached CM/tensor were last built at; the mass-delta gate key. NaN
+   ///        sentinel forces the first build (mNow != NaN is always true). Compared with exact ==
+   ///        against getCompositeMass(t): post-burnout that value repeats bit-for-bit so the cache
+   ///        freezes; during a burn it differs every step.
+   double builtAtCompositeMass{std::numeric_limits<double>::quiet_NaN()};
 
    /// @brief Center of mass w.r.t. the middle of the component. NOT CURRENTLY CONSUMED: the inertia
    ///        tensor is defined about the CM and child @p position offsets are CM-to-CM, so the

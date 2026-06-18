@@ -20,19 +20,25 @@ RocketModel::RocketModel()
 
 double RocketModel::getMass(double t)
 {
-    // Motor mass plus the composite structural mass (the top part together with every attached child
-    // part), so mass stays consistent with getCompositeInertiaTensor() once the part tree grows.
-    // setMass() writes the top part's OWN mass: for today's single childless part that still
-    // round-trips a GUI-set value exactly; once children attach, a GUI-set value is the top part's
-    // own mass and this returns it plus the child masses. See TODO.md P2.
-    double mass = mm.getMass(t);
-    mass += topPart->getCompositeMass(t);
-    return mass;
+    // The motor is now a child Part of topPart, so the composite already includes its time-varying
+    // mass -- no separate motor term to add (and no double-count). setMass() writes only the top
+    // part's OWN (structural/dry) mass; the motor child carries its own mass(t). See TODO.md P2.
+    return topPart->getCompositeMass(t);
 }
 
-Matrix3 RocketModel::getCompositeInertiaTensor(double)
+Matrix3 RocketModel::getCompositeInertiaTensor(double t)
 {
-    return topPart->getCompositeI(); // getCompositeI() returns full mass-weighted inertia tensor
+    return topPart->getCompositeI(t); // time-aware full mass-weighted inertia tensor about the CG at t
+}
+
+void RocketModel::writeMassProperties(double t, StateData& st)
+{
+   // Snapshot composite mass/CG/inertia via the GATED accessors, so after burnout this reads the
+   // frozen cache (no recompute). getCompositeMass(t) is the cheap live sum (and the ODE divisor),
+   // so the three are mutually consistent at this t.
+   st.mass    = topPart->getCompositeMass(t);
+   st.cg      = topPart->getCompositeCm(t);
+   st.inertia = topPart->getCompositeI(t);
 }
 
 bool RocketModel::terminateCondition(double)
@@ -45,7 +51,7 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
 {
     // Get thrust
     // Assume that thrust is always through the center of mass and in the rocket's Z-axis
-    Vector3 forces{0.0, 0.0, mm.getThrust(t)};
+    Vector3 forces{0.0, 0.0, motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0};
 
 
     // Get gravity. Evaluate at the trial position passed by the integrator (not the
@@ -82,19 +88,32 @@ Vector3 RocketModel::getTorques(double)
 
 double RocketModel::getThrust(double t)
 {
-   return mm.getThrust(t);
+   return motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0;
 }
 
 void RocketModel::launch()
 {
    setCurrentState(initialState);
-   mm.startMotor(0.0);
+   if(motorPart) { motorPart->getMotorModel().startMotor(0.0); }
 }
 
 void RocketModel::setMotorModel(const model::MotorModel& motor)
 {
-   mm = motor;
-   motorSet = true;
+   if(motorPart == nullptr)
+   {
+      auto mp = std::make_shared<part::Motor>("Motor", motor);
+      motorPart = mp.get();                       // borrow before ownership moves into the tree
+      topPart->addChildPart(std::move(mp), motorOffset);
+   }
+   else
+   {
+      motorPart->setMotorModel(motor);            // in-place swap (Part has no detach API)
+   }
+}
+
+MotorModel RocketModel::getMotorModel()
+{
+   return motorPart ? motorPart->getMotorModel() : MotorModel{};
 }
 
 } // namespace model

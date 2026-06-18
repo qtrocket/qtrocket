@@ -24,32 +24,11 @@ public:
    StateData(const StateData&) = default;
    StateData(StateData&&) = default;
 
-   StateData& operator=(const StateData& rhs)
-   {
-      if(this != &rhs)
-      {
-         position = rhs.position;
-         velocity = rhs.velocity;
-         orientation = rhs.orientation;
-         orientationRate = rhs.orientationRate;
-         dcm = rhs.dcm;
-         eulerAngles = rhs.eulerAngles;
-      }
-      return *this;
-   }
-   StateData& operator=(StateData&& rhs)
-   {
-      if(this != &rhs)
-      {
-         position = std::move(rhs.position);
-         velocity = std::move(rhs.velocity);
-         orientation = std::move(rhs.orientation);
-         orientationRate = std::move(rhs.orientationRate);
-         dcm = std::move(rhs.dcm);
-         eulerAngles = std::move(rhs.eulerAngles);
-      }
-      return *this;
-   }
+   // Defaulted (memberwise): every member is an Eigen value type / Quaternion, so memberwise copy is
+   // correct -- and new members (mass/cg/inertia below) cannot be silently dropped, which the
+   // previous hand-written, explicit-field-list assignment was prone to.
+   StateData& operator=(const StateData&) = default;
+   StateData& operator=(StateData&&) = default;
 
 /// TODO: Put these behind an interface
    //Vector3 getPosition() const
@@ -78,6 +57,13 @@ public:
    /// pitch - theta
    /// roll  - phi
    Vector3 eulerAngles{0.0, 0.0, 0.0};
+
+   // Composite mass properties at this sample's time, recorded each step by the Propagator via
+   // Propagatable::writeMassProperties. Not integrated in 3-DOF; they make CG(t)/I(t) observable and
+   // trajectory-testable now, and are the seam the 6-DOF rotational ODE will read.
+   double  mass{0.0};                 ///< composite mass at this time (kg)
+   Vector3 cg{0.0, 0.0, 0.0};         ///< composite center of mass (== CG), body frame
+   Matrix3 inertia{Matrix3::Zero()};  ///< full composite inertia tensor (kg*m^2) about cg
 
 };
 

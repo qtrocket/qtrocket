@@ -330,3 +330,50 @@ TEST_F(PhysicsIntegrationTest, SphericalGravityFliesNominallyNearConstantGravity
    EXPECT_TRUE(std::isfinite(sphG.tFinal));
    EXPECT_NEAR(sphG.apogee, constG.apogee, 0.05 * constG.apogee); // within a few percent
 }
+
+// P1: the motor now lives in the part tree, so getMass(t) is the composite (dry airframe + motor(t))
+// with NO separately-added motor term -- this pins that there is no double-count, and that the motor
+// mass falls to the empty casing after burnout.
+TEST_F(PhysicsIntegrationTest, RocketMassEqualsDryPlusMotorNoDoubleCount)
+{
+   auto rocket = qtRocket->getRocket();
+   const model::MotorModel g80 = loader->getMotorModelByName("G80T");
+   const double dry    = 0.5;                                        // setMass(0.5) in SetUp
+   const double loaded = g80.getMass(0.0);                           // pre-ignition total weight
+   const double empty  = g80.data.totalWeight - g80.data.propWeight; // casing mass
+
+   // Before ignition: composite = dry airframe + loaded motor (no double-count).
+   EXPECT_NEAR(rocket->getMass(0.0), dry + loaded, 1e-9);
+
+   rocket->launch(); // ignite the rocket's motor at t = 0
+   // Well past burnout: composite = dry airframe + empty casing.
+   EXPECT_NEAR(rocket->getMass(100.0), dry + empty, 1e-6);
+}
+
+// P1: the composite mass/CG/inertia are recorded into each StateData sample (the Propagatable hook),
+// so the time-varying inertia system is exercised in a real 3-DOF flight. The recorded transverse
+// inertia and mass shrink during the burn, then hold constant after burnout.
+TEST_F(PhysicsIntegrationTest, RecordedInertiaShrinksDuringBurnThenFlattens)
+{
+   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+   const FlightResult r = runFlight(0.01, 0.0, 0.0);
+   ASSERT_GT(r.steps, 2u);
+   const auto& states = qtRocket->getStates();
+
+   const double m0     = states.front().second.mass;
+   const double mEnd   = states.back().second.mass;
+   const double Ixx0   = states.front().second.inertia(0, 0);
+   const double IxxEnd = states.back().second.inertia(0, 0);
+
+   // Recorded mass properties are populated (not left at StateData's zero defaults).
+   EXPECT_GT(m0, 0.0);
+   EXPECT_GT(Ixx0, 0.0);
+
+   // Propellant burns off: composite mass and transverse inertia both shrink over the flight.
+   EXPECT_LT(mEnd, m0);
+   EXPECT_LT(IxxEnd, Ixx0);
+
+   // After burnout the recorded inertia is frozen: the last two samples are identical.
+   const std::size_t n = states.size();
+   EXPECT_NEAR(states[n - 1].second.inertia(0, 0), states[n - 2].second.inertia(0, 0), 1e-12);
+}

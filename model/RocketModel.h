@@ -21,6 +21,9 @@
 // Not yet
 //#include "model/Stage.h"
 
+// Borrowed handle below; the full Motor type is only needed in RocketModel.cpp.
+namespace model::part { class Motor; }
+
 namespace model
 {
 
@@ -65,6 +68,9 @@ public:
 
    Matrix3 getCompositeInertiaTensor(double t) override;
 
+   /// @brief Record composite mass/CG/inertia at @p t into @p st (Propagatable hook; see StateData).
+   void writeMassProperties(double t, StateData& st) override;
+
    /**
     * @brief getThrust returns current motor thrust
     * @param t current simulation time
@@ -81,9 +87,10 @@ public:
 
 
    /**
-    * @brief getMotorModel
+    * @brief getMotorModel returns a copy of the current motor model (a default MotorModel if none
+    *        is set). Defined in the .cpp -- it needs the complete Motor type.
     */
-   MotorModel getMotorModel() { return mm; }
+   MotorModel getMotorModel();
 
    /**
     * @brief isMotorSet reports whether a motor has been assigned to this rocket. Every
@@ -91,7 +98,7 @@ public:
     *        "a motor is set" signal the GUI uses to gate launching, regardless of source.
     * @return true once setMotorModel() has been called
     */
-   bool isMotorSet() const { return motorSet; }
+   bool isMotorSet() const { return motorPart != nullptr; }
 
    /**
     * @brief Returns the current motor model.
@@ -117,10 +124,11 @@ public:
    void setReferenceArea(double a) { if(a >= 0.0) referenceArea = a; }
 
    /**
-    * @brief setMass sets the structural (non-motor) mass by delegating to the top part's OWN mass.
-    *        getMass() reports the composite (top part + children), so this round-trips exactly only
-    *        while the top part is childless; with children it sets the top part's own mass. See
-    *        TODO.md P2 for the eventual composite-aware GUI mass story.
+    * @brief setMass sets the structural (dry) airframe mass = the top part's OWN mass. This is an
+    *        honest, clean split now that the motor lives in a Motor child: getMass(t) reports the
+    *        composite (airframe-own mass + motor(t) + any future structural children), while setMass
+    *        writes only the airframe-own term -- no motor, no double-count, no distribution. A future
+    *        per-part mass editor would call Part::setMass on a findById-located node.
     * @param m mass in kg. Non-positive values are ignored because getMass() is the
     *          ODE divisor in the propagator and a zero mass would divide by zero.
     */
@@ -130,14 +138,19 @@ private:
 
    std::string name; /// Rocket name
 
-   model::MotorModel mm; /// Current Motor Model
+   /// Borrowed (non-owning) handle to the motor node; the owning shared_ptr lives in topPart's
+   /// childParts. Valid for the RocketModel's lifetime (the node is never detached). nullptr = no
+   /// motor set. RocketModel is only ever held via shared_ptr (QtRocket::getRocket()), never
+   /// value-copied, so this never dangles; if deep-copy is ever needed, re-resolve via findById.
+   part::Motor* motorPart{nullptr};
 
-   /// True once a motor has been assigned via setMotorModel(). The default rocket has none.
-   bool motorSet{false};
+   /// Body-frame offset of the motor CM relative to the airframe (topPart) CM. Zero today
+   /// (numerically identical to the pre-tree behaviour); GUI-driven geometry lands in P2/P5.
+   Vector3 motorOffset{Vector3::Zero()};
 
-   /// Top of the part tree -- a polymorphic Part handle (a HollowSphere today). shared_ptr matches
-   /// the childParts convention in Part and keeps RocketModel copyable. getMass(), setMass(), and
-   /// getInertiaTensor() all delegate to it.
+   /// Top of the part tree -- a polymorphic Part handle. shared_ptr matches the childParts
+   /// convention in Part and keeps RocketModel copyable. getMass(), setMass(),
+   /// getCompositeInertiaTensor(), and the motor child all hang off it.
    std::shared_ptr<model::part::Part> topPart;
 
    /// Dimensionless drag coefficient consumed by the drag term in getForces().

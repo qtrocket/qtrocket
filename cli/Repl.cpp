@@ -93,7 +93,7 @@ bool parseDouble(std::istringstream& iss, double& out)
 // stride > 1 keeps only every stride-th sample.
 void writeCsv(std::ostream& os, const StateSeries& states, int stride)
 {
-   os << "t,x,y,z,vx,vy,vz\n";
+   os << "t,x,y,z,vx,vy,vz,mass,cg_x,cg_y,cg_z,Ixx,Iyy,Izz\n";
    os << std::setprecision(9);
    int i = 0;
    for(const auto& [t, s] : states)
@@ -101,7 +101,10 @@ void writeCsv(std::ostream& os, const StateSeries& states, int stride)
       if(stride > 1 && (i++ % stride) != 0)
          continue;
       os << t << ',' << s.position[0] << ',' << s.position[1] << ',' << s.position[2]
-         << ',' << s.velocity[0] << ',' << s.velocity[1] << ',' << s.velocity[2] << '\n';
+         << ',' << s.velocity[0] << ',' << s.velocity[1] << ',' << s.velocity[2]
+         << ',' << s.mass
+         << ',' << s.cg[0] << ',' << s.cg[1] << ',' << s.cg[2]
+         << ',' << s.inertia(0, 0) << ',' << s.inertia(1, 1) << ',' << s.inertia(2, 2) << '\n';
    }
 }
 

@@ -110,6 +110,9 @@ void Propagator::runUntilTerminate()
             object->updateTrajectoryStatistics(currentTime, nextState);
             if(saveStates)
             {
+                // Snapshot composite mass/CG/inertia into the recorded state. Uses the gated
+                // accessors, so there is no recompute once the motor has burned out.
+                object->writeMassProperties(currentTime, nextState);
                 object->appendState(currentTime, nextState);
             }
 

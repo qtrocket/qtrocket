@@ -32,6 +32,11 @@ public:
    virtual double getMass(double t) = 0;
    virtual Matrix3 getCompositeInertiaTensor(double t) = 0;
 
+   /// @brief Fill st.mass/cg/inertia with the body's composite mass properties at time t. Intended to be called by
+   ///        the Propagator once per recorded step (before appendState), so the trajectory carries
+   ///        mass/CG/I(t).
+   virtual void writeMassProperties(double t, StateData& st) = 0;
+
    virtual bool terminateCondition(double t) = 0;
 
    void setCurrentState(const StateData& st) { currentState = st; }

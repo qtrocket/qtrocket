@@ -43,6 +43,7 @@ public:
    Vector3 getTorques(double) override { return Vector3{0.0, 0.0, 0.0}; }
    double getMass(double) override { return mass; }
    Matrix3 getCompositeInertiaTensor(double) override { return Matrix3::Identity(); }
+   void writeMassProperties(double, StateData&) override {}
 
    // Mirror RocketModel: nominal end of flight is descending below the launch site.
    bool terminateCondition(double) override

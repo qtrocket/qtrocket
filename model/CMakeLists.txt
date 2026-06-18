@@ -7,6 +7,8 @@ add_library(model
    parts/Part.h
    parts/HollowSphere.cpp
    parts/HollowSphere.h
+   parts/Motor.cpp
+   parts/Motor.h
    parts/Parts.h
    Propagatable.cpp
    Propagatable.h

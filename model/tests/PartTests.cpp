@@ -103,8 +103,8 @@ TEST(HollowSphereTest, MassAndCompositeInertiaMatchClosedForm)
    EXPECT_NEAR(sphere.getMass(0.0), expectedMass, 1e-12);
    EXPECT_NEAR(sphere.getVolume(), expectedMass / density, 1e-15);
 
-   // getCompositeI() is the full, mass-weighted tensor (kg*m^2).
-   const Matrix3 I = sphere.getCompositeI();
+   // getCompositeI(0.0) is the full, mass-weighted tensor (kg*m^2).
+   const Matrix3 I = sphere.getCompositeI(0.0);
    const double expectedDiag = expectedHollowSphereInertiaDiagonal(ri, ro, density);
    EXPECT_NEAR(I(0, 0), expectedDiag, 1e-12);
    EXPECT_NEAR(I(1, 1), expectedDiag, 1e-12);
@@ -114,7 +114,7 @@ TEST(HollowSphereTest, MassAndCompositeInertiaMatchClosedForm)
    EXPECT_DOUBLE_EQ(I(0, 2), 0.0);
    EXPECT_DOUBLE_EQ(I(1, 2), 0.0);
 
-   // getI() is per-unit-mass, so getCompositeI() == mass * getI().
+   // getI() is per-unit-mass, so getCompositeI(0.0) == mass * getI().
    EXPECT_NEAR(I(0, 0), expectedMass * sphere.getI()(0, 0), 1e-12);
 }
 
@@ -127,9 +127,9 @@ TEST(HollowSphereTest, ReducesToSolidSphereWhenInnerRadiusZero)
 
    const double mass = sphere.getMass(0.0);
    // Solid sphere: I = (2/5) m ro^2 on each axis.
-   EXPECT_NEAR(sphere.getCompositeI()(0, 0), mass * (2.0 / 5.0) * ro * ro, 1e-12);
+   EXPECT_NEAR(sphere.getCompositeI(0.0)(0, 0), mass * (2.0 / 5.0) * ro * ro, 1e-12);
    // ... which is exactly mass * InertiaTensors::SolidSphere(ro).
-   EXPECT_NEAR(sphere.getCompositeI()(0, 0),
+   EXPECT_NEAR(sphere.getCompositeI(0.0)(0, 0),
                mass * model::InertiaTensors::SolidSphere(ro)(0, 0), 1e-12);
 }
 
@@ -143,11 +143,11 @@ TEST(HollowSphereTest, RejectsNonPhysicalGeometry)
 TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
 {
    // The bare tensor is per-unit-mass; the composite is full (mass * per-mass). With mass = 2.0 and
-   // SolidSphere(1.0) = 0.4 on the diagonal, getI() = 0.4 but getCompositeI() = 0.8 -- this would be
+   // SolidSphere(1.0) = 0.4 on the diagonal, getI() = 0.4 but getCompositeI(0.0) = 0.8 -- this would be
    // 0.4 if Part stored the tensor un-weighted, so it locks the mass multiply in.
    model::part::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
    EXPECT_DOUBLE_EQ(part.getI()(0, 0), 0.4);
-   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8);
+   EXPECT_DOUBLE_EQ(part.getCompositeI(0.0)(0, 0), 0.8);
 }
 
 namespace
@@ -186,7 +186,7 @@ TEST(PartCompositionTest, PointMassPairCompositeCmIsMassWeightedMidpoint)
    auto parent = pointMass("parent", mp);
    parent->addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
 
-   const Vector3 cm = parent->getCompositeCm();
+   const Vector3 cm = parent->getCompositeCm(0.0);
    EXPECT_NEAR(cm(0), mc * L / (mp + mc), 1e-12); // = 2.4
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
    EXPECT_NEAR(cm(2), 0.0, 1e-12);
@@ -204,7 +204,7 @@ TEST(PartCompositionTest, PointMassPairInertiaIsAboutCompositeCmNotParentCm)
 
    const double mu = mp * mc / (mp + mc);
    const double expected = mu * L * L; // 19.2
-   const Matrix3 I = parent->getCompositeI();
+   const Matrix3 I = parent->getCompositeI(0.0);
    EXPECT_NEAR(I(0, 0), 0.0, 1e-12);       // along the joining line
    EXPECT_NEAR(I(1, 1), expected, 1e-12);
    EXPECT_NEAR(I(2, 2), expected, 1e-12);
@@ -238,9 +238,9 @@ TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
    for(int i = 0; i < 3; ++i) transverse += m[i] * (x[i] - xc) * (x[i] - xc);
 
    EXPECT_NEAR(root->getCompositeMass(0.0), M, 1e-12);
-   EXPECT_NEAR(root->getCompositeCm()(0), xc, 1e-12);
+   EXPECT_NEAR(root->getCompositeCm(0.0)(0), xc, 1e-12);
 
-   const Matrix3 I = root->getCompositeI();
+   const Matrix3 I = root->getCompositeI(0.0);
    EXPECT_NEAR(I(0, 0), 0.0, 1e-12);
    EXPECT_NEAR(I(1, 1), transverse, 1e-12);
    EXPECT_NEAR(I(2, 2), transverse, 1e-12);
@@ -255,14 +255,14 @@ TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
 
    auto copy = body->clone();
    const double massBefore = copy->getCompositeMass(0.0);
-   const double iyyBefore = copy->getCompositeI()(1, 1);
+   const double iyyBefore = copy->getCompositeI(0.0)(1, 1);
 
    // Mutate the original every which way.
    body->setMass(99.0);
    body->addChildPart(pointMass("extra", 50.0), Vector3{1.0, 0.0, 0.0});
 
    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
-   EXPECT_DOUBLE_EQ(copy->getCompositeI()(1, 1), iyyBefore);
+   EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(1, 1), iyyBefore);
 
    // Type preserved: the clone is still a HollowSphere, not a sliced base Part.
    EXPECT_NE(dynamic_cast<model::part::HollowSphere*>(copy.get()), nullptr);
@@ -271,16 +271,16 @@ TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
 TEST(PartCompositionTest, SetMassAndSetIInvalidateCompositeCache)
 {
    // setMass() and setI() must flag the composite cache stale; before the fix setI() did not, so a
-   // later getCompositeI() returned a value computed from the old tensor.
+   // later getCompositeI(0.0) returned a value computed from the old tensor.
    model::part::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
-   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 0.8); // 2.0 * 0.4
+   EXPECT_DOUBLE_EQ(part.getCompositeI(0.0)(0, 0), 0.8); // 2.0 * 0.4
 
    part.setMass(4.0);
    EXPECT_DOUBLE_EQ(part.getCompositeMass(0.0), 4.0);
-   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 1.6); // 4.0 * 0.4 -- setMass invalidated the cache
+   EXPECT_DOUBLE_EQ(part.getCompositeI(0.0)(0, 0), 1.6); // 4.0 * 0.4 -- setMass invalidated the cache
 
    part.setI(model::InertiaTensors::SolidSphere(2.0)); // per-unit-mass diagonal 0.4 * 4 = 1.6
-   EXPECT_DOUBLE_EQ(part.getCompositeI()(0, 0), 6.4);   // 4.0 * 1.6 -- setI invalidated the cache
+   EXPECT_DOUBLE_EQ(part.getCompositeI(0.0)(0, 0), 6.4);   // 4.0 * 1.6 -- setI invalidated the cache
 }
 
 namespace
@@ -321,12 +321,12 @@ TEST(PartCompositionTest, TwoTubesEndToEndEqualOneLongerTube)
    EXPECT_NEAR(assembly->getCompositeMass(0.0), totalMass, 1e-12);
 
    // Merged center is L2/2 beyond tube 1's own center (relative to tube 1's CM).
-   const Vector3 cm = assembly->getCompositeCm();
+   const Vector3 cm = assembly->getCompositeCm(0.0);
    EXPECT_NEAR(cm(0), 0.0, 1e-12);
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
    EXPECT_NEAR(cm(2), L2 / 2.0, 1e-12);
 
-   expectMatchesSingleTube(assembly->getCompositeI(), ri, ro, totalLength, totalMass);
+   expectMatchesSingleTube(assembly->getCompositeI(0.0), ri, ro, totalLength, totalMass);
 }
 
 TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
@@ -349,12 +349,12 @@ TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
    EXPECT_NEAR(assembly->getCompositeMass(0.0), totalMass, 1e-12);
 
    // Merged center is (L2 + L3)/2 beyond tube 1's own center (relative to tube 1's CM).
-   const Vector3 cm = assembly->getCompositeCm();
+   const Vector3 cm = assembly->getCompositeCm(0.0);
    EXPECT_NEAR(cm(0), 0.0, 1e-12);
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
    EXPECT_NEAR(cm(2), (L2 + L3) / 2.0, 1e-12);
 
-   expectMatchesSingleTube(assembly->getCompositeI(), ri, ro, totalLength, totalMass);
+   expectMatchesSingleTube(assembly->getCompositeI(0.0), ri, ro, totalLength, totalMass);
 }
 
 TEST(PartCompositionTest, PartsHaveUniqueIdsAndCloneGetsAFreshId)
@@ -409,7 +409,7 @@ TEST_F(PartCompositionAccess, AdoptedChildIsReparentedAndDirtyPropagates)
    EXPECT_EQ(parentOf(*grandchild), child.get());
 
    // Dirtying the deepest node must propagate up to root through those parent pointers.
-   root->getCompositeI(); // clean the whole tree
+   root->getCompositeI(0.0); // clean the whole tree
    EXPECT_FALSE(isDirty(*root));
    grandchild->setMass(5.0); // walks up: grandchild -> child -> root
    EXPECT_TRUE(isDirty(*root));

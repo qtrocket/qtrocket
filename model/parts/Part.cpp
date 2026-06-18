@@ -5,6 +5,7 @@
 // C++ headers
 #include <atomic>
 #include <cstdint>
+#include <utility>
 /// \endcond
 
 namespace model::part
@@ -67,17 +68,6 @@ Part::Part(const Part& orig)
      childParts()
 { }
 
-double Part::getChildMasses(double t)
-{
-   double childMasses{0.0};
-   for(const auto& i : childParts)
-   {
-      childMasses += std::get<0>(i)->getMass(t);
-   }
-   return childMasses;
-
-}
-
 void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
 {
    if(!child)
@@ -109,7 +99,7 @@ void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
 
    // Don't fold the child in incrementally; just flag this part and every ancestor dirty. The
    // composite mass/CM/inertia are rebuilt lazily (and correctly, about the composite CM) by
-   // recomputeInertiaTensor() on the next composite read.
+   // computeCompositeAt() on the next composite read.
    markAsNeedsRecomputing();
 }
 
@@ -132,48 +122,84 @@ std::shared_ptr<Part> Part::clone() const
    return copy;
 }
 
-void Part::recomputeInertiaTensor()
+double Part::getCompositeMass(double t)
 {
-   if(!needsRecomputing)
-   {
-      return;
-   }
-
-   // Pass 1: refresh children and accumulate composite mass + composite CM. Everything is in this
-   // part's own-CM frame, where this part's own CM sits at the origin. A child's composite CM in
-   // this frame is (pos + child->compositeCm): pos is parent-CM -> child-own-CM, and the child's
-   // compositeCm is child-own-CM -> child-subtree-CM.
-   compositeMass = mass;
-   Vector3 weightedPos = Vector3::Zero(); // sum of childMass * (pos + child->compositeCm)
+   // Cheap, LIVE mass-only sum: this node plus every descendant. The ODE divisor AND the gate key
+   // for getCompositeI(t); deliberately does no tensor work.
+   double m = getMass(t);
    for(auto& [child, pos] : childParts)
    {
-      child->recomputeInertiaTensor(); // child's cached composite quantities are valid afterwards
-      compositeMass += child->compositeMass;
-      weightedPos += child->compositeMass * (pos + child->compositeCm);
+      m += child->getCompositeMass(t);
+   }
+   return m;
+}
+
+void Part::ensureCompositeCache(double t)
+{
+   // Mass-delta gate. needsRecomputing (a structural edit: addChildPart/setMass/setI) is checked
+   // first and always rebuilds. Otherwise rebuild only when the composite mass moved since the cache
+   // was last built -- so the tensor and CM recompute every step while a motor burns and FREEZE once
+   // mass is constant (post-burnout getMass returns the bit-identical empty mass, so mNow ==
+   // builtAtCompositeMass exactly). The NaN sentinel makes the very first call always build.
+   const double mNow = getCompositeMass(t);
+   if(needsRecomputing || mNow != builtAtCompositeMass)
+   {
+      const CompositeProperties c = computeCompositeAt(t);
+      compositeMass          = c.mass;
+      compositeCm            = c.cm;
+      compositeInertiaTensor = c.inertia;
+      builtAtCompositeMass   = mNow;
+      needsRecomputing       = false;
+   }
+}
+
+Vector3 Part::getCompositeCm(double t)
+{
+   ensureCompositeCache(t);
+   return compositeCm;
+}
+
+Matrix3 Part::getCompositeI(double t)
+{
+   ensureCompositeCache(t);
+   return compositeInertiaTensor;
+}
+
+Part::CompositeProperties Part::computeCompositeAt(double t)
+{
+   // Pass 1: composite mass + CM at t, evaluated LIVE from getMass(t). Everything is in this part's
+   // own-CM frame (its own CM at the origin); a child's composite CM in this frame is
+   // (pos + child subtree CM). Capture this node's own mass once -- getMass(t) may scan a curve.
+   const double selfMass = getMass(t);
+   double m = selfMass;
+   Vector3 weighted = Vector3::Zero();                        // sum of subtreeMass * (pos + subtree CM)
+   std::vector<std::pair<Vector3, CompositeProperties>> kids; // (attach pos, child composite) for pass 2
+   kids.reserve(childParts.size());
+   for(auto& [child, pos] : childParts)
+   {
+      CompositeProperties cc = child->computeCompositeAt(t);
+      m        += cc.mass;
+      weighted += cc.mass * (pos + cc.cm);
+      kids.emplace_back(pos, cc);
    }
    // Guard the divide: a fully massless subtree has no meaningful CM, so leave it at the origin.
-   compositeCm = Vector3::Zero();
-   if(compositeMass > 0.0)
+   Vector3 cm = Vector3::Zero();
+   if(m > 0.0)
    {
-      compositeCm = weightedPos / compositeMass;
+      cm = weighted / m;
    }
 
-   // Pass 2: inertia about the composite CM. Shift this part's own tensor (about its own CM at the
-   // origin) and each child's composite tensor (about that child's subtree CM) to the composite CM
-   // via the parallel-axis theorem. Shifting from each body's true CM -- not from an intermediate
-   // point -- is what makes this correct at every tree depth.
-   compositeInertiaTensor = mass * inertiaTensor + mass * parallelAxisTerm(compositeCm);
-   for(auto& [child, pos] : childParts)
+   // Pass 2: inertia about the composite CM. Shift this part's own tensor (mass-weighted at t) and
+   // each child's composite tensor (about that child's subtree CM) to the composite CM via the
+   // parallel-axis theorem -- the same math as before, now driven by getMass(t).
+   Matrix3 I = selfMass * inertiaTensor + selfMass * parallelAxisTerm(cm);
+   for(const auto& [pos, cc] : kids)
    {
-      const Vector3 d = (pos + child->compositeCm) - compositeCm; // child subtree CM -> composite CM
-      compositeInertiaTensor += child->compositeInertiaTensor
-                                + child->compositeMass * parallelAxisTerm(d);
+      const Vector3 d = (pos + cc.cm) - cm; // child subtree CM -> composite CM
+      I += cc.inertia + cc.mass * parallelAxisTerm(d);
    }
 
-   needsRecomputing = false;
-   // No upward recursion here: propagating "dirty" up the tree is markAsNeedsRecomputing()'s job,
-   // and reads recompute lazily downward from whatever node is queried. An ancestor that needs a
-   // fresh value is already flagged dirty and will recompute itself on its next read.
+   return CompositeProperties{m, cm, I};
 }
 
 Part* Part::findById(Id targetId)
