@@ -183,23 +183,23 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
       kids.emplace_back(pos, cc);
    }
    // Guard the divide: a fully massless subtree has no meaningful CM, so leave it at the origin.
-   Vector3 cm = Vector3::Zero();
+   Vector3 temp_cm = Vector3::Zero();
    if(m > 0.0)
    {
-      cm = weighted / m;
+      temp_cm = weighted / m;
    }
 
    // Pass 2: inertia about the composite CM. Shift this part's own tensor (mass-weighted at t) and
    // each child's composite tensor (about that child's subtree CM) to the composite CM via the
    // parallel-axis theorem -- the same math as before, now driven by getMass(t).
-   Matrix3 I = selfMass * inertiaTensor + selfMass * parallelAxisTerm(cm);
+   Matrix3 I = selfMass * inertiaTensor + selfMass * parallelAxisTerm(temp_cm);
    for(const auto& [pos, cc] : kids)
    {
-      const Vector3 d = (pos + cc.cm) - cm; // child subtree CM -> composite CM
+      const Vector3 d = (pos + cc.cm) - temp_cm; // child subtree CM -> composite CM
       I += cc.inertia + cc.mass * parallelAxisTerm(d);
    }
 
-   return CompositeProperties{m, cm, I};
+   return CompositeProperties{m, temp_cm, I};
 }
 
 Part* Part::findById(Id targetId)
