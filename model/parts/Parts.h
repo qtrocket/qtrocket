@@ -6,6 +6,9 @@
 // one file instead of every use site.
 
 #include "model/parts/HollowSphere.h"
+#include "model/parts/ConicalNoseCone.h"
+#include "model/parts/BodyTube.h"
+#include "model/parts/FinSet.h"
 #include "model/parts/Motor.h"
 
 #endif // MODEL_PARTS_PARTS_H

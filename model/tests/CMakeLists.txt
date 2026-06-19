@@ -4,6 +4,11 @@ add_executable(model_tests
    MotorTests.cpp
    ThrustCurveTests.cpp
    ThrustCurveParserTests.cpp
+   InertiaTensorsTests.cpp
+   BodyTubeTests.cpp
+   NoseConeTests.cpp
+   FinSetTests.cpp
+   AeroTests.cpp
 )
 
 target_link_libraries(model_tests PRIVATE

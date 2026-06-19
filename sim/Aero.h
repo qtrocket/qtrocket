@@ -14,29 +14,57 @@
 namespace sim
 {
 
-class Aero
+/**
+ * @brief One part's Barrowman contribution, all referenced to a SHARED rocket reference area so the
+ *        pieces are directly additive. Stores the CNalpha-WEIGHTED moment (cnAlphaXcp) rather than a
+ *        raw x_cp, so composing CP is literal field addition and a zero-lift body (CNalpha == 0)
+ *        drops out of the CP weighted-average automatically with no special case.
+ *
+ * Datum: x_cp is measured from the PART'S OWN CM along +z. The composite walk
+ * (Part::getCompositeAero) re-expresses every part onto one shared datum -- the root part's CM,
+ * the same datum as Part::getCompositeCm -- so the composite cp() and cg() are directly comparable
+ * (P5 static margin = cp() - cg()). The per-part Barrowman x_cp formulas (cone CP 2/3 L from the
+ * tip, fin CP from the root LE) are converted to this CM datum inside each getAero override.
+ *
+ * NOTE(P6): roll/pitch/yaw moment coefficients (Cl/Cm/Cn) are intentionally NOT modeled here yet;
+ * they are derived at P6 from CNalpha and the CP-CG lever, not stored per part.
+ */
+struct AeroComponent
 {
-public:
-   Aero();
-
-   ~Aero();
-private:
-/*
-   Vector3 cp; /// center of pressure
-
-   double Cx; /// longitudinal coefficient
-   double Cy; /// These are probably the same for axial symmetric
-   double Cz; /// rockets. The coeffients in the y and z body directions
-
-   double Cl; // roll moment coefficient
-   double Cm; // pitch moment coefficient
-   double Cn; // yaw moment coefficient
-
-   double baseCd; // coefficient of drag due to base drag
-   double Cd; // total coeffient of drag
-*/
-   
+   double cnAlpha{0.0};      ///< normal-force-coeff slope (per rad), referenced to the shared refArea
+   double cnAlphaXcp{0.0};   ///< cnAlpha * x_cp (axial CP station from the part's CM, m) -- the weighted moment
+   double cd{0.0};           ///< this part's drag-coeff contribution, already normalized to refArea
 };
-}
+
+/**
+ * @brief The assembled whole-rocket aero profile. cnAlpha and cnAlphaXcp add over parts; cd adds.
+ *        cp() is the CNalpha-weighted CP; cpValid guards the body-only case where cnAlpha == 0.
+ */
+struct AeroProfile
+{
+   double cnAlpha{0.0};
+   double cnAlphaXcp{0.0};
+   double cd{0.0};
+   double refArea{0.0};
+   bool   cpValid{false};      ///< false when cnAlpha == 0 (CP undefined; e.g. body tube only)
+
+   double cp() const { return cpValid ? cnAlphaXcp / cnAlpha : 0.0; } ///< axial CP from the root CM (m)
+
+   AeroProfile& operator+=(const AeroComponent& c)
+   {
+      cnAlpha += c.cnAlpha;
+      cnAlphaXcp += c.cnAlphaXcp;
+      cd += c.cd;
+      cpValid = (cnAlpha != 0.0);
+      return *this;
+   }
+};
+
+/// @brief Back-compat alias: model::Propagatable still holds a default-constructed, unread
+///        `sim::Aero aeroData` member. Keeping the name complete and default-constructible lets that
+///        member stay untouched while the seam itself is the AeroComponent/AeroProfile value types.
+using Aero = AeroProfile;
+
+} // namespace sim
 
 #endif // SIM_AERO_H

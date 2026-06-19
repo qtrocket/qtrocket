@@ -118,10 +118,25 @@ public:
 
    double getReferenceArea() { return referenceArea; }
    /**
-    * @brief setReferenceArea sets the aerodynamic reference (frontal) area.
+    * @brief setReferenceArea sets the aerodynamic reference (frontal) area, marking it a MANUAL
+    *        override that wins over the geometry-derived default (deriveReferenceAreaFromGeometry).
     * @param a area in m^2. Negative values are ignored as unphysical
     */
-   void setReferenceArea(double a) { if(a >= 0.0) referenceArea = a; }
+   void setReferenceArea(double a) { if(a >= 0.0) { referenceArea = a; referenceAreaOverridden = true; } }
+
+   /// @brief Whether setReferenceArea() has set a manual reference area (which then wins over the
+   ///        geometry-derived default). Lets the geometry default apply only when not overridden.
+   bool isReferenceAreaOverridden() const { return referenceAreaOverridden; }
+
+   /**
+    * @brief Rocket reference (frontal) area derived from geometry: the single widest frontal disc in
+    *        the part tree (the max part getReferenceArea() -- Barrowman/OpenRocket convention), NOT a
+    *        sum of part areas (which would multiply-count the silhouette) and NOT inflated by fins
+    *        (a FinSet reports the body disc, not its rb+s tip extent). Returns 0 for the placeholder
+    *        body (no frontal disc), so P2 trajectories are unaffected.
+    *        NOTE(P3/P5): seed referenceArea from this once an airframe is assembled and not overridden.
+    */
+   double deriveReferenceAreaFromGeometry() const;
 
    /**
     * @brief setMass sets the structural (dry) airframe mass = the top part's OWN mass. This is an
@@ -159,6 +174,10 @@ private:
    /// Aerodynamic reference (frontal) area in m^2 for the drag model. Default is
    /// ~ a 38 mm body tube (pi * 0.019^2)
    double referenceArea{1.134e-3};
+
+   /// True once setReferenceArea() set a user value; the geometry-derived default
+   /// (deriveReferenceAreaFromGeometry) then defers to that manual override.
+   bool referenceAreaOverridden{false};
 
 };
 

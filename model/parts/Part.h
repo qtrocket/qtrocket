@@ -13,6 +13,7 @@
 /// \endcond
 
 // qtrocket headers
+#include "sim/Aero.h"
 #include "utils/math/MathTypes.h"
 
 namespace model::part
@@ -86,6 +87,12 @@ public:
    /// @brief Get the per-unit-mass (geometric) inertia tensor (m^2). @see getCompositeI()
    virtual Matrix3 getI() { return inertiaTensor; }
 
+   /// @brief This part's center of mass relative to the middle of the component (the `cm` member).
+   ///        Zero for the centrally-symmetric parts; non-zero for a cone (its CM is L/4 or L/3 from
+   ///        the base, not at mid-length). NOT consumed by the composition math -- child positions
+   ///        are CM-to-CM -- but exposed so an assembler/GUI can place an off-center part correctly.
+   Vector3 getCenterMassOffset() const { return cm; }
+
    /// @brief The composite mass, CM (== CG), and full inertia tensor of a sub-tree at one instant,
    ///        produced together by one walk (they are only meaningful together: the CM is the point
    ///        the inertia tensor is taken about).
@@ -135,6 +142,44 @@ public:
     * stage-time queries. CG (getCompositeCm) and this tensor come from one walk and never disagree.
     */
    virtual Matrix3 getCompositeI(double t);
+
+   /**
+    * @brief This part's Barrowman aero contribution, normalized to the shared rocket reference area
+    *        @p refArea. Default = aerodynamically inert (HollowSphere, Motor, BodyTube need no
+    *        override beyond CNalpha=0). x_cp is reported from this part's OWN CM (see
+    *        sim::AeroComponent); the composite walk shares one datum from there. Pure function of
+    *        geometry; NOT stored (no staleness, no -Werror field).
+    */
+   virtual sim::AeroComponent getAero(double refArea [[maybe_unused]]) const { return {}; }
+
+   /**
+    * @brief Assemble the composite Barrowman profile over this sub-tree, normalized to @p refArea.
+    *        Folds each part's getAero(refArea) by the additive AeroComponent rule (CNalpha and the
+    *        CNalpha-weighted moment add; Cd adds), threading each part's axial station (cumulative
+    *        z from child @p position offsets, which are CM-to-CM) so every x_cp shares ONE datum:
+    *        this root part's CM -- the same datum as getCompositeCm(), so the composite cp() and
+    *        cg() are directly comparable (P5 static margin = cp() - cg()).
+    *
+    *        A SEPARATE pass from computeCompositeAt(t): it does NOT touch the mass-delta-gated
+    *        inertia cache (aero invalidation is Mach/Re, not t) and reads no time-varying state.
+    *        NOTE(P5): RocketModel::getForces will consume this; nothing consumes it in P2.
+    */
+   sim::AeroProfile getCompositeAero(double refArea) const;
+
+   /**
+    * @brief This part's own aerodynamic reference (frontal) area (m^2); 0 for a part that presents
+    *        no frontal disc (the default). Overridden by parts with a real cross-section.
+    *        @see maxFrontalReferenceArea
+    */
+   virtual double getReferenceArea() const { return 0.0; }
+
+   /**
+    * @brief The single largest getReferenceArea() over this part and all descendants (m^2) -- the
+    *        widest frontal disc in the sub-tree. This is the Barrowman/OpenRocket rocket reference
+    *        area: the max frontal disc, NOT a sum (which would multiply-count one silhouette) and NOT
+    *        inflated by fins (a FinSet reports the body disc, not its rb+s tip extent).
+    */
+   double maxFrontalReferenceArea() const;
 
    /**
     * @brief This part's unique identifier (unique within the process run, even across copies and
@@ -205,6 +250,11 @@ private:
    ///        composite mass and CM from getMass(t); pass 2 sums the parallel-axis-shifted child
    ///        tensors about that CM. CG and the tensor therefore come from ONE walk.
    CompositeProperties computeCompositeAt(double t);
+
+   /// @brief Recursive worker for getCompositeAero. Folds this part's getAero(refArea) into @p out
+   ///        after shifting its CM-relative x_cp by @p axialStation (this part's CM offset from the
+   ///        root CM, accumulated from child @p position z-offsets), then recurses into children.
+   void accumulateAeroAt(sim::AeroProfile& out, double refArea, double axialStation) const;
 
    /// @brief Mass-delta gate: (re)build the cached compositeCm/compositeInertiaTensor via
    ///        computeCompositeAt(t) iff structurally dirty OR the composite mass moved since the last

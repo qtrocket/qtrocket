@@ -3,6 +3,7 @@
 
 /// \cond
 // C++ headers
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <utility>
@@ -200,6 +201,38 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
    }
 
    return CompositeProperties{m, cm, I};
+}
+
+sim::AeroProfile Part::getCompositeAero(double refArea) const
+{
+   sim::AeroProfile profile;
+   profile.refArea = refArea;
+   accumulateAeroAt(profile, refArea, 0.0); // the root part's CM is the shared datum (station 0)
+   return profile;
+}
+
+void Part::accumulateAeroAt(sim::AeroProfile& out, double refArea, double axialStation) const
+{
+   // getAero reports x_cp from THIS part's CM; shift it to the shared root-CM datum by adding
+   // cnAlpha * axialStation to the weighted moment before folding in. A zero-CNalpha part contributes
+   // nothing to either the moment or the (CNalpha-weighted) CP average -- exactly the body-tube case.
+   const sim::AeroComponent c = getAero(refArea);
+   out += sim::AeroComponent{c.cnAlpha, c.cnAlphaXcp + c.cnAlpha * axialStation, c.cd};
+   for(const auto& [child, pos] : childParts)
+   {
+      // pos is the child CM relative to this part's CM; thread its axial (z) offset down the tree.
+      child->accumulateAeroAt(out, refArea, axialStation + pos.z());
+   }
+}
+
+double Part::maxFrontalReferenceArea() const
+{
+   double maxArea = getReferenceArea();
+   for(const auto& [child, pos] : childParts)
+   {
+      maxArea = std::max(maxArea, child->maxFrontalReferenceArea());
+   }
+   return maxArea;
 }
 
 Part* Part::findById(Id targetId)

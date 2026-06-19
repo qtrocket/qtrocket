@@ -31,6 +31,14 @@ Matrix3 RocketModel::getCompositeInertiaTensor(double t)
     return topPart->getCompositeI(t); // time-aware full mass-weighted inertia tensor about the CG at t
 }
 
+double RocketModel::deriveReferenceAreaFromGeometry() const
+{
+    // The widest frontal disc in the part tree (max part getReferenceArea()) -- the single-disc
+    // Barrowman/OpenRocket convention, not a sum, and not inflated by fins. The placeholder body has
+    // no frontal disc (returns 0), so this changes nothing until a real airframe is assembled.
+    return topPart->maxFrontalReferenceArea();
+}
+
 void RocketModel::writeMassProperties(double t, StateData& st)
 {
    // Snapshot composite mass/CG/inertia via the GATED accessors, so after burnout this reads the
@@ -74,6 +82,8 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
     const double altitude = position[2] > 0.0 ? position[2] : 0.0;
     const double rho = atmosphere->getDensity(altitude);
     const double speed = velocity.norm();
+    // NOTE(P5): consume topPart->getCompositeAero(referenceArea).cd here (manual dragCoefficient
+    // wins); referenceArea will default to deriveReferenceAreaFromGeometry() unless overridden.
     const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
     forces += drag;
 

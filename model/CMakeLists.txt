@@ -7,6 +7,12 @@ add_library(model
    parts/Part.h
    parts/HollowSphere.cpp
    parts/HollowSphere.h
+   parts/ConicalNoseCone.cpp
+   parts/ConicalNoseCone.h
+   parts/BodyTube.cpp
+   parts/BodyTube.h
+   parts/FinSet.cpp
+   parts/FinSet.h
    parts/Motor.cpp
    parts/Motor.h
    parts/Parts.h
@@ -20,6 +26,7 @@ add_library(model
    ThrustCurve.h
    ThrustCurveAPI.cpp
    ThrustCurveAPI.h
+   InertiaTensors.cpp
    InertiaTensors.h)
 
 # sim is a real dependency: Propagatable/RocketModel use sim::Aero and
