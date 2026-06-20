@@ -47,6 +47,8 @@ public:
                    const Vector3& centerMass = {0.0, 0.0, 0.0});
    ~ConicalNoseCone() override = default;
 
+   std::string typeName() const override { return "NoseCone"; }
+
    double getBaseRadius()    const { return baseRadius; }
    double getLength()        const { return length; }
    double getWallThickness() const { return wallThickness; }

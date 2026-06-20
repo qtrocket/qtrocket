@@ -193,6 +193,12 @@ target_link_libraries(qtrocket_core PUBLIC
    sim
    utils)
 
+# The CLI/REPL driver as a static lib, so both qtrocket-cli and the integration tests can drive it.
+add_library(cli STATIC
+   cli/Repl.cpp
+   cli/Repl.h)
+target_link_libraries(cli PUBLIC qtrocket_core)
+
 add_subdirectory(tests)
 
 #target_link_libraries(qtrocket PRIVATE 
@@ -212,11 +218,9 @@ target_link_libraries(qtrocket PRIVATE
 # application controller comes from the qtrocket_core static lib.
 add_executable(qtrocket-cli
     cli/CliMain.cpp
-    cli/Repl.cpp
-    cli/Repl.h
 )
 target_link_libraries(qtrocket-cli PRIVATE
-    qtrocket_core)
+    cli)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

@@ -15,11 +15,15 @@ add_library(model
    parts/FinSet.h
    parts/Motor.cpp
    parts/Motor.h
+   parts/PartFactory.cpp
+   parts/PartFactory.h
    parts/Parts.h
    Propagatable.cpp
    Propagatable.h
    RocketModel.cpp
    RocketModel.h
+   DesignSerializer.cpp
+   DesignSerializer.h
    RSEDatabaseLoader.cpp
    RSEDatabaseLoader.h
    ThrustCurve.cpp

@@ -5,6 +5,8 @@
 // C headers
 // C++ headers
 #include <vector>
+#include <string>
+#include <tuple>
 #include <memory>
 #include <cstdint>
 #include <limits>
@@ -188,6 +190,14 @@ public:
     */
    Id getId() const { return id; }
 
+   /// @brief This part's human-facing name; need NOT be unique (use getId() for identity).
+   std::string getName() const { return name; }
+
+   /// @brief Stable type tag for this part ("NoseCone", "BodyTube", ...); the base returns "Part".
+   ///        Non-pure on purpose so test-only and future Part subclasses need not override it. Doubles
+   ///        as the part-factory key, the design-file <part type=...> attribute, and the listparts label.
+   virtual std::string typeName() const { return "Part"; }
+
    /**
     * @brief Find a part by id within this sub-tree (this part or any descendant).
     * @param targetId id to search for
@@ -195,6 +205,12 @@ public:
     *         part in this sub-tree has @p targetId. Call on the root to search a whole rocket.
     */
    Part* findById(Id targetId);
+
+   /// @brief Read-only view of this part's direct children paired with their CM-to-CM attach
+   ///        positions, in attachment order. Lets an assembler / serializer / CLI walk the tree
+   ///        without owning or mutating it. @see addChildPart for the position convention.
+   const std::vector<std::tuple<std::shared_ptr<Part>, Vector3>>& getChildParts() const
+   { return childParts; }
 
    /**
     * @brief Deep-copy this part and its whole sub-tree into a new, independent tree.
@@ -221,6 +237,19 @@ public:
     *                 parent's center of mass
     */
    virtual void addChildPart(std::shared_ptr<Part> child, Vector3 position);
+
+   /**
+    * @brief Detach the descendant with @p targetId from its owning parent and return it.
+    *
+    * Searches this sub-tree (this part's direct children first, then recursively). On a hit it
+    * unlinks the child from its parent's child list, clears the detached node's parent pointer, and
+    * flags the ex-parent and every ancestor for composite recompute -- so the next composite read
+    * rebuilds even when the removed sub-tree's mass was zero (which the mass-delta cache gate alone
+    * would miss). Returns the now-rootless sub-tree (the caller owns it and may drop it), or nullptr
+    * if no descendant has @p targetId. The root itself has no parent and is never removed by this
+    * call -- replacing the root is the design lifecycle's job (a future RocketModel::setRoot).
+    */
+   std::shared_ptr<Part> removeChildById(Id targetId);
 
 protected:
    /// @brief Shallow node copy for clone()/cloneShallow() ONLY: copies this part's own mass

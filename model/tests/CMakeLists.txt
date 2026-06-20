@@ -9,6 +9,8 @@ add_executable(model_tests
    NoseConeTests.cpp
    FinSetTests.cpp
    AeroTests.cpp
+   PartFactoryTests.cpp
+   RocketModelTests.cpp
 )
 
 target_link_libraries(model_tests PRIVATE

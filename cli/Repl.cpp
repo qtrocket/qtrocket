@@ -25,6 +25,9 @@
 #include "sim/Propagator.h"
 #include "sim/StateData.h"
 #include "model/MotorModelDatabase.h"
+#include "model/parts/Parts.h"
+#include "model/DesignSerializer.h"
+#include "utils/Logger.h"
 
 namespace
 {
@@ -108,6 +111,100 @@ void writeCsv(std::ostream& os, const StateSeries& states, int stride)
    }
 }
 
+// Strict full-string numeric parsers: reject trailing garbage (e.g. "0.5abc") rather than silently
+// truncating it, matching the existing parseDouble's full-consumption check.
+bool parseDoubleStr(const std::string& s, double& out)
+{
+   try { std::size_t pos = 0; out = std::stod(s, &pos); return pos == s.size(); }
+   catch(...) { return false; }
+}
+bool parseUIntStr(const std::string& s, unsigned int& out)
+{
+   try { std::size_t pos = 0; const unsigned long v = std::stoul(s, &pos);
+         if(pos != s.size()) return false; out = static_cast<unsigned int>(v); return true; }
+   catch(...) { return false; }
+}
+bool parseULLStr(const std::string& s, unsigned long long& out)
+{
+   try { std::size_t pos = 0; out = std::stoull(s, &pos); return pos == s.size(); }
+   catch(...) { return false; }
+}
+
+// The PartParams double field for a recognized geometry key, or nullptr if @p key is not one.
+std::optional<double>* doubleFieldFor(const std::string& key, model::part::PartParams& p)
+{
+   if(key == "innerRadius")   return &p.innerRadius;
+   if(key == "outerRadius")   return &p.outerRadius;
+   if(key == "baseRadius")    return &p.baseRadius;
+   if(key == "length")        return &p.length;
+   if(key == "wallThickness") return &p.wallThickness;
+   if(key == "density")       return &p.density;
+   if(key == "rootChord")     return &p.rootChord;
+   if(key == "tipChord")      return &p.tipChord;
+   if(key == "span")          return &p.span;
+   if(key == "sweep")         return &p.sweep;
+   if(key == "thickness")     return &p.thickness;
+   if(key == "bodyRadius")    return &p.bodyRadius;
+   return nullptr;
+}
+
+// Parse remaining "key=value" tokens into a PartParams (geometry keys), the part name ("name"), and
+// the CM-to-CM attach offset ("x"/"y"/"z"). A bad numeric value returns an error string (empty on
+// success); an UNKNOWN key is warned-and-skipped (forward tolerance, per the spec).
+std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& p, Vector3& offset)
+{
+   std::string tok;
+   while(iss >> tok)
+   {
+      const auto eq = tok.find('=');
+      if(eq == std::string::npos)
+         return "expected key=value, got '" + tok + "'";
+      const std::string key = tok.substr(0, eq);
+      const std::string val = tok.substr(eq + 1);
+
+      if(key == "name")  { p.name = val; continue; }
+      if(key == "solid") { p.solid = (val == "true" || val == "1"); continue; }
+      if(key == "finCount")
+      {
+         unsigned int n = 0;
+         if(!parseUIntStr(val, n)) return "bad value for 'finCount': '" + val + "'";
+         p.finCount = n;
+         continue;
+      }
+      if(key == "x" || key == "y" || key == "z")
+      {
+         double d = 0.0;
+         if(!parseDoubleStr(val, d)) return "bad value for '" + key + "': '" + val + "'";
+         if(key == "x")      offset.x() = d;
+         else if(key == "y") offset.y() = d;
+         else                offset.z() = d;
+         continue;
+      }
+      if(std::optional<double>* field = doubleFieldFor(key, p))
+      {
+         double d = 0.0;
+         if(!parseDoubleStr(val, d)) return "bad value for '" + key + "': '" + val + "'";
+         *field = d;
+         continue;
+      }
+      // Unknown key: warn and continue so a newer file/CLI's extra keys don't break an older one.
+      utils::Logger::getInstance()->warn("ignoring unknown design key '" + key + "'");
+   }
+   return "";
+}
+
+// Print one part per line, indented by depth: id / type / name / own-mass at t=0.
+void printPartTree(std::ostream& out, model::part::Part& node, int depth)
+{
+   out << "  ";
+   for(int i = 0; i < depth; ++i)
+      out << "  ";
+   out << "[" << node.getId() << "] " << node.typeName() << " \"" << node.getName() << "\""
+       << "  m=" << node.getMass(0.0) << " kg\n";
+   for(const auto& [child, pos] : node.getChildParts())
+      printPartTree(out, *child, depth + 1);
+}
+
 } // anonymous namespace
 
 namespace cli
@@ -171,6 +268,16 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "#   launch                  run the simulation; print summary + write CSV\n"
           << "#   states [stride]         print state vectors to stdout (every stride-th)\n"
           << "#   save <path.csv>         write the last run's full series to a file\n"
+          << "#   -- design --\n"
+          << "#   newdesign <type> [k=v...]            start a design with a root part\n"
+          << "#   addpart <parentId|root> <type> [k=v...] [z=<m>]   attach a part\n"
+          << "#   listparts               show the part tree + composite mass/CG\n"
+          << "#   removepart <id>         remove a part (and its sub-tree)\n"
+          << "#   cleardesign             reset to the default placeholder body\n"
+          << "#   savedesign <file.qrd>   save the rocket design\n"
+          << "#   loaddesign <file.qrd>   load a rocket design (motor re-resolved by name)\n"
+          << "#   note: part ids reset on reload; launch/atmosphere settings are session\n"
+          << "#         config and are NOT saved in the design file\n"
           << "#   help                    show this help\n"
           << "#   quit | exit             leave\n"
           << "# note: drag uses the active atmosphere's density; select the Vacuum\n"
@@ -655,6 +762,195 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       writeCsv(ofs, states, 1);
       std::error_code ec;
       out << "OK save: " << std::filesystem::absolute(path, ec).string() << "\n";
+      return true;
+   }
+   else if(cmd == "newdesign")
+   {
+      std::string type;
+      if(!(iss >> type))
+      {
+         out << "ERR usage: newdesign <type> [name=..] [geom key=value...]\n";
+         return true;
+      }
+      model::part::PartParams params;
+      Vector3 offset = Vector3::Zero(); // a root has no parent offset; parsed uniformly, then ignored
+      const std::string err = parseDesignTokens(iss, params, offset);
+      if(!err.empty())
+      {
+         out << "ERR newdesign: " << err << "\n";
+         return true;
+      }
+      std::shared_ptr<model::part::Part> root;
+      try
+      {
+         root = model::part::makePart(type, params);
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR newdesign: " << e.what() << "\n";
+         return true;
+      }
+      const auto id = root->getId();
+      qtRocket->getRocket()->setRoot(std::move(root));
+      motorSet = false; // setRoot drops any previously-set motor
+      motorName.clear();
+      out << "OK newdesign: root " << type << " id=" << id << "\n";
+      return true;
+   }
+   else if(cmd == "cleardesign")
+   {
+      qtRocket->getRocket()->clearDesign();
+      motorSet = false;
+      motorName.clear();
+      out << "OK cleardesign: restored the placeholder body\n";
+      return true;
+   }
+   else if(cmd == "addpart")
+   {
+      std::string parentTok, type;
+      if(!(iss >> parentTok) || !(iss >> type))
+      {
+         out << "ERR usage: addpart <parentId|root> <type> [name=..] [geom key=value...] [z=<m>]\n";
+         return true;
+      }
+      auto rocket = qtRocket->getRocket();
+      model::part::Part::Id parentId = 0;
+      if(parentTok == "root")
+      {
+         if(!rocket->getTopPart())
+         {
+            out << "ERR addpart: no design (use newdesign first)\n";
+            return true;
+         }
+         parentId = rocket->getTopPart()->getId();
+      }
+      else
+      {
+         unsigned long long pid = 0;
+         if(!parseULLStr(parentTok, pid))
+         {
+            out << "ERR addpart: bad parent id '" << parentTok << "' (use an id or 'root')\n";
+            return true;
+         }
+         parentId = static_cast<model::part::Part::Id>(pid);
+      }
+      model::part::PartParams params;
+      Vector3 offset = Vector3::Zero();
+      const std::string err = parseDesignTokens(iss, params, offset);
+      if(!err.empty())
+      {
+         out << "ERR addpart: " << err << "\n";
+         return true;
+      }
+      std::shared_ptr<model::part::Part> child;
+      try { child = model::part::makePart(type, params); }
+      catch(const std::exception& e)
+      {
+         out << "ERR addpart: " << e.what() << "\n";
+         return true;
+      }
+      const auto childId = child->getId();
+      if(!rocket->addPart(parentId, std::move(child), offset))
+      {
+         out << "ERR addpart: no part with id " << parentId << " (or the attach was rejected)\n";
+         return true;
+      }
+      out << "OK addpart: " << type << " id=" << childId << " under " << parentId << "\n";
+      return true;
+   }
+   else if(cmd == "listparts")
+   {
+      auto top = qtRocket->getRocket()->getTopPart();
+      if(!top)
+      {
+         out << "ERR listparts: no design\n";
+         return true;
+      }
+      out << "OK listparts:\n";
+      printPartTree(out, *top, 0);
+      out << "  -- composite: mass=" << top->getCompositeMass(0.0)
+          << " kg, cg_z=" << top->getCompositeCm(0.0).z() << " m (t=0)\n";
+      return true;
+   }
+   else if(cmd == "removepart")
+   {
+      std::string idTok;
+      if(!(iss >> idTok))
+      {
+         out << "ERR usage: removepart <id>\n";
+         return true;
+      }
+      unsigned long long idv = 0;
+      if(!parseULLStr(idTok, idv))
+      {
+         out << "ERR removepart: bad id '" << idTok << "'\n";
+         return true;
+      }
+      const model::part::Part::Id id = static_cast<model::part::Part::Id>(idv);
+      auto rocket = qtRocket->getRocket();
+      if(rocket->getTopPart() && id == rocket->getTopPart()->getId())
+      {
+         out << "ERR removepart: cannot remove the root (use newdesign or cleardesign)\n";
+         return true;
+      }
+      auto detached = rocket->removePart(id);
+      if(!detached)
+      {
+         out << "ERR removepart: no part with id " << id << "\n";
+         return true;
+      }
+      if(!rocket->isMotorSet()) // the motor may have been in the removed sub-tree
+         motorSet = false;
+      out << "OK removepart: removed id=" << id << " (" << detached->typeName() << ")\n";
+      return true;
+   }
+   else if(cmd == "savedesign")
+   {
+      const std::string path = restOfLine(iss);
+      if(path.empty())
+      {
+         out << "ERR usage: savedesign <file.qrd>\n";
+         return true;
+      }
+      try
+      {
+         model::DesignSerializer::save(*qtRocket->getRocket(), path);
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR savedesign: " << e.what() << "\n";
+         return true;
+      }
+      out << "OK savedesign: " << path << "\n";
+      return true;
+   }
+   else if(cmd == "loaddesign")
+   {
+      const std::string path = restOfLine(iss);
+      if(path.empty())
+      {
+         out << "ERR usage: loaddesign <file.qrd>\n";
+         return true;
+      }
+      auto rocket = qtRocket->getRocket();
+      try
+      {
+         model::DesignSerializer::load(*rocket, *qtRocket->getMotorDatabase(), path);
+      }
+      catch(const std::exception& e)
+      {
+         out << "ERR loaddesign: " << e.what() << "\n";
+         return true;
+      }
+      // Sync staged config from the loaded rocket: load applied drag/refArea and may have re-attached
+      // the motor by common name.
+      dragCoeff = rocket->getDragCoefficient();
+      referenceArea = rocket->getReferenceArea();
+      motorSet = rocket->isMotorSet();
+      if(motorSet)
+         motorName = rocket->getMotorModel().data.commonName;
+      out << "OK loaddesign: " << path
+          << (motorSet ? " (motor " + motorName + ")" : std::string(" (no motor)")) << "\n";
       return true;
    }
    else if(cmd == "quit" || cmd == "exit")

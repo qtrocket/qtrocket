@@ -251,4 +251,32 @@ Part* Part::findById(Id targetId)
    return nullptr;
 }
 
+std::shared_ptr<Part> Part::removeChildById(Id targetId)
+{
+   // Symmetric with findById/addChildPart. Scan THIS node's direct children first: on a hit, move
+   // the owning shared_ptr out, erase the (child, position) tuple, clear the detached node's parent,
+   // and mark this part (the ex-parent) and every ancestor dirty. markAsNeedsRecomputing() -- not the
+   // mass-delta gate -- is what guarantees the next composite read rebuilds, so removing even a
+   // zero-mass sub-tree refreshes the cache. Otherwise recurse into the children.
+   for(auto it = childParts.begin(); it != childParts.end(); ++it)
+   {
+      if(std::get<0>(*it)->id == targetId)
+      {
+         std::shared_ptr<Part> detached = std::move(std::get<0>(*it));
+         childParts.erase(it);
+         detached->parent = nullptr;
+         markAsNeedsRecomputing();
+         return detached;
+      }
+   }
+   for(auto& [child, pos] : childParts)
+   {
+      if(std::shared_ptr<Part> hit = child->removeChildById(targetId))
+      {
+         return hit;
+      }
+   }
+   return nullptr;
+}
+
 } // namespace model::part

@@ -10,5 +10,6 @@
 #include "model/parts/BodyTube.h"
 #include "model/parts/FinSet.h"
 #include "model/parts/Motor.h"
+#include "model/parts/PartFactory.h"
 
 #endif // MODEL_PARTS_PARTS_H

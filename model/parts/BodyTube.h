@@ -44,6 +44,8 @@ public:
             double density, const Vector3& centerMass = {0.0, 0.0, 0.0});
    ~BodyTube() override = default;
 
+   std::string typeName() const override { return "BodyTube"; }
+
    double getInnerRadius()   const { return innerRadius; }
    double getOuterRadius()   const { return outerRadius; }
    double getLength()        const { return length; }

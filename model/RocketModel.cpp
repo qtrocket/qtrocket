@@ -3,9 +3,26 @@
 #include "RocketModel.h"
 #include "model/parts/Parts.h"
 #include "sim/Environment.h"
+#include "utils/Logger.h"
 
 namespace model
 {
+
+namespace
+{
+/// @brief DFS the tree for the first Motor node (the single-motor assumption), or nullptr. Used to
+///        re-borrow the motor handle after a tree edit; the owning shared_ptr stays in the tree.
+part::Motor* findMotorInTree(part::Part* node)
+{
+   if(node == nullptr) { return nullptr; }
+   if(auto* m = dynamic_cast<part::Motor*>(node)) { return m; }
+   for(const auto& [child, pos] : node->getChildParts())
+   {
+      if(part::Motor* hit = findMotorInTree(child.get())) { return hit; }
+   }
+   return nullptr;
+}
+} // anonymous namespace
 
 RocketModel::RocketModel()
     // Placeholder structural body: an aluminum-density hollow sphere (ri=40 mm, ro=50 mm,
@@ -117,13 +134,59 @@ void RocketModel::setMotorModel(const model::MotorModel& motor)
    }
    else
    {
-      motorPart->setMotorModel(motor);            // in-place swap (Part has no detach API)
+      motorPart->setMotorModel(motor);            // in-place swap (keeps the borrowed motorPart valid)
    }
 }
 
-MotorModel RocketModel::getMotorModel()
+MotorModel RocketModel::getMotorModel() const
 {
    return motorPart ? motorPart->getMotorModel() : MotorModel{};
+}
+
+void RocketModel::reresolveMotorPart()
+{
+   // The previously-borrowed motorPart belonged to whatever tree was just replaced/edited; re-point
+   // it at the current tree's Motor node (or nullptr if none) so the raw handle can never dangle.
+   motorPart = findMotorInTree(topPart.get());
+}
+
+void RocketModel::setRoot(std::shared_ptr<part::Part> root)
+{
+   if(!root)
+   {
+      utils::Logger::getInstance()->error("RocketModel::setRoot: ignoring null root");
+      return;
+   }
+   topPart = std::move(root);
+   reresolveMotorPart();            // the old motorPart belonged to the replaced tree
+   referenceAreaOverridden = false; // a freshly-installed airframe must not inherit a manual area
+}
+
+void RocketModel::clearDesign()
+{
+   // Restore the boot placeholder (identical to the constructor's body) through the one install seam.
+   setRoot(std::make_shared<part::HollowSphere>("Body", 0.04, 0.05, 2700.0));
+}
+
+bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, Vector3 offset)
+{
+   part::Part* parent = topPart ? topPart->findById(parentId) : nullptr;
+   if(parent == nullptr) { return false; }
+   // addChildPart is a logged no-op on null / cycle / already-parented, so detect success by the
+   // parent's child count rather than trusting the (void) call.
+   const auto before = parent->getChildParts().size();
+   parent->addChildPart(std::move(child), offset);
+   const bool attached = parent->getChildParts().size() == before + 1;
+   if(attached) { reresolveMotorPart(); } // a Motor sub-tree could have been attached
+   return attached;
+}
+
+std::shared_ptr<part::Part> RocketModel::removePart(part::Part::Id id)
+{
+   if(!topPart || id == topPart->getId()) { return nullptr; } // the root is never removed here
+   std::shared_ptr<part::Part> detached = topPart->removeChildById(id);
+   if(detached) { reresolveMotorPart(); } // the motor may have lived in the removed sub-tree
+   return detached;
 }
 
 } // namespace model

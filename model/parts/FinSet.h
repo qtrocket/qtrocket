@@ -56,6 +56,8 @@ public:
           const Vector3& centerMass = {0.0, 0.0, 0.0});
    ~FinSet() override = default;
 
+   std::string typeName() const override { return "FinSet"; }
+
    unsigned int getFinCount()  const { return finCount; }
    double getRootChord()       const { return rootChord; }
    double getTipChord()        const { return tipChord; }
