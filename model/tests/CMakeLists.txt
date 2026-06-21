@@ -12,6 +12,7 @@ add_executable(model_tests
    PartFactoryTests.cpp
    RocketModelTests.cpp
 )
+qtrocket_enable_coverage(model_tests)
 
 target_link_libraries(model_tests PRIVATE
    model
@@ -23,4 +24,3 @@ include(GoogleTest)
 gtest_discover_tests(model_tests)
 
 add_test(NAME qtrocket_model_tests COMMAND model_tests)
-

@@ -29,6 +29,17 @@
       }
     },
     {
+      "name": "coverage-clang",
+      "displayName": "Coverage (Ninja, clang, llvm-cov)",
+      "inherits": "debug-clang",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "QTROCKET_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
       "name": "release-clang",
       "displayName": "Release (Ninja, clang)",
       "inherits": "release",
@@ -69,6 +80,7 @@
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
     { "name": "debug-clang", "configurePreset": "debug-clang" },
+    { "name": "coverage-clang", "configurePreset": "coverage-clang" },
     { "name": "release-clang", "configurePreset": "release-clang" },
     { "name": "debug-gcc", "configurePreset": "debug-gcc" },
     { "name": "release-gcc", "configurePreset": "release-gcc" },
@@ -83,6 +95,11 @@
     {
       "name": "debug-clang",
       "configurePreset": "debug-clang",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "coverage-clang",
+      "configurePreset": "coverage-clang",
       "output": { "outputOnFailure": true }
     },
     {

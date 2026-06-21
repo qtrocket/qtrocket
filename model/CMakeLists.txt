@@ -32,6 +32,7 @@ add_library(model
    ThrustCurveAPI.h
    InertiaTensors.cpp
    InertiaTensors.h)
+qtrocket_enable_coverage(model)
 
 # sim is a real dependency: Propagatable/RocketModel use sim::Aero and
 # sim/StateData.h. Boost/jsoncpp serve the motor-database ingest paths

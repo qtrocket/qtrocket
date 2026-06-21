@@ -33,6 +33,7 @@
 
 # Build files and executable
 build/
+build-coverage/
 
 # CTest run artifacts (Testing/Temporary/LastTest.log etc.), written when ctest runs from the tree
 Testing/

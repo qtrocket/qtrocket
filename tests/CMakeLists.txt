@@ -6,6 +6,7 @@ add_executable(integration_tests
    MotorDatabasePersistenceTests.cpp
    DesignPersistenceTests.cpp
 )
+qtrocket_enable_coverage(integration_tests)
 
 # Absolute path to the bundled motor database, so the test runs from any cwd.
 target_compile_definitions(integration_tests PRIVATE
@@ -27,6 +28,7 @@ add_test(NAME qtrocket_integration_tests COMMAND integration_tests)
 add_executable(propagator_tests
    PropagatorTests.cpp
 )
+qtrocket_enable_coverage(propagator_tests)
 
 target_link_libraries(propagator_tests
    model
@@ -42,6 +44,7 @@ add_test(NAME qtrocket_propagator_tests COMMAND propagator_tests)
 add_executable(cli_tests
    CliDesignCommandsTests.cpp
 )
+qtrocket_enable_coverage(cli_tests)
 
 target_compile_definitions(cli_tests PRIVATE
    QTROCKET_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
