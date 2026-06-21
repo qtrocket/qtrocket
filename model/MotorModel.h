@@ -384,6 +384,9 @@ public:
       MetaData& operator=(const MetaData&) = default;
       MetaData& operator=(MetaData&&) = default;
 
+      /// Derive the impulse class prefix from a motor code such as "G80T", "1/2A3", or "1/4A2".
+      static std::string deriveImpulseClass(const std::string& motorCode);
+
       MotorAvailability availability{AVAILABILITY::REGULAR}; /// Motor Availability
       double avgThrust{0.0}; /// Average thrust in Newtons
       double burnTime{0.0};  /// Burn time in seconds

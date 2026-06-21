@@ -2,6 +2,7 @@
 /// \cond
 // C headers
 // C++ headers
+#include <cctype>
 // 3rd party headers
 /// \endcond
 
@@ -97,6 +98,34 @@ void MotorModel::moveMetaData(MetaData&& md)
 {
    data = std::move(md);
    computeMassCurve();
+}
+
+std::string MotorModel::MetaData::deriveImpulseClass(const std::string& motorCode)
+{
+   auto first = motorCode.begin();
+   while(first != motorCode.end() &&
+         std::isspace(static_cast<unsigned char>(*first)) != 0)
+   {
+      ++first;
+   }
+
+   std::string code(first, motorCode.end());
+   std::string upperCode;
+   upperCode.reserve(code.size());
+   for(char c : code)
+      upperCode.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+
+   if(upperCode.starts_with("1/4A"))
+      return "1/4A";
+   if(upperCode.starts_with("1/2A"))
+      return "1/2A";
+
+   for(char c : upperCode)
+   {
+      if(std::isalpha(static_cast<unsigned char>(c)) != 0)
+         return std::string(1, c);
+   }
+   return "";
 }
 
 void MotorModel::computeMassCurve()

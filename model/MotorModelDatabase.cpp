@@ -14,6 +14,7 @@
 
 // qtrocket project headers
 #include "utils/Logger.h"
+#include "model/RASPLoader.h"
 #include "model/RSEDatabaseLoader.h"
 #include "model/ThrustCurveClient.h"
 
@@ -70,6 +71,14 @@ std::size_t MotorModelDatabase::importRSEFile(const std::string& path)
    // sharing a name (duplicates within the file, or names already loaded from another source)
    // collapse onto one entry. Returning the size delta keeps the reported count consistent with
    // size() and makes re-loading the same file correctly report 0 new motors.
+   return motorModelMap.size() - before;
+}
+
+std::size_t MotorModelDatabase::importRASPFile(const std::string& path)
+{
+   const std::size_t before = motorModelMap.size();
+   RASPLoader loader(path);
+   addMotorModels(loader.getMotors());
    return motorModelMap.size() - before;
 }
 

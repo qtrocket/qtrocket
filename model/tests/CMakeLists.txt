@@ -4,6 +4,7 @@ add_executable(model_tests
    MotorTests.cpp
    ThrustCurveTests.cpp
    ThrustCurveParserTests.cpp
+   RASPLoaderTests.cpp
    InertiaTensorsTests.cpp
    BodyTubeTests.cpp
    NoseConeTests.cpp

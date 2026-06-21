@@ -126,28 +126,31 @@ void CannonballTab::onButton_calculateTrajectory_clicked()
 
 void CannonballTab::onButton_loadRSE_button_clicked()
 {
-   QString rseFile = QFileDialog::getOpenFileName(this,
-                                                  tr("Import RSE Database File"),
-                                                  "/home",
-                                                  tr("Rocksim Engine Files (*.rse)"));
+   QString motorFile = QFileDialog::getOpenFileName(this,
+                                                    tr("Import Motor Database File"),
+                                                    "/home",
+                                                    tr("Engine Files (*.rse *.eng)"));
 
-   if(rseFile.isEmpty())
+   if(motorFile.isEmpty())
       return;
 
    auto motorDatabase = QtRocket::getInstance()->getMotorDatabase();
    try
    {
-      motorDatabase->importRSEFile(rseFile.toStdString());
+      if(motorFile.endsWith(".eng", Qt::CaseInsensitive))
+         motorDatabase->importRASPFile(motorFile.toStdString());
+      else
+         motorDatabase->importRSEFile(motorFile.toStdString());
    }
    catch(const std::exception& e)
    {
       QMessageBox::critical(this,
                             tr("Import Failed"),
-                            tr("Failed to import %1:\n%2").arg(rseFile, e.what()));
+                            tr("Failed to import %1:\n%2").arg(motorFile, e.what()));
       return;
    }
 
-   ui->databaseFileLine->setText(rseFile);
+   ui->databaseFileLine->setText(motorFile);
    populateEngineSelectorFromDatabase();
 }
 

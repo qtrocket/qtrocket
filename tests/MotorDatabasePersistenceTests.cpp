@@ -368,6 +368,43 @@ TEST_F(MotorDatabaseRoundTrip, ImportRSEFileReportsNetNewMotorsAndIsIdempotent)
    EXPECT_FALSE(db.getMotorModel("definitely-not-a-motor").has_value());
 }
 
+TEST_F(MotorDatabaseRoundTrip, ImportRASPFileReportsNetNewMotorsAndIsIdempotent)
+{
+   const auto fixture = tempPath("qtrocket_import_rasp.eng");
+   ASSERT_NO_FATAL_FAILURE(writeTextFile(fixture, R"(
+1/4A2 13 45 P 0.001 0.002 Estes
+  0.25 1.0
+  0.50 0.0
+;
+B6 18 70 4-6 0.006 0.018 Estes
+  0.10 12.0
+  0.90  0.0
+;
+)"));
+
+   model::MotorModelDatabase db;
+   const std::size_t firstImport = db.importRASPFile(fixture.string());
+   ASSERT_EQ(firstImport, 2u);
+   EXPECT_EQ(db.size(), firstImport);
+
+   const std::size_t secondImport = db.importRASPFile(fixture.string());
+   std::remove(fixture.c_str());
+   EXPECT_EQ(secondImport, 0u);
+   EXPECT_EQ(db.size(), firstImport);
+
+   auto quarterA = db.getMotorModel("1/4A2");
+   ASSERT_TRUE(quarterA.has_value());
+   EXPECT_EQ(quarterA->data.commonName, "1/4A2");
+   EXPECT_EQ(quarterA->data.impulseClass, "1/4A");
+   EXPECT_EQ(quarterA->data.delays, (std::vector<int>{1000}));
+   EXPECT_DOUBLE_EQ(quarterA->data.totalWeight, 0.002);
+
+   auto b6 = db.getMotorModel("B6");
+   ASSERT_TRUE(b6.has_value());
+   EXPECT_EQ(b6->data.impulseClass, "B");
+   EXPECT_EQ(b6->data.delays, (std::vector<int>{4, 6}));
+}
+
 TEST_F(MotorDatabaseRoundTrip, ListMotorsReturnsSortedSummariesAndAppliesEveryLocalFilter)
 {
    const auto fixture = tempPath("qtrocket_motordb_list_filters.qmd");

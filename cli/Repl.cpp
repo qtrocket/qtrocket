@@ -70,6 +70,14 @@ std::string restOfLine(std::istringstream& iss)
    return trim(rest);
 }
 
+std::string lowerExtension(const std::string& path)
+{
+   std::string ext = std::filesystem::path(path).extension().string();
+   std::transform(ext.begin(), ext.end(), ext.begin(),
+                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+   return ext;
+}
+
 // Parse the next whitespace-delimited token as a double. Returns false if there
 // is no token or it is not fully numeric.
 bool parseDouble(std::istringstream& iss, double& out)
@@ -244,7 +252,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
    if(cmd == "help")
    {
       out << "# commands:\n"
-          << "#   loadmotors <file.rse>   import a RockSim motor database\n"
+          << "#   loadmotors <file.rse|file.eng>   import a motor database\n"
           << "#   savedb <file.qmd>       save the motor database to a file\n"
           << "#   loaddb <file.qmd>       load a saved motor database (adds to current)\n"
           << "#   tcfacets                list thrustcurve.org search facets (online)\n"
@@ -290,13 +298,16 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       const std::string path = restOfLine(iss);
       if(path.empty())
       {
-         out << "ERR usage: loadmotors <file.rse>\n";
+         out << "ERR usage: loadmotors <file.rse|file.eng>\n";
          return true;
       }
       std::size_t added = 0;
       try
       {
-         added = qtRocket->getMotorDatabase()->importRSEFile(path);
+         if(lowerExtension(path) == ".eng")
+            added = qtRocket->getMotorDatabase()->importRASPFile(path);
+         else
+            added = qtRocket->getMotorDatabase()->importRSEFile(path);
       }
       catch(const std::exception& e)
       {

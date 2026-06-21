@@ -24,6 +24,8 @@ add_library(model
    RocketModel.h
    DesignSerializer.cpp
    DesignSerializer.h
+   RASPLoader.cpp
+   RASPLoader.h
    RSEDatabaseLoader.cpp
    RSEDatabaseLoader.h
    ThrustCurve.cpp

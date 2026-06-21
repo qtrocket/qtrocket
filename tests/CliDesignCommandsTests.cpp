@@ -5,6 +5,7 @@
 /// \cond
 #include <cstdio>      // std::remove
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -27,6 +28,14 @@ std::string run(cli::Repl& repl, const std::string& cmd)
 }
 
 bool ok(const std::string& s) { return s.find("OK") != std::string::npos; }
+
+void writeTextFile(const std::filesystem::path& path, const std::string& text)
+{
+   std::ofstream file(path);
+   ASSERT_TRUE(file.is_open());
+   file << text;
+   ASSERT_TRUE(file.good());
+}
 
 // The first line of @p out containing @p needle (or "" if none).
 std::string lineWith(const std::string& out, const std::string& needle)
@@ -124,4 +133,24 @@ TEST(CliDesignCommands, ParsingValidatesInputAndToleratesUnknownKeys)
    ASSERT_TRUE(rootId.has_value());
    EXPECT_FALSE(ok(run(repl, "removepart " + std::to_string(*rootId))));
    EXPECT_FALSE(ok(run(repl, "removepart 999999")));
+}
+
+TEST(CliDesignCommands, LoadMotorsImportsRaspEngFiles)
+{
+   utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
+   cli::Repl repl(QtRocket::getInstance());
+
+   const auto fixture = std::filesystem::temp_directory_path() / "qtrocket_cli_rasp.eng";
+   ASSERT_NO_FATAL_FAILURE(writeTextFile(fixture, R"(
+1/2A3 13 45 P 0.001 0.002 Estes
+  0.25 2.0
+  0.50 0.0
+;
+)"));
+
+   const std::string loadOut = run(repl, "loadmotors " + fixture.string());
+   std::remove(fixture.c_str());
+   ASSERT_TRUE(ok(loadOut));
+   EXPECT_NE(loadOut.find("1 motors"), std::string::npos);
+   EXPECT_TRUE(ok(run(repl, "setmotor 1/2A3")));
 }

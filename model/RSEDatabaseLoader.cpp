@@ -70,9 +70,8 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
    // mm.designation = What is this?
 
    mm.diameter = v.get<double>("<xmlattr>.dia", 0.0);
-   // impulse class is the motor letter designation. extract from the first character
-   // of the commonName since it isn't given explicity in the RSE file
-   mm.impulseClass = mm.commonName[0];
+   // RSE does not carry impulse class explicitly; derive it from the motor code.
+   mm.impulseClass = model::MotorModel::MetaData::deriveImpulseClass(mm.commonName);
 
    // infoUrl not present in RSE file
    mm.infoUrl = "";

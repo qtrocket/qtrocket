@@ -100,6 +100,18 @@ public:
    std::size_t importRSEFile(const std::string& path);
 
    /**
+    * @brief importRASPFile parses a RASP .eng engine file and adds every motor it contains to
+    *        this database. This mirrors importRSEFile while keeping the text format parser hidden
+    *        behind the database ingestion surface.
+    *
+    * @param path filesystem path to a .eng file
+    * @return the number of net new motors added to the database (motors whose common name was
+    *         already present are replaced, not counted, so re-importing a file returns 0)
+    * @throws std::exception if the file cannot be read or parsed
+    */
+   std::size_t importRASPFile(const std::string& path);
+
+   /**
     * @brief Get the Motor Model by Common Name
     *
     * @param name Motor Common name
