@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(QTROCKET_ENABLE_COVERAGE "Enable LLVM source-based coverage for project/test targets" OFF)
+
 
 include(FetchContent)
 
@@ -88,6 +90,34 @@ else()
     # additional warnings
     add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 endif()
+
+if(QTROCKET_ENABLE_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "QTROCKET_ENABLE_COVERAGE uses llvm-cov and requires Clang/AppleClang. Use the coverage-clang preset, or disable coverage for GCC/MSVC builds.")
+    endif()
+
+    find_program(LLVM_COV_EXECUTABLE NAMES llvm-cov llvm-cov-21 llvm-cov-20 llvm-cov-19 llvm-cov-18 llvm-cov-17 REQUIRED)
+    find_program(LLVM_PROFDATA_EXECUTABLE NAMES llvm-profdata llvm-profdata-21 llvm-profdata-20 llvm-profdata-19 llvm-profdata-18 llvm-profdata-17 REQUIRED)
+
+    set(QTROCKET_COVERAGE_COMPILE_OPTIONS
+        -O0
+        -g
+        -fprofile-instr-generate
+        -fcoverage-mapping)
+    set(QTROCKET_COVERAGE_LINK_OPTIONS
+        -fprofile-instr-generate
+        -fcoverage-mapping)
+endif()
+
+function(qtrocket_enable_coverage target_name)
+    if(QTROCKET_ENABLE_COVERAGE)
+        target_compile_options(${target_name} PRIVATE ${QTROCKET_COVERAGE_COMPILE_OPTIONS})
+        get_target_property(qtrocket_target_type ${target_name} TYPE)
+        if(NOT qtrocket_target_type STREQUAL "STATIC_LIBRARY")
+            target_link_options(${target_name} PRIVATE ${QTROCKET_COVERAGE_LINK_OPTIONS})
+        endif()
+    endif()
+endfunction()
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -177,6 +207,7 @@ else()
     endif()
 
 endif()
+qtrocket_enable_coverage(qtrocket)
 
 add_subdirectory(utils)
 add_subdirectory(sim)
@@ -187,13 +218,52 @@ add_subdirectory(model)
 add_library(qtrocket_core STATIC
    QtRocket.cpp
    QtRocket.h)
+qtrocket_enable_coverage(qtrocket_core)
 
 target_link_libraries(qtrocket_core PUBLIC
    model
    sim
    utils)
 
+# The CLI/REPL driver as a static lib, so both qtrocket-cli and the integration tests can drive it.
+add_library(cli STATIC
+   cli/Repl.cpp
+   cli/Repl.h)
+qtrocket_enable_coverage(cli)
+target_link_libraries(cli PUBLIC qtrocket_core)
+
 add_subdirectory(tests)
+
+if(QTROCKET_ENABLE_COVERAGE)
+    set(QTROCKET_COVERAGE_BINARIES
+        "$<TARGET_FILE:sim_tests>"
+        "$<TARGET_FILE:model_tests>"
+        "$<TARGET_FILE:integration_tests>"
+        "$<TARGET_FILE:propagator_tests>"
+        "$<TARGET_FILE:cli_tests>")
+    list(JOIN QTROCKET_COVERAGE_BINARIES "\\;" QTROCKET_COVERAGE_BINARIES_ARG)
+
+    add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND}
+            "-DCOVERAGE_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "-DCOVERAGE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+            "-DCOVERAGE_BINARIES=${QTROCKET_COVERAGE_BINARIES_ARG}"
+            "-DCOVERAGE_TEST_REGEX=^qtrocket_.*tests$"
+            "-DCOVERAGE_IGNORE_REGEX=.*/(build|build-coverage|_deps|tests)/.*|.*/gui/qcustomplot.*"
+            "-DLLVM_COV_EXECUTABLE=${LLVM_COV_EXECUTABLE}"
+            "-DLLVM_PROFDATA_EXECUTABLE=${LLVM_PROFDATA_EXECUTABLE}"
+            "-DCTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/RunLlvmCoverage.cmake"
+        DEPENDS
+            sim_tests
+            model_tests
+            integration_tests
+            propagator_tests
+            cli_tests
+        USES_TERMINAL
+        VERBATIM
+        COMMENT "Running qtrocket tests and generating LLVM coverage report")
+endif()
 
 #target_link_libraries(qtrocket PRIVATE 
 #   Qt6::Widgets
@@ -212,11 +282,10 @@ target_link_libraries(qtrocket PRIVATE
 # application controller comes from the qtrocket_core static lib.
 add_executable(qtrocket-cli
     cli/CliMain.cpp
-    cli/Repl.cpp
-    cli/Repl.h
 )
+qtrocket_enable_coverage(qtrocket-cli)
 target_link_libraries(qtrocket-cli PRIVATE
-    qtrocket_core)
+    cli)
 
 set_target_properties(qtrocket PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

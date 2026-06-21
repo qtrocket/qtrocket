@@ -3,6 +3,7 @@
 
 /// \cond
 // C++ headers
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <utility>
@@ -202,6 +203,38 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
    return CompositeProperties{m, temp_cm, I};
 }
 
+sim::AeroProfile Part::getCompositeAero(double refArea) const
+{
+   sim::AeroProfile profile;
+   profile.refArea = refArea;
+   accumulateAeroAt(profile, refArea, 0.0); // the root part's CM is the shared datum (station 0)
+   return profile;
+}
+
+void Part::accumulateAeroAt(sim::AeroProfile& out, double refArea, double axialStation) const
+{
+   // getAero reports x_cp from THIS part's CM; shift it to the shared root-CM datum by adding
+   // cnAlpha * axialStation to the weighted moment before folding in. A zero-CNalpha part contributes
+   // nothing to either the moment or the (CNalpha-weighted) CP average -- exactly the body-tube case.
+   const sim::AeroComponent c = getAero(refArea);
+   out += sim::AeroComponent{c.cnAlpha, c.cnAlphaXcp + c.cnAlpha * axialStation, c.cd};
+   for(const auto& [child, pos] : childParts)
+   {
+      // pos is the child CM relative to this part's CM; thread its axial (z) offset down the tree.
+      child->accumulateAeroAt(out, refArea, axialStation + pos.z());
+   }
+}
+
+double Part::maxFrontalReferenceArea() const
+{
+   double maxArea = getReferenceArea();
+   for(const auto& [child, pos] : childParts)
+   {
+      maxArea = std::max(maxArea, child->maxFrontalReferenceArea());
+   }
+   return maxArea;
+}
+
 Part* Part::findById(Id targetId)
 {
    if(id == targetId)
@@ -211,6 +244,34 @@ Part* Part::findById(Id targetId)
    for(auto& [child, pos] : childParts)
    {
       if(Part* hit = child->findById(targetId))
+      {
+         return hit;
+      }
+   }
+   return nullptr;
+}
+
+std::shared_ptr<Part> Part::removeChildById(Id targetId)
+{
+   // Symmetric with findById/addChildPart. Scan THIS node's direct children first: on a hit, move
+   // the owning shared_ptr out, erase the (child, position) tuple, clear the detached node's parent,
+   // and mark this part (the ex-parent) and every ancestor dirty. markAsNeedsRecomputing() -- not the
+   // mass-delta gate -- is what guarantees the next composite read rebuilds, so removing even a
+   // zero-mass sub-tree refreshes the cache. Otherwise recurse into the children.
+   for(auto it = childParts.begin(); it != childParts.end(); ++it)
+   {
+      if(std::get<0>(*it)->id == targetId)
+      {
+         std::shared_ptr<Part> detached = std::move(std::get<0>(*it));
+         childParts.erase(it);
+         detached->parent = nullptr;
+         markAsNeedsRecomputing();
+         return detached;
+      }
+   }
+   for(auto& [child, pos] : childParts)
+   {
+      if(std::shared_ptr<Part> hit = child->removeChildById(targetId))
       {
          return hit;
       }

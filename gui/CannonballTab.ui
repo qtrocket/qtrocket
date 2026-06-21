@@ -99,7 +99,7 @@
      <item row="0" column="0">
       <widget class="QPushButton" name="loadRSE_btn">
        <property name="text">
-        <string>Load RSE Database File</string>
+        <string>Load Motor File</string>
        </property>
       </widget>
      </item>

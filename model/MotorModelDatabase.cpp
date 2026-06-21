@@ -6,6 +6,7 @@
 // C++ headers
 #include <cmath>
 #include <format>
+#include <utility>
 // 3rd party headers
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -13,14 +14,21 @@
 
 // qtrocket project headers
 #include "utils/Logger.h"
+#include "model/RASPLoader.h"
 #include "model/RSEDatabaseLoader.h"
-#include "model/ThrustCurveAPI.h"
+#include "model/ThrustCurveClient.h"
 
 namespace model
 {
 
 MotorModelDatabase::MotorModelDatabase()
-   : motorModelMap()
+   : MotorModelDatabase(std::unique_ptr<ThrustCurveAPI>{})
+{
+}
+
+MotorModelDatabase::MotorModelDatabase(std::unique_ptr<ThrustCurveAPI> thrustCurveApi)
+   : motorModelMap(),
+     tcApi(std::move(thrustCurveApi))
 {
 }
 
@@ -63,6 +71,14 @@ std::size_t MotorModelDatabase::importRSEFile(const std::string& path)
    // sharing a name (duplicates within the file, or names already loaded from another source)
    // collapse onto one entry. Returning the size delta keeps the reported count consistent with
    // size() and makes re-loading the same file correctly report 0 new motors.
+   return motorModelMap.size() - before;
+}
+
+std::size_t MotorModelDatabase::importRASPFile(const std::string& path)
+{
+   const std::size_t before = motorModelMap.size();
+   RASPLoader loader(path);
+   addMotorModels(loader.getMotors());
    return motorModelMap.size() - before;
 }
 
@@ -125,7 +141,7 @@ MotorSummary MotorModelDatabase::toSummary(const model::MotorModel& m)
 ThrustCurveAPI& MotorModelDatabase::thrustCurveApi()
 {
    if(!tcApi)
-      tcApi = std::make_unique<ThrustCurveAPI>();
+      tcApi = std::make_unique<ThrustCurveClient>();
    return *tcApi;
 }
 

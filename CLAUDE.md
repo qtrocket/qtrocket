@@ -21,7 +21,7 @@ cmake --build --preset debug-clang     # build everything
 
 ## Tests
 
-GoogleTest, three suites, all registered with ctest under names matching `qtrocket_*`:
+GoogleTest, five aggregate suites, all registered with ctest under names matching `qtrocket_*`:
 
 ```bash
 ctest --test-dir build -R 'qtrocket_*'                 # all suites (what CI runs)
@@ -29,10 +29,28 @@ ctest --test-dir build -R PartTests                    # tests are also discover
 ./build/model/tests/model_tests                        # Part composition / inertia tests
 ./build/sim/tests/sim_tests                            # RK45 solver, US Standard Atmosphere tests
 ./build/tests/integration_tests                        # end-to-end physics + motor DB persistence
+./build/tests/propagator_tests                         # focused Propagator behavior
+./build/tests/cli_tests                                # CLI/REPL command behavior
 ./build/model/tests/model_tests --gtest_filter='PartTests.Clone*'   # single test
 ```
 
 Test sources live next to what they test: `model/tests/`, `sim/tests/`, and top-level `tests/` for integration.
+
+## Coverage
+
+Coverage uses Clang/LLVM source-based coverage (`llvm-cov` + `llvm-profdata`) and a separate `build-coverage/` tree, so it does not disturb the normal `build/` directory:
+
+```bash
+cmake --preset coverage-clang
+cmake --build --preset coverage-clang --target coverage
+```
+
+The `coverage` target builds the instrumented test binaries, runs `ctest -R '^qtrocket_.*tests$'`, merges the raw profiles, prints the summary, and writes:
+
+- Text summary: `build-coverage/coverage/summary.txt`
+- HTML report: `build-coverage/coverage/html/index.html`
+
+`QTROCKET_ENABLE_COVERAGE=ON` intentionally requires Clang/AppleClang. GCC remains supported through the normal `debug-gcc` and `release-gcc` presets, but not for this `llvm-cov` coverage target.
 
 ## Architecture
 
@@ -52,7 +70,7 @@ utils/
   - `RocketModel` implements `Propagatable` (the model↔sim bridge interface: `getForces()`, `getTorques()`, `getMass(t)`, `terminateCondition()`...).
   - `Part` (`model/Part.h`) is the base of a composite tree of rocket components (concrete types in `model/parts/`, e.g. `HollowSphere`). Composite mass/CM/inertia are recomputed lazily via a dirty-flag that propagates up the tree; child inertia tensors are shifted to the composite CM with the parallel-axis theorem. Parts store *per-unit-mass* geometric tensors (m²); composites are full mass-weighted tensors (kg·m²). Children are added by move; `clone()` deep-copies.
   - `MotorModel` + `ThrustCurve`: time-aware thrust and burning mass (ignition at t=0, linear interpolation between thrust samples).
-  - `MotorModelDatabase` (motor storage/search, XML save/load) with two ingest paths: local RockSim `.rse` files (`RSEDatabaseLoader`, Boost property_tree XML) and the thrustcurve.org REST API (`ThrustCurveAPI`, jsoncpp + `utils::CurlConnection`). Clients (GUI/CLI) go through the database; they never touch the loader or API directly. Bundled motor data lives in `data/` (tests locate it via the `QTROCKET_DATA_DIR` compile definition).
+  - `MotorModelDatabase` (motor storage/search, XML save/load) with two ingest paths: local RockSim `.rse` files (`RSEDatabaseLoader`, Boost property_tree XML) and the thrustcurve.org REST client (`ThrustCurveClient`, behind the internal `ThrustCurveAPI` interface, jsoncpp + `utils::CurlConnection`). Clients (GUI/CLI) go through the database; they never touch the loader or remote client directly. Bundled motor data lives in `data/` (tests locate it via the `QTROCKET_DATA_DIR` compile definition).
 - **sim/** — the numerics:
   - `Propagator` drives the ODE loop (`runUntilTerminate()` until altitude z < 0) and records the state history.
   - `Integrator` selects the `DESolver` backend at runtime: `RK4Solver` (fixed step) or `RK45Solver` (adaptive Runge-Kutta-Fehlberg).

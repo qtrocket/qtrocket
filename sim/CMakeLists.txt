@@ -23,6 +23,7 @@ add_library(sim
    VacuumAtmosphere.h
    WindModel.cpp
    WindModel.h)
+qtrocket_enable_coverage(sim)
 
 target_link_libraries(sim PUBLIC
    utils)

@@ -37,6 +37,8 @@ public:
 
    ~Motor() override = default;
 
+   std::string typeName() const override { return "Motor"; }
+
    /// @brief This part's own mass at time @p t: the motor's burn-time-varying mass (kg).
    ///        Pre-ignition = loaded total weight; during burn falls to the casing (empty) mass;
    ///        after burnout stays at the casing mass. @see MotorModel::getMass
@@ -48,8 +50,9 @@ public:
    MotorModel& getMotorModel() { return mm; }
 
    /// @brief Replace the wrapped motor in place (when the user re-selects a motor). Re-seeds the
-   ///        static mass/inertia and flags the tree for composite recompute. Part has no detach
-   ///        API, so replacement mutates this node rather than removing/re-adding it.
+   ///        static mass/inertia and flags the tree for composite recompute. Mutates this node in
+   ///        place rather than detaching (Part::removeChildById) and re-adding it, so RocketModel's
+   ///        borrowed Motor* handle stays valid.
    void setMotorModel(const MotorModel& motor);
 
 protected:

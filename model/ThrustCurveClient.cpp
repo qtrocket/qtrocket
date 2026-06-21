@@ -10,7 +10,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/ThrustCurveAPI.h"
+#include "model/ThrustCurveClient.h"
 #include "utils/Logger.h"
 
 namespace
@@ -231,19 +231,19 @@ std::optional<SearchResponse> parseSearchResponse(const std::string& json)
    }
 }
 
-ThrustCurveAPI::ThrustCurveAPI()
+ThrustCurveClient::ThrustCurveClient()
    : hostname("https://www.thrustcurve.org/"),
      curlConnection()
 {
 
 }
 
-ThrustCurveAPI::~ThrustCurveAPI()
+ThrustCurveClient::~ThrustCurveClient()
 {
 
 }
 
-std::optional<ThrustCurve> ThrustCurveAPI::getThrustCurve(const std::string& id)
+std::optional<ThrustCurve> ThrustCurveClient::getThrustCurve(const std::string& id)
 {
    std::string endpoint = hostname + "api/v1/download.json?motorId=" + id + "&data=samples";
 
@@ -263,7 +263,7 @@ std::optional<ThrustCurve> ThrustCurveAPI::getThrustCurve(const std::string& id)
    return ThrustCurve(*samples);
 }
 
-ThrustcurveMetadata ThrustCurveAPI::getMetadata()
+ThrustcurveMetadata ThrustCurveClient::getMetadata()
 {
    std::string endpoint = hostname + "api/v1/metadata.json";
 
@@ -277,7 +277,7 @@ ThrustcurveMetadata ThrustCurveAPI::getMetadata()
    return metadata ? *metadata : ThrustcurveMetadata();
 }
 
-std::vector<model::MotorModel> ThrustCurveAPI::searchMotors(const SearchCriteria& c)
+std::vector<model::MotorModel> ThrustCurveClient::searchMotors(const SearchCriteria& c)
 {
    std::vector<model::MotorModel> retVal;
    std::string endpoint = hostname;

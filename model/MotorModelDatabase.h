@@ -20,8 +20,10 @@
 namespace model
 {
 
-// Owned internally so client code depends only on MotorModelDatabase, never on the API directly.
+// Owned internally so client code depends only on MotorModelDatabase, never on remote sources.
 class ThrustCurveAPI;
+class ThrustCurveClient;
+class MotorModelDatabaseTestAccess;
 
 /**
  * @brief MotorQuery is a source-agnostic filter for selecting motors. Every field is optional; an
@@ -98,6 +100,18 @@ public:
    std::size_t importRSEFile(const std::string& path);
 
    /**
+    * @brief importRASPFile parses a RASP .eng engine file and adds every motor it contains to
+    *        this database. This mirrors importRSEFile while keeping the text format parser hidden
+    *        behind the database ingestion surface.
+    *
+    * @param path filesystem path to a .eng file
+    * @return the number of net new motors added to the database (motors whose common name was
+    *         already present are replaced, not counted, so re-importing a file returns 0)
+    * @throws std::exception if the file cannot be read or parsed
+    */
+   std::size_t importRASPFile(const std::string& path);
+
+   /**
     * @brief Get the Motor Model by Common Name
     *
     * @param name Motor Common name
@@ -127,7 +141,7 @@ public:
    /**
     * @brief searchOnline queries thrustcurve.org for motors matching the query, merges the results
     *        into this database (so getMotorModel()/listMotors() then see them) and returns their
-    *        summaries. Performs network requests; clients never touch ThrustCurveAPI directly.
+    *        summaries. Performs network requests; clients never touch ThrustCurveClient directly.
     * @param q source-agnostic filter (manufacturer / impulseClass / diameter; nameContains ignored)
     * @return summaries of the matching motors (empty if the request fails or matches nothing)
     */
@@ -142,6 +156,11 @@ public:
    void saveMotorDatabase(const std::string& filename);
    void loadMotorDatabase(const std::string& filename);
 private:
+   // Private test seam only: MotorModelDatabaseTestAccess injects a fake remote source so the
+   // online wrapper methods can be unit-tested without network calls. Production code uses the
+   // public default constructor and lazily gets a real ThrustCurveClient.
+   explicit MotorModelDatabase(std::unique_ptr<ThrustCurveAPI> thrustCurveApi);
+   friend class MotorModelDatabaseTestAccess;
 
    // Ingestion is internal: motors enter the database through importRSEFile (and future sources),
    // not by client code adding MotorModels directly. Adds replace any entry with the same common name.

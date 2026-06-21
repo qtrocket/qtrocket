@@ -1,4 +1,4 @@
-// Tests for the pure thrustcurve.org response parsers in model/ThrustCurveAPI.h,
+// Tests for the pure thrustcurve.org response parsers in model/ThrustCurveClient.h,
 // using canned JSON shaped like real API responses (see the OpenAPI spec at
 // https://www.thrustcurve.org/api/v1/swagger.json). No network involved.
 
@@ -11,7 +11,7 @@
 
 #include "model/MotorModel.h"
 #include "utils/Logger.h"
-#include "model/ThrustCurveAPI.h"
+#include "model/ThrustCurveClient.h"
 
 namespace
 {

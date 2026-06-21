@@ -382,6 +382,142 @@ TEST(PartCompositionTest, FindByIdLocatesAdoptedPartsAndRejectsAbsent)
    EXPECT_EQ(root->findById(123456789), nullptr);      // absent
 }
 
+TEST(PartCompositionTest, TypeNameReportsTheConcreteType)
+{
+   // The base Part reports "Part"; each concrete leaf reports its own stable tag. These strings are
+   // the part-factory keys and the design-file type attribute (P2 persistence), so they are pinned
+   // here. A default MotorModel is unignited, so Motor's eager getMass(0) is a safe 0.
+   model::part::Part base("base", Matrix3::Zero(), 1.0, Vector3::Zero());
+   EXPECT_EQ(base.typeName(), "Part");
+   EXPECT_EQ(model::part::HollowSphere("s", 0.04, 0.05, 2700.0).typeName(), "HollowSphere");
+   EXPECT_EQ(model::part::BodyTube("b", 0.0, 0.019, 0.20, 680.0).typeName(), "BodyTube");
+   EXPECT_EQ(model::part::ConicalNoseCone("n", 0.019, 0.10, 0.0, 2700.0).typeName(), "NoseCone");
+   EXPECT_EQ(model::part::FinSet("f", 3, 0.10, 0.05, 0.05, 0.04, 0.003, 0.019, 600.0).typeName(),
+             "FinSet");
+   EXPECT_EQ(model::part::Motor("m", model::MotorModel{}).typeName(), "Motor");
+}
+
+TEST(PartCompositionTest, GetChildPartsExposesChildrenAndAttachPositionsInOrder)
+{
+   auto root = pointMass("root", 1.0);
+   auto a = pointMass("a", 1.0);
+   auto b = pointMass("b", 1.0);
+   const auto aId = a->getId();
+   const auto bId = b->getId();
+   root->addChildPart(a, Vector3{1.0, 0.0, 0.0});
+   root->addChildPart(b, Vector3{0.0, 2.0, 0.0});
+
+   const auto& kids = root->getChildParts();
+   ASSERT_EQ(kids.size(), 2u);
+   EXPECT_EQ(std::get<0>(kids[0])->getId(), aId);   // attachment order is preserved
+   EXPECT_EQ(std::get<0>(kids[1])->getId(), bId);
+   EXPECT_DOUBLE_EQ(std::get<1>(kids[0]).x(), 1.0); // attach positions round-trip through the view
+   EXPECT_DOUBLE_EQ(std::get<1>(kids[1]).y(), 2.0);
+}
+
+TEST(PartCompositionTest, RemoveChildByIdDetachesReturnsAndRecomputesComposite)
+{
+   const double mp = 2.0, mc = 3.0, L = 4.0;
+   auto parent = pointMass("parent", mp);
+   auto child = pointMass("child", mc);
+   const auto childId = child->getId();
+   parent->addChildPart(child, Vector3{L, 0.0, 0.0});
+
+   // Cache the composite WITH the child, so the post-removal reads must rebuild to stay correct.
+   EXPECT_NEAR(parent->getCompositeMass(0.0), mp + mc, 1e-12);
+   EXPECT_NEAR(parent->getCompositeCm(0.0)(0), mc * L / (mp + mc), 1e-12);
+
+   auto detached = parent->removeChildById(childId);
+   ASSERT_NE(detached, nullptr);
+   EXPECT_EQ(detached->getId(), childId);           // returns the very node that was removed
+   EXPECT_TRUE(parent->getChildParts().empty());
+
+   // Composite recomputed: a lone parent at its own CM.
+   EXPECT_NEAR(parent->getCompositeMass(0.0), mp, 1e-12);
+   EXPECT_NEAR(parent->getCompositeCm(0.0)(0), 0.0, 1e-12);
+
+   // A second remove of the now-absent id is a no-op returning nullptr; the root never removes itself.
+   EXPECT_EQ(parent->removeChildById(childId), nullptr);
+   EXPECT_EQ(parent->removeChildById(parent->getId()), nullptr);
+}
+
+TEST(PartCompositionTest, RemoveChildByIdFindsADescendantDeepInTheTree)
+{
+   // The match is a grandchild, so the recursive branch (not the direct-child scan) does the work,
+   // and the whole ancestor chain must end up recomputed.
+   auto root = pointMass("root", 1.0);
+   auto child = pointMass("child", 1.0);
+   auto grandchild = pointMass("grandchild", 1.0);
+   const auto gcId = grandchild->getId();
+   child->addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
+   root->addChildPart(child, Vector3{1.0, 0.0, 0.0});
+
+   EXPECT_NEAR(root->getCompositeMass(0.0), 3.0, 1e-12);
+   auto detached = root->removeChildById(gcId);
+   ASSERT_NE(detached, nullptr);
+   EXPECT_EQ(detached->getId(), gcId);
+   EXPECT_NEAR(root->getCompositeMass(0.0), 2.0, 1e-12);
+}
+
+TEST(PartCompositionTest, GetNameReturnsThePartName)
+{
+   model::part::Part p("AvionicsBay", Matrix3::Zero(), 1.0, Vector3::Zero());
+   EXPECT_EQ(p.getName(), "AvionicsBay");
+}
+
+TEST(PartCompositionTest, TypeNameDispatchesPolymorphicallyThroughBasePointer)
+{
+   // The P2 part factory and design serializer read typeName() through a Part* / shared_ptr<Part>,
+   // so the VIRTUAL dispatch is the contract that matters downstream -- pin it through base pointers.
+   std::shared_ptr<model::part::Part> s =
+      std::make_shared<model::part::HollowSphere>("s", 0.04, 0.05, 2700.0);
+   std::shared_ptr<model::part::Part> b =
+      std::make_shared<model::part::BodyTube>("b", 0.0, 0.019, 0.20, 680.0);
+   std::shared_ptr<model::part::Part> n =
+      std::make_shared<model::part::ConicalNoseCone>("n", 0.019, 0.10, 0.0, 2700.0);
+   std::shared_ptr<model::part::Part> f =
+      std::make_shared<model::part::FinSet>("f", 3, 0.10, 0.05, 0.05, 0.04, 0.003, 0.019, 600.0);
+   std::shared_ptr<model::part::Part> m =
+      std::make_shared<model::part::Motor>("m", model::MotorModel{});
+   EXPECT_EQ(s->typeName(), "HollowSphere");
+   EXPECT_EQ(b->typeName(), "BodyTube");
+   EXPECT_EQ(n->typeName(), "NoseCone");
+   EXPECT_EQ(f->typeName(), "FinSet");
+   EXPECT_EQ(m->typeName(), "Motor");
+}
+
+TEST(PartCompositionTest, GetChildPartsOnALeafIsEmpty)
+{
+   auto leaf = pointMass("leaf", 1.0);
+   EXPECT_TRUE(leaf->getChildParts().empty());
+}
+
+TEST(PartCompositionTest, RemoveChildByIdReturnsAnIntactMultiNodeSubtree)
+{
+   // Remove an INTERMEDIATE node that owns its own child: the returned sub-tree must keep its
+   // internal structure (the grandchild still attached, parent pointers intact) and be usable as a
+   // standalone root. This is the contract removepart relies on (a removed assembly stays whole).
+   auto root = pointMass("root", 1.0);
+   auto mid = pointMass("mid", 2.0);
+   auto leaf = pointMass("leaf", 3.0);
+   const auto midId = mid->getId();
+   const auto leafId = leaf->getId();
+   mid->addChildPart(leaf, Vector3{1.0, 0.0, 0.0});
+   root->addChildPart(mid, Vector3{1.0, 0.0, 0.0});
+
+   auto detached = root->removeChildById(midId);
+   ASSERT_NE(detached, nullptr);
+   EXPECT_EQ(detached->getId(), midId);
+
+   // Root is now childless; the detached sub-tree kept its shape and works as its own root.
+   EXPECT_TRUE(root->getChildParts().empty());
+   EXPECT_NEAR(root->getCompositeMass(0.0), 1.0, 1e-12);
+   ASSERT_EQ(detached->getChildParts().size(), 1u);
+   EXPECT_EQ(std::get<0>(detached->getChildParts()[0])->getId(), leafId);
+   EXPECT_NEAR(detached->getCompositeMass(0.0), 5.0, 1e-12); // mid(2) + leaf(3), standalone
+   EXPECT_EQ(detached->findById(leafId), std::get<0>(detached->getChildParts()[0]).get());
+}
+
 namespace model::part
 {
 // White-box fixture: grants the re-parenting test access to Part's private parent pointers, child
@@ -440,5 +576,30 @@ TEST_F(PartCompositionAccess, CloneReparentsSubtreeWithFreshUniqueIds)
 
    // findById resolves cloned nodes from the clone's root.
    EXPECT_EQ(copy->findById(copyGrandchild.getId()), &copyGrandchild);
+}
+
+TEST_F(PartCompositionAccess, RemoveChildByIdClearsParentAndDirtiesAncestors)
+{
+   // Mechanism check: removeChildById must clear the detached node's parent pointer and dirty the
+   // ex-parent AND every ancestor. The dirty FLAG (not the mass-delta gate) is what drives the
+   // rebuild, so a zero-net-mass-change removal still refreshes -- all nodes are mass 1 here; the
+   // point is purely the parent-pointer + dirty-flag bookkeeping.
+   auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto child = std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto grandchild = std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
+   const Part::Id gcId = grandchild->getId();
+   child->addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
+   root->addChildPart(child, Vector3{1.0, 0.0, 0.0});
+
+   root->getCompositeI(0.0);   // cleans root...
+   child->getCompositeI(0.0);  // ...but cleaning root does not clean descendants, so clean `child` too
+   EXPECT_FALSE(isDirty(*root));
+   EXPECT_FALSE(isDirty(*child));
+
+   auto detached = root->removeChildById(gcId); // a descendant of `child`
+   ASSERT_NE(detached, nullptr);
+   EXPECT_EQ(parentOf(*detached), nullptr);     // detached node is re-rooted (no parent)
+   EXPECT_TRUE(isDirty(*child));                // ex-parent dirtied
+   EXPECT_TRUE(isDirty(*root));                 // ... and propagated up to the root
 }
 } // namespace model::part

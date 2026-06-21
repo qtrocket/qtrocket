@@ -1,5 +1,5 @@
-#ifndef MODEL_THRUSTCURVEAPI_H
-#define MODEL_THRUSTCURVEAPI_H
+#ifndef MODEL_THRUSTCURVECLIENT_H
+#define MODEL_THRUSTCURVECLIENT_H
 
 
 /// \cond
@@ -61,6 +61,23 @@ public:
 };
 
 /**
+ * Internal remote-motor-source interface used by MotorModelDatabase.
+ *
+ * Application code should not traffic in this interface directly: MotorModelDatabase creates the
+ * production ThrustCurveClient internally. This abstraction exists so MotorModelDatabase's online
+ * wrapper behavior can be unit-tested with a fake source, without making tests depend on
+ * thrustcurve.org. The injection point is deliberately private/friend-only in MotorModelDatabase.
+ */
+class ThrustCurveAPI
+{
+public:
+   virtual ~ThrustCurveAPI() = default;
+
+   virtual ThrustcurveMetadata getMetadata() = 0;
+   virtual std::vector<model::MotorModel> searchMotors(const SearchCriteria& c) = 0;
+};
+
+/**
  * @brief Parsed payload of a search.json response. Carries metadata only;
  *        thrust curves are fetched separately per motor via download.json.
  */
@@ -82,23 +99,23 @@ std::optional<std::vector<std::pair<double, double>>>
 parseDownloadResponse(const std::string& json);
 
 /**
- * @brief This API for Thrustcurve.org - It will provide an interface for querying thrustcurve.org
- * for motor data
+ * @brief Production thrustcurve.org HTTP client used by MotorModelDatabase.
  *
  */
-class ThrustCurveAPI
+class ThrustCurveClient
+   : public ThrustCurveAPI
 {
 public:
-   ThrustCurveAPI();
-   ~ThrustCurveAPI();
+   ThrustCurveClient();
+   ~ThrustCurveClient();
 
    /**
  * @brief getMetaData
  */
 
-   ThrustcurveMetadata getMetadata();
+   ThrustcurveMetadata getMetadata() override;
 
-   std::vector<model::MotorModel> searchMotors(const SearchCriteria& c);
+   std::vector<model::MotorModel> searchMotors(const SearchCriteria& c) override;
 
 
 
@@ -112,4 +129,4 @@ private:
 
 } // namespace model
 
-#endif // MODEL_THRUSTCURVEAPI_H
+#endif // MODEL_THRUSTCURVECLIENT_H

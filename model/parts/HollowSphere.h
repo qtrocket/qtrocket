@@ -47,6 +47,8 @@ public:
    /// @brief Defaulted; HollowSphere owns no resources beyond the Part base.
    ~HollowSphere() override = default;
 
+   std::string typeName() const override { return "HollowSphere"; }
+
    double getInnerRadius() const { return innerRadius; } ///< Inner radius ri (meters).
    double getOuterRadius() const { return outerRadius; } ///< Outer radius ro (meters).
    double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
