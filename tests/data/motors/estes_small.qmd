@@ -1,0 +1,659 @@
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketMotorDatabase version="0.1">
+  <MotorModels>
+    <motor name="1/2A3">
+      <availability>regular</availability>
+      <avgThrust>3.0299999999999998</avgThrust>
+      <burnTime>0.35999999999999999</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>1/2A3</commonName>
+      <designation>1/2A3</designation>
+      <diameter>13</diameter>
+      <impulseClass>A</impulseClass>
+      <infoUrl/>
+      <length>45</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>7.6200000000000001</maxThrust>
+      <motorIdTC>5f4294d20002310000000006</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.002</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>1.0900000000000001</totalImpulse>
+      <totalWeight>0.0066</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.024" force="0.501"/>
+        <thrust time="0.042000000000000003" force="1.454"/>
+        <thrust time="0.064000000000000001" force="3.0089999999999999"/>
+        <thrust time="0.075999999999999998" force="4.0620000000000003"/>
+        <thrust time="0.087999999999999995" force="4.9139999999999997"/>
+        <thrust time="0.092999999999999999" force="5.0650000000000004"/>
+        <thrust time="0.10299999999999999" force="6.0679999999999996"/>
+        <thrust time="0.112" force="6.8700000000000001"/>
+        <thrust time="0.11700000000000001" force="7.0209999999999999"/>
+        <thrust time="0.126" force="7.6200000000000001"/>
+        <thrust time="0.13700000000000001" force="7.4720000000000004"/>
+        <thrust time="0.14599999999999999" force="6.8700000000000001"/>
+        <thrust time="0.153" force="6.1180000000000003"/>
+        <thrust time="0.159" force="5.0650000000000004"/>
+        <thrust time="0.16600000000000001" force="4.3630000000000004"/>
+        <thrust time="0.17899999999999999" force="3.6600000000000001"/>
+        <thrust time="0.19700000000000001" force="2.9079999999999999"/>
+        <thrust time="0.222" force="2.2559999999999998"/>
+        <thrust time="0.25" force="2.1560000000000001"/>
+        <thrust time="0.27700000000000002" force="2.1059999999999999"/>
+        <thrust time="0.29399999999999998" force="2.056"/>
+        <thrust time="0.30399999999999999" force="2.1560000000000001"/>
+        <thrust time="0.316" force="1.9550000000000001"/>
+        <thrust time="0.32600000000000001" force="1.554"/>
+        <thrust time="0.33900000000000002" force="1.0529999999999999"/>
+        <thrust time="0.34999999999999998" force="0.65100000000000002"/>
+        <thrust time="0.35999999999999999" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="1/2A6">
+      <availability>regular</availability>
+      <avgThrust>3.4199999999999999</avgThrust>
+      <burnTime>0.33000000000000002</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>1/2A6</commonName>
+      <designation>1/2A6</designation>
+      <diameter>18</diameter>
+      <impulseClass>A</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>7.8600000000000003</maxThrust>
+      <motorIdTC>5f4294d20002310000000007</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.0025999999999999999</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>1.1299999999999999</totalImpulse>
+      <totalWeight>0</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.031" force="0.40400000000000003"/>
+        <thrust time="0.064000000000000001" force="1.258"/>
+        <thrust time="0.096000000000000002" force="2.2629999999999999"/>
+        <thrust time="0.124" force="3.4670000000000001"/>
+        <thrust time="0.14899999999999999" force="4.7199999999999998"/>
+        <thrust time="0.17199999999999999" force="6.0229999999999997"/>
+        <thrust time="0.19600000000000001" force="7.0270000000000001"/>
+        <thrust time="0.20999999999999999" force="7.5279999999999996"/>
+        <thrust time="0.22500000000000001" force="7.8600000000000003"/>
+        <thrust time="0.23499999999999999" force="7.4820000000000002"/>
+        <thrust time="0.24399999999999999" force="6.6829999999999998"/>
+        <thrust time="0.254" force="5.6849999999999996"/>
+        <thrust time="0.26300000000000001" force="4.4870000000000001"/>
+        <thrust time="0.26900000000000002" force="4.0869999999999997"/>
+        <thrust time="0.27900000000000003" force="3.0390000000000001"/>
+        <thrust time="0.28999999999999998" force="1.79"/>
+        <thrust time="0.29699999999999999" force="1.042"/>
+        <thrust time="0.30599999999999999" force="0.59299999999999997"/>
+        <thrust time="0.314" force="0.34399999999999997"/>
+        <thrust time="0.33000000000000002" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="1/4A3">
+      <availability>regular</availability>
+      <avgThrust>2.3599999999999999</avgThrust>
+      <burnTime>0.25</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>1/4A3</commonName>
+      <designation>1/4A3</designation>
+      <diameter>13</diameter>
+      <impulseClass>A</impulseClass>
+      <infoUrl/>
+      <length>45</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>4.9500000000000002</maxThrust>
+      <motorIdTC>5f4294d20002310000000004</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.00083000000000000001</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>0.58999999999999997</totalImpulse>
+      <totalWeight>0.0060999999999999995</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.016" force="0.24299999999999999"/>
+        <thrust time="0.043999999999999997" force="1.1639999999999999"/>
+        <thrust time="0.080000000000000002" force="2.698"/>
+        <thrust time="0.087999999999999995" force="2.851"/>
+        <thrust time="0.096000000000000002" force="3.3119999999999998"/>
+        <thrust time="0.105" force="3.8039999999999998"/>
+        <thrust time="0.11600000000000001" force="4.3250000000000002"/>
+        <thrust time="0.129" force="4.7539999999999996"/>
+        <thrust time="0.13100000000000001" force="4.7539999999999996"/>
+        <thrust time="0.13500000000000001" force="4.9500000000000002"/>
+        <thrust time="0.13900000000000001" force="4.8150000000000004"/>
+        <thrust time="0.14299999999999999" force="4.8140000000000001"/>
+        <thrust time="0.14899999999999999" force="4.6600000000000001"/>
+        <thrust time="0.157" force="4.2889999999999997"/>
+        <thrust time="0.17299999999999999" force="3.548"/>
+        <thrust time="0.187" force="2.8079999999999998"/>
+        <thrust time="0.19400000000000001" force="2.5920000000000001"/>
+        <thrust time="0.19700000000000001" force="2.1299999999999999"/>
+        <thrust time="0.20200000000000001" force="1.913"/>
+        <thrust time="0.20599999999999999" force="1.512"/>
+        <thrust time="0.21299999999999999" force="1.389"/>
+        <thrust time="0.218" force="1.1120000000000001"/>
+        <thrust time="0.22700000000000001" force="0.80200000000000005"/>
+        <thrust time="0.23599999999999999" force="0.49299999999999999"/>
+        <thrust time="0.24099999999999999" force="0.27700000000000002"/>
+        <thrust time="0.25" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="A10">
+      <availability>regular</availability>
+      <avgThrust>1.78</avgThrust>
+      <burnTime>1.0600000000000001</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>A10</commonName>
+      <designation>A10</designation>
+      <diameter>13</diameter>
+      <impulseClass>A</impulseClass>
+      <infoUrl/>
+      <length>45</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>9.7400000000000002</maxThrust>
+      <motorIdTC>5f4294d2000231000000000c</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.0035999999999999999</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>1.8799999999999999</totalImpulse>
+      <totalWeight>0.0070000000000000001</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.016" force="0.49199999999999999"/>
+        <thrust time="0.040000000000000001" force="0.752"/>
+        <thrust time="0.062" force="0.96199999999999997"/>
+        <thrust time="0.078" force="2.0510000000000002"/>
+        <thrust time="0.096000000000000002" force="2.8580000000000001"/>
+        <thrust time="0.122" force="4.6109999999999998"/>
+        <thrust time="0.13800000000000001" force="6.0540000000000003"/>
+        <thrust time="0.16200000000000001" force="8.0999999999999996"/>
+        <thrust time="0.17999999999999999" force="9.5020000000000007"/>
+        <thrust time="0.19800000000000001" force="9.7400000000000002"/>
+        <thrust time="0.21199999999999999" force="8.2040000000000006"/>
+        <thrust time="0.224" force="4.5300000000000002"/>
+        <thrust time="0.23799999999999999" force="2.0539999999999998"/>
+        <thrust time="0.26800000000000002" force="1.4139999999999999"/>
+        <thrust time="0.29199999999999998" force="1.385"/>
+        <thrust time="0.32400000000000001" force="1.0669999999999999"/>
+        <thrust time="0.36399999999999999" force="1.099"/>
+        <thrust time="0.39600000000000002" force="0.95699999999999996"/>
+        <thrust time="0.44600000000000001" force="0.995"/>
+        <thrust time="0.48999999999999999" force="0.90100000000000002"/>
+        <thrust time="0.57399999999999995" force="0.90900000000000003"/>
+        <thrust time="0.67600000000000005" force="0.90900000000000003"/>
+        <thrust time="0.78200000000000003" force="1.0309999999999999"/>
+        <thrust time="0.88600000000000001" force="1.048"/>
+        <thrust time="0.97999999999999998" force="1.0289999999999999"/>
+        <thrust time="1.006" force="0.995"/>
+        <thrust time="1.038" force="1.0489999999999999"/>
+        <thrust time="1.05" force="0.74099999999999999"/>
+        <thrust time="1.0600000000000001" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="A3">
+      <availability>regular</availability>
+      <avgThrust>2.2000000000000002</avgThrust>
+      <burnTime>1.01</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>A3</commonName>
+      <designation>A3</designation>
+      <diameter>13</diameter>
+      <impulseClass>A</impulseClass>
+      <infoUrl/>
+      <length>45</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>5.8300000000000001</maxThrust>
+      <motorIdTC>5f4294d20002310000000009</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.0033</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>2.2200000000000002</totalImpulse>
+      <totalWeight>0.0085000000000000006</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.024" force="0.19500000000000001"/>
+        <thrust time="0.048000000000000001" force="0.89900000000000002"/>
+        <thrust time="0.085999999999999993" force="2.6579999999999999"/>
+        <thrust time="0.11" force="4.1829999999999998"/>
+        <thrust time="0.14000000000000001" force="5.8300000000000001"/>
+        <thrust time="0.159" force="5.3949999999999996"/>
+        <thrust time="0.17999999999999999" force="4.3010000000000002"/>
+        <thrust time="0.19900000000000001" force="3.6349999999999998"/>
+        <thrust time="0.215" force="2.7360000000000002"/>
+        <thrust time="0.23400000000000001" force="2.2669999999999999"/>
+        <thrust time="0.25800000000000001" force="2.1499999999999999"/>
+        <thrust time="0.315" force="2.0720000000000001"/>
+        <thrust time="0.441" force="1.9930000000000001"/>
+        <thrust time="0.55400000000000005" force="2.0329999999999999"/>
+        <thrust time="0.60499999999999998" force="2.0720000000000001"/>
+        <thrust time="0.67300000000000004" force="1.954"/>
+        <thrust time="0.76400000000000001" force="1.954"/>
+        <thrust time="0.874" force="2.0720000000000001"/>
+        <thrust time="0.93100000000000005" force="2.1499999999999999"/>
+        <thrust time="0.95299999999999996" force="2.0720000000000001"/>
+        <thrust time="0.96599999999999997" force="1.7190000000000001"/>
+        <thrust time="0.97699999999999998" force="1.173"/>
+        <thrust time="0.99299999999999999" force="0.54700000000000004"/>
+        <thrust time="1.01" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="A8">
+      <availability>regular</availability>
+      <avgThrust>3.1800000000000002</avgThrust>
+      <burnTime>0.72999999999999998</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>A8</commonName>
+      <designation>A8</designation>
+      <diameter>18</diameter>
+      <impulseClass>A</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>9.7300000000000004</maxThrust>
+      <motorIdTC>5f4294d2000231000000000b</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.0033</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>2.5</totalImpulse>
+      <totalWeight>0.016300000000000002</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.016" force="1.0800000000000001"/>
+        <thrust time="0.035999999999999997" force="0.29299999999999998"/>
+        <thrust time="0.050000000000000003" force="0.25900000000000001"/>
+        <thrust time="0.059999999999999998" force="0.35699999999999998"/>
+        <thrust time="0.070000000000000007" force="0.41899999999999998"/>
+        <thrust time="0.080000000000000002" force="0.35499999999999998"/>
+        <thrust time="0.10199999999999999" force="0.78100000000000003"/>
+        <thrust time="0.124" force="1.4430000000000001"/>
+        <thrust time="0.152" force="2.9660000000000002"/>
+        <thrust time="0.17000000000000001" force="4.4260000000000002"/>
+        <thrust time="0.20200000000000001" force="7.1600000000000001"/>
+        <thrust time="0.224" force="9.0510000000000002"/>
+        <thrust time="0.246" force="9.5549999999999997"/>
+        <thrust time="0.25600000000000001" force="9.3170000000000002"/>
+        <thrust time="0.27600000000000002" force="7.9580000000000002"/>
+        <thrust time="0.29399999999999998" force="6.1079999999999997"/>
+        <thrust time="0.32600000000000001" force="4.2350000000000003"/>
+        <thrust time="0.34999999999999998" force="3.8130000000000002"/>
+        <thrust time="0.376" force="3.9969999999999999"/>
+        <thrust time="0.40999999999999998" force="3.9260000000000002"/>
+        <thrust time="0.45200000000000001" force="3.7240000000000002"/>
+        <thrust time="0.47399999999999998" force="4.0460000000000003"/>
+        <thrust time="0.502" force="4.0919999999999996"/>
+        <thrust time="0.53200000000000003" force="4.1459999999999999"/>
+        <thrust time="0.53400000000000003" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="B4">
+      <availability>regular</availability>
+      <avgThrust>4.1699999999999999</avgThrust>
+      <burnTime>1.03</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>B4</commonName>
+      <designation>B4</designation>
+      <diameter>18</diameter>
+      <impulseClass>B</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>12.75</maxThrust>
+      <motorIdTC>5f4294d2000231000000000e</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.0060000000000000001</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>5</totalImpulse>
+      <totalWeight>0.0189</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.058000000000000003" force="2.3610000000000002"/>
+        <thrust time="0.10199999999999999" force="2.9209999999999998"/>
+        <thrust time="0.122" force="3.7970000000000002"/>
+        <thrust time="0.14999999999999999" force="5.8659999999999997"/>
+        <thrust time="0.17999999999999999" force="8.3729999999999993"/>
+        <thrust time="0.19900000000000001" force="9.8819999999999997"/>
+        <thrust time="0.20799999999999999" force="10.880000000000001"/>
+        <thrust time="0.216" force="11.367000000000001"/>
+        <thrust time="0.23799999999999999" force="11.244999999999999"/>
+        <thrust time="0.245" force="10.832000000000001"/>
+        <thrust time="0.26200000000000001" force="8.9819999999999993"/>
+        <thrust time="0.29299999999999998" force="6.1340000000000003"/>
+        <thrust time="0.32200000000000001" force="5.306"/>
+        <thrust time="0.35699999999999998" force="4.9169999999999998"/>
+        <thrust time="0.38800000000000001" force="4.7949999999999999"/>
+        <thrust time="0.41599999999999998" force="4.7460000000000004"/>
+        <thrust time="0.46000000000000002" force="4.625"/>
+        <thrust time="0.502" force="4.5759999999999996"/>
+        <thrust time="0.54400000000000004" force="4.3570000000000002"/>
+        <thrust time="0.57499999999999996" force="4.5030000000000001"/>
+        <thrust time="0.60499999999999998" force="4.5270000000000001"/>
+        <thrust time="0.67400000000000004" force="4.5519999999999996"/>
+        <thrust time="0.73099999999999998" force="4.4539999999999997"/>
+        <thrust time="0.88" force="4.4539999999999997"/>
+        <thrust time="0.91500000000000004" force="4.5030000000000001"/>
+        <thrust time="0.95999999999999996" force="4.4059999999999997"/>
+        <thrust time="1" force="4.0650000000000004"/>
+        <thrust time="1.0469999999999999" force="2.556"/>
+        <thrust time="1.0489999999999999" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="B6">
+      <availability>regular</availability>
+      <avgThrust>5.0300000000000002</avgThrust>
+      <burnTime>0.85999999999999999</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>B6</commonName>
+      <designation>B6</designation>
+      <diameter>18</diameter>
+      <impulseClass>B</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>12.140000000000001</maxThrust>
+      <motorIdTC>5f4294d20002310000000010</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.0055999999999999999</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>4.3300000000000001</totalImpulse>
+      <totalWeight>0.019099999999999999</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.035999999999999997" force="1.3640000000000001"/>
+        <thrust time="0.064000000000000001" force="2.7269999999999999"/>
+        <thrust time="0.082000000000000003" force="4.2149999999999999"/>
+        <thrust time="0.111" force="6.694"/>
+        <thrust time="0.13500000000000001" force="9.0500000000000007"/>
+        <thrust time="0.14599999999999999" force="9.5449999999999999"/>
+        <thrust time="0.17199999999999999" force="11.901"/>
+        <thrust time="0.18099999999999999" force="12.148999999999999"/>
+        <thrust time="0.191" force="11.901"/>
+        <thrust time="0.21099999999999999" force="9.1739999999999995"/>
+        <thrust time="0.23899999999999999" force="7.3140000000000001"/>
+        <thrust time="0.26400000000000001" force="6.0739999999999998"/>
+        <thrust time="0.27500000000000002" force="5.9500000000000002"/>
+        <thrust time="0.33300000000000002" force="5.2069999999999999"/>
+        <thrust time="0.39400000000000002" force="4.835"/>
+        <thrust time="0.44500000000000001" force="4.835"/>
+        <thrust time="0.55600000000000005" force="4.3390000000000004"/>
+        <thrust time="0.66700000000000004" force="4.5869999999999997"/>
+        <thrust time="0.72299999999999998" force="4.3390000000000004"/>
+        <thrust time="0.78000000000000003" force="4.3390000000000004"/>
+        <thrust time="0.79300000000000004" force="4.0910000000000002"/>
+        <thrust time="0.81200000000000006" force="2.6030000000000002"/>
+        <thrust time="0.83299999999999996" force="1.24"/>
+        <thrust time="0.85699999999999998" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="C11">
+      <availability>regular</availability>
+      <avgThrust>10.859999999999999</avgThrust>
+      <burnTime>0.81000000000000005</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>C11</commonName>
+      <designation>C11</designation>
+      <diameter>24</diameter>
+      <impulseClass>C</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>21.73</maxThrust>
+      <motorIdTC>5f4294d2000231000000001a</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.012</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>8.8000000000000007</totalImpulse>
+      <totalWeight>0.035229999999999997</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.034000000000000002" force="1.6919999999999999"/>
+        <thrust time="0.066000000000000003" force="3.782"/>
+        <thrust time="0.107" force="7.5659999999999998"/>
+        <thrust time="0.14499999999999999" force="10.946"/>
+        <thrust time="0.183" force="14.832000000000001"/>
+        <thrust time="0.214" force="17.617999999999999"/>
+        <thrust time="0.22600000000000001" force="18.213000000000001"/>
+        <thrust time="0.25600000000000001" force="20.106999999999999"/>
+        <thrust time="0.28100000000000003" force="21.207999999999998"/>
+        <thrust time="0.29799999999999999" force="21.73"/>
+        <thrust time="0.30599999999999999" force="20.206"/>
+        <thrust time="0.32300000000000001" force="17.321000000000002"/>
+        <thrust time="0.33700000000000002" force="14.930999999999999"/>
+        <thrust time="0.35799999999999998" force="13.236000000000001"/>
+        <thrust time="0.38500000000000001" force="11.946999999999999"/>
+        <thrust time="0.41299999999999998" force="11.65"/>
+        <thrust time="0.46800000000000003" force="10.946"/>
+        <thrust time="0.53900000000000003" force="10.449999999999999"/>
+        <thrust time="0.61899999999999999" force="10.648"/>
+        <thrust time="0.68300000000000005" force="10.648"/>
+        <thrust time="0.71499999999999997" force="10.648"/>
+        <thrust time="0.72599999999999998" force="10.053000000000001"/>
+        <thrust time="0.73999999999999999" force="8.1630000000000003"/>
+        <thrust time="0.75800000000000001" force="5.7729999999999997"/>
+        <thrust time="0.77800000000000002" force="3.1850000000000001"/>
+        <thrust time="0.79500000000000004" force="1.3939999999999999"/>
+        <thrust time="0.81000000000000005" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="C5">
+      <availability>regular</availability>
+      <avgThrust>3.9100000000000001</avgThrust>
+      <burnTime>1.99</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>C5</commonName>
+      <designation>C5</designation>
+      <diameter>18</diameter>
+      <impulseClass>C</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>20.41</maxThrust>
+      <motorIdTC>5f4294d20002310000000014</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.011299999999999999</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>7.79</totalImpulse>
+      <totalWeight>0.024799999999999999</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.0050000000000000001" force="1.4219999999999999"/>
+        <thrust time="0.031" force="2.6949999999999998"/>
+        <thrust time="0.063" force="5.5030000000000001"/>
+        <thrust time="0.11700000000000001" force="10.444000000000001"/>
+        <thrust time="0.151" force="14.374000000000001"/>
+        <thrust time="0.16800000000000001" force="16.358000000000001"/>
+        <thrust time="0.17399999999999999" force="16.471"/>
+        <thrust time="0.17899999999999999" force="17.594000000000001"/>
+        <thrust time="0.19900000000000001" force="18.603999999999999"/>
+        <thrust time="0.21099999999999999" force="19.876999999999999"/>
+        <thrust time="0.217" force="20.401"/>
+        <thrust time="0.23000000000000001" force="20.289000000000001"/>
+        <thrust time="0.23400000000000001" force="18.678999999999998"/>
+        <thrust time="0.23899999999999999" force="18.23"/>
+        <thrust time="0.252" force="13.813000000000001"/>
+        <thrust time="0.25800000000000001" force="9.0210000000000008"/>
+        <thrust time="0.26500000000000001" force="6.5880000000000001"/>
+        <thrust time="0.28000000000000003" force="4.9039999999999999"/>
+        <thrust time="0.29599999999999999" force="4.0800000000000001"/>
+        <thrust time="0.34899999999999998" force="3.4809999999999999"/>
+        <thrust time="0.438" force="2.9950000000000001"/>
+        <thrust time="0.504" force="2.7330000000000001"/>
+        <thrust time="0.61099999999999999" force="2.8069999999999999"/>
+        <thrust time="0.81499999999999995" force="2.6949999999999998"/>
+        <thrust time="0.96999999999999997" force="2.6949999999999998"/>
+        <thrust time="1.335" force="2.6949999999999998"/>
+        <thrust time="1.5980000000000001" force="2.6579999999999999"/>
+        <thrust time="1.794" force="2.6949999999999998"/>
+        <thrust time="1.96" force="2.7330000000000001"/>
+        <thrust time="1.9870000000000001" force="1.1599999999999999"/>
+        <thrust time="1.992" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="C6">
+      <availability>regular</availability>
+      <avgThrust>4.7400000000000002</avgThrust>
+      <burnTime>1.8600000000000001</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>C6</commonName>
+      <designation>C6</designation>
+      <diameter>18</diameter>
+      <impulseClass>C</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>14.09</maxThrust>
+      <motorIdTC>5f4294d20002310000000015</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.010800000000000001</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>8.8200000000000003</totalImpulse>
+      <totalWeight>0.0241</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.031" force="0.94599999999999995"/>
+        <thrust time="0.091999999999999998" force="4.8259999999999996"/>
+        <thrust time="0.13900000000000001" force="9.9359999999999999"/>
+        <thrust time="0.192" force="14.09"/>
+        <thrust time="0.20899999999999999" force="11.446"/>
+        <thrust time="0.23100000000000001" force="7.3810000000000002"/>
+        <thrust time="0.248" force="6.1509999999999998"/>
+        <thrust time="0.29199999999999998" force="5.4889999999999999"/>
+        <thrust time="0.37" force="4.9210000000000003"/>
+        <thrust time="0.47499999999999998" force="4.4480000000000004"/>
+        <thrust time="0.67100000000000004" force="4.258"/>
+        <thrust time="0.70199999999999996" force="4.5419999999999998"/>
+        <thrust time="0.72299999999999998" force="4.1639999999999997"/>
+        <thrust time="0.84999999999999998" force="4.4480000000000004"/>
+        <thrust time="1.0629999999999999" force="4.3529999999999998"/>
+        <thrust time="1.2110000000000001" force="4.3529999999999998"/>
+        <thrust time="1.242" force="4.069"/>
+        <thrust time="1.3029999999999999" force="4.258"/>
+        <thrust time="1.468" force="4.3529999999999998"/>
+        <thrust time="1.6559999999999999" force="4.4480000000000004"/>
+        <thrust time="1.821" force="4.4480000000000004"/>
+        <thrust time="1.8340000000000001" force="2.9329999999999998"/>
+        <thrust time="1.847" force="1.325"/>
+        <thrust time="1.8600000000000001" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="D11">
+      <availability>OOP</availability>
+      <avgThrust>9.4000000000000004</avgThrust>
+      <burnTime>1.8600000000000001</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>D11</commonName>
+      <designation>D11</designation>
+      <diameter>24</diameter>
+      <impulseClass>D</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>26.010000000000002</maxThrust>
+      <motorIdTC>5f4294d2000231000000001f</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.024500000000000001</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>17.489999999999998</totalImpulse>
+      <totalWeight>0.0448</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.033000000000000002" force="2.3929999999999998"/>
+        <thrust time="0.084000000000000005" force="5.7830000000000004"/>
+        <thrust time="0.14399999999999999" force="12.17"/>
+        <thrust time="0.214" force="20.757000000000001"/>
+        <thrust time="0.26100000000000001" force="24.350000000000001"/>
+        <thrust time="0.28899999999999998" force="26.010000000000002"/>
+        <thrust time="0.311" force="23.334"/>
+        <thrust time="0.32500000000000001" force="18.532"/>
+        <thrust time="0.33800000000000002" force="14.536"/>
+        <thrust time="0.35599999999999998" force="12.331"/>
+        <thrust time="0.39800000000000002" force="10.720000000000001"/>
+        <thrust time="0.47999999999999998" force="9.3030000000000008"/>
+        <thrust time="0.61799999999999999" force="8.6760000000000002"/>
+        <thrust time="0.76100000000000001" force="8.2469999999999999"/>
+        <thrust time="0.95499999999999996" force="8.2089999999999996"/>
+        <thrust time="1.222" force="7.9550000000000001"/>
+        <thrust time="1.4019999999999999" force="8.3190000000000008"/>
+        <thrust time="1.54" force="8.2910000000000004"/>
+        <thrust time="1.7010000000000001" force="8.4589999999999996"/>
+        <thrust time="1.784" force="8.4420000000000002"/>
+        <thrust time="1.8029999999999999" force="6.2389999999999999"/>
+        <thrust time="1.8340000000000001" force="3.0329999999999999"/>
+        <thrust time="1.8600000000000001" force="0"/>
+      </thrustCurve>
+    </motor>
+    <motor name="D12">
+      <availability>regular</availability>
+      <avgThrust>10.210000000000001</avgThrust>
+      <burnTime>1.6499999999999999</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>D12</commonName>
+      <designation>D12</designation>
+      <diameter>24</diameter>
+      <impulseClass>D</impulseClass>
+      <infoUrl/>
+      <length>70</length>
+      <manufacturer>Estes</manufacturer>
+      <maxThrust>29.73</maxThrust>
+      <motorIdTC>5f4294d20002310000000020</motorIdTC>
+      <propType>black powder</propType>
+      <propWeight>0.021100000000000001</propWeight>
+      <sparky>false</sparky>
+      <totalImpulse>16.84</totalImpulse>
+      <totalWeight>0.043999999999999997</totalWeight>
+      <type>Single Use</type>
+      <lastUpdated/>
+      <delays/>
+      <thrustCurve>
+        <thrust time="0.049000000000000002" force="2.569"/>
+        <thrust time="0.11600000000000001" force="9.3689999999999998"/>
+        <thrust time="0.184" force="17.274999999999999"/>
+        <thrust time="0.23699999999999999" force="24.257999999999999"/>
+        <thrust time="0.28199999999999997" force="29.73"/>
+        <thrust time="0.29699999999999999" force="27.010000000000002"/>
+        <thrust time="0.311" force="22.588999999999999"/>
+        <thrust time="0.32200000000000001" force="17.989999999999998"/>
+        <thrust time="0.34799999999999998" force="14.125999999999999"/>
+        <thrust time="0.38600000000000001" force="12.099"/>
+        <thrust time="0.442" force="10.808"/>
+        <thrust time="0.54600000000000004" force="9.8759999999999994"/>
+        <thrust time="0.71799999999999997" force="9.3059999999999992"/>
+        <thrust time="0.879" force="9.1050000000000004"/>
+        <thrust time="1.0660000000000001" force="8.9009999999999998"/>
+        <thrust time="1.2569999999999999" force="8.6980000000000004"/>
+        <thrust time="1.4359999999999999" force="8.3100000000000005"/>
+        <thrust time="1.5900000000000001" force="8.2940000000000005"/>
+        <thrust time="1.6120000000000001" force="4.6130000000000004"/>
+        <thrust time="1.6499999999999999" force="0"/>
+      </thrustCurve>
+    </motor>
+  </MotorModels>
+</QtRocketMotorDatabase>

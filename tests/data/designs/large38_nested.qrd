@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketDesign version="0.1">
+  <design name=""/>
+  <part type="NoseCone" name="Nose">
+    <params baseRadius="0.02" length="0.12" wallThickness="0" density="1400" solid="true"/>
+    <offset x="0" y="0" z="0"/>
+    <children>
+      <part type="BodyTube" name="Airframe">
+        <params innerRadius="0.019099999999999999" outerRadius="0.02" length="0.40000000000000002" density="1400"/>
+        <offset x="0" y="0" z="-0.26000000000000001"/>
+        <children>
+          <part type="BodyTube" name="Coupler">
+            <params innerRadius="0.017999999999999999" outerRadius="0.019" length="0.050000000000000003" density="1400"/>
+            <offset x="0" y="0" z="-0.17999999999999999"/>
+            <children>
+              <part type="BodyTube" name="InnerTube">
+                <params innerRadius="0.017000000000000001" outerRadius="0.017999999999999999" length="0.080000000000000002" density="1400"/>
+                <offset x="0" y="0" z="-0.040000000000000001"/>
+                <children/>
+              </part>
+            </children>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <sim dragCoefficient="1" referenceArea="0.001134" referenceAreaOverridden="false"/>
+</QtRocketDesign>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketDesign version="0.1">
+  <design name=""/>
+  <part type="NoseCone" name="ShellNose">
+    <params baseRadius="0.0155" length="0.22" wallThickness="0.002" density="2500" solid="false"/>
+    <offset x="0" y="0" z="0"/>
+    <children>
+      <part type="BodyTube" name="Airframe">
+        <params innerRadius="0.0149" outerRadius="0.0155" length="0.5" density="2500"/>
+        <offset x="0" y="0" z="-0.35999999999999999"/>
+        <children>
+          <part type="FinSet" name="Fins">
+            <params density="2500" rootChord="0.089999999999999997" tipChord="0.044999999999999998" span="0.070000000000000007" sweep="0.040000000000000001" thickness="0.0030000000000000001" bodyRadius="0.0155" finCount="4"/>
+            <offset x="0" y="0" z="-0.20499999999999999"/>
+            <children/>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <sim dragCoefficient="1" referenceArea="0.001134" referenceAreaOverridden="false"/>
+</QtRocketDesign>

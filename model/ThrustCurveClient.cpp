@@ -205,10 +205,10 @@ std::optional<SearchResponse> parseSearchResponse(const std::string& json)
          mm.maxThrust    = result["maxThrustN"].asDouble();
          mm.motorIdTC    = result["motorId"].asString();
          mm.propType     = result["propInfo"].asString();
-         mm.propWeight   = result["propWeightG"].asDouble();
+         mm.propWeight   = result["propWeightG"].asDouble() / 1000.0;  // g -> kg (match RSE/RASP and MotorModel kg convention)
          mm.sparky       = result["sparky"].asBool();
          mm.totalImpulse = result["totImpulseNs"].asDouble();
-         mm.totalWeight  = result["totalWeightG"].asDouble();
+         mm.totalWeight  = result["totalWeightG"].asDouble() / 1000.0; // g -> kg (thrustcurve.org reports *G fields in grams)
 
          std::string type = result["type"].asString();
          if(type == "SU")

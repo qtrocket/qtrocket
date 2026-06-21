@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketDesign version="0.1">
+  <design name=""/>
+  <part type="NoseCone" name="BasicNose">
+    <params baseRadius="0.0097999999999999997" length="0.10000000000000001" wallThickness="0" density="700" solid="true"/>
+    <offset x="0" y="0" z="0"/>
+    <children>
+      <part type="BodyTube" name="BasicBody">
+        <params innerRadius="0.0091000000000000004" outerRadius="0.0097999999999999997" length="0.25" density="700"/>
+        <offset x="0" y="0" z="-0.17499999999999999"/>
+        <children>
+          <part type="FinSet" name="BasicFins">
+            <params density="700" rootChord="0.040000000000000001" tipChord="0.02" span="0.029999999999999999" sweep="0.02" thickness="0.0030000000000000001" bodyRadius="0.0097999999999999997" finCount="3"/>
+            <offset x="0" y="0" z="-0.105"/>
+            <children/>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <sim dragCoefficient="1" referenceArea="0.001134" referenceAreaOverridden="false"/>
+</QtRocketDesign>

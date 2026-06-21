@@ -53,32 +53,36 @@ double ThrustCurve::getThrust(double t)
       return 0.0;
    }
 
-   // Find the right interval
+   // Find the first sample strictly after t; the interval to interpolate is [prev(i), i].
    auto i = thrustCurve.cbegin();
-   while(i->first <= t)
+   while(i != thrustCurve.cend() && i->first <= t)
    {
-      // If t is equal to a data point that we have, then just return
-      // the thrust we know. Otherwise it fell between  two points and we
-      // will interpolate
+      // If t lands exactly on a sample, return it; otherwise it falls inside an interval.
       if(i->first == t)
       {
          return i->second;
       }
-      else
-      {
-         i++;
-      }
+      ++i;
    }
-   // linearly interpolate the thrust and return
-   // tStart and tEnd are the start time and the end time
-   // of the current interval. thrustStart is the thrust at
-   // the start of the interval. 
-   double tStart = std::prev(i)->first;
-   double thrustStart = std::prev(i)->second;
-   double thrustEnd = i->second;
-   double tEnd = i->first;
-   double slope = (thrustEnd - thrustStart) /
-                  (tEnd - tStart);
-   return thrustStart + (t - tStart) * slope;
+   if(i == thrustCurve.cend())
+   {
+      // t is at/after the last sample but within maxTime (handles a maxTime != last-sample edge).
+      return thrustCurve.back().second;
+   }
 
+   // The interval start is the previous sample -- UNLESS t precedes the first sample (i == begin),
+   // in which case the curve has no (0,0) origin and we ramp from it. Reading std::prev(begin())
+   // here used to walk off the front of the vector (an out-of-bounds heap read whose garbage made
+   // the early-burn thrust, and thus the flight, depend on allocation layout).
+   double tStart = 0.0;
+   double thrustStart = 0.0;
+   if(i != thrustCurve.cbegin())
+   {
+      tStart = std::prev(i)->first;
+      thrustStart = std::prev(i)->second;
+   }
+   const double tEnd = i->first;
+   const double thrustEnd = i->second;
+   const double slope = (thrustEnd - thrustStart) / (tEnd - tStart);
+   return thrustStart + (t - tStart) * slope;
 }

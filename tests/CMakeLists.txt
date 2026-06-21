@@ -57,3 +57,25 @@ target_link_libraries(cli_tests
 gtest_discover_tests(cli_tests)
 
 add_test(NAME qtrocket_cli_tests COMMAND cli_tests)
+
+# Comprehensive CLI design / persistence / concrete-part-type matrix tests. Drive the real Repl across
+# the committed design fixtures (tests/data/designs/*.qrd) and motor fixtures (tests/data/motors/*.qmd
+# + the bundled data/Aerotech.rse), exercising round-trip fidelity, geometry/part-type invariants, and
+# a flight matrix spanning impulse classes 1/4A -> M across multiple motor diameters.
+add_executable(design_matrix_tests
+   DesignMatrixTests.cpp
+)
+qtrocket_enable_coverage(design_matrix_tests)
+
+target_compile_definitions(design_matrix_tests PRIVATE
+   QTROCKET_DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+   QTROCKET_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
+
+target_link_libraries(design_matrix_tests
+   cli
+   GTest::gtest_main
+)
+
+gtest_discover_tests(design_matrix_tests)
+
+add_test(NAME qtrocket_design_matrix_tests COMMAND design_matrix_tests)

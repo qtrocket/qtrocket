@@ -133,9 +133,9 @@ void MotorModel::computeMassCurve()
    emptyMass = data.totalWeight - data.propWeight;
 
    // Calculate the Isp for the motor, as we'll need this for the computing the mass flow rate.
-   // This will be the total impulse in Newton-seconds over
-   // the propellant weight. The prop mass is in grams, hence the division by 1000.0 to get kg
-   isp = data.totalImpulse / (utils::math::Constants::g0 * data.propWeight / 1000.0);
+   // This will be the total impulse in Newton-seconds over the propellant weight (kg, already
+   // converted by every loader -- RSE/RASP/thrustcurve.org) times g0.
+   isp = data.totalImpulse / (utils::math::Constants::g0 * data.propWeight);
 
    // Precompute the mass curve. Having this precomputed will ensure multiple calls to getMass()
    // or getThrust() during the same time step don't accidentally decrement the mass multiple times.

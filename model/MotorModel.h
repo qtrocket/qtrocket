@@ -404,10 +404,10 @@ public:
       double maxThrust{0.0}; /// Max thrust in Newtons
       std::string motorIdTC{""}; /// 24 character hex string used by thrustcurve.org to ID a motor
       std::string propType{""}; /// Propellant type, e.g. black powder
-      double propWeight{0.0};   /// Propellant weight in grams
+      double propWeight{0.0};   /// Propellant weight in kg (loaders convert; consumed as kg by getMass/computeMassCurve)
       bool sparky{false};       /// true if the motor is "sparky", false otherwise
       double totalImpulse{0.0}; /// Total impulse in Newton-seconds
-      double totalWeight{0.0};  /// Total weight in grams
+      double totalWeight{0.0};  /// Total weight in kg (loaders convert; consumed as kg by getMass/computeMassCurve)
       MotorType type{MOTORTYPE::SU}; /// Motor type, e.g. single-use, reload, or hybrid
       std::string lastUpdated{""}; /// Date last updated on ThrustCurve.org
    };
@@ -429,9 +429,11 @@ public:
 private:
    bool ignitionOccurred{false};
    bool burnOutOccurred{false};
-   double emptyMass;
-   double isp;
-   double ignitionTime;
+   double emptyMass{0.0};
+   double isp{0.0};
+   double ignitionTime{0.0}; /// 0 until startMotor(); read by getThrust's burnout test, so it must
+                             /// never be indeterminate (an uninitialized value made flights depend on
+                             /// stale stack/heap garbage -- a layout-dependent, order-dependent result)
    ThrustCurve thrust; /// The measured motor thrust curve
 
    std::vector<std::pair<double, double>> massCurve;

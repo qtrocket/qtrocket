@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketDesign version="0.1">
+  <design name=""/>
+  <part type="NoseCone" name="MultiNose">
+    <params baseRadius="0.0395" length="0.29999999999999999" wallThickness="0" density="1700" solid="true"/>
+    <offset x="0" y="0" z="0"/>
+    <children>
+      <part type="BodyTube" name="MultiBody">
+        <params innerRadius="0.037600000000000001" outerRadius="0.0395" length="0.90000000000000002" density="1700"/>
+        <offset x="0" y="0" z="-0.59999999999999998"/>
+        <children>
+          <part type="FinSet" name="MultiFins">
+            <params density="1700" rootChord="0.10000000000000001" tipChord="0.040000000000000001" span="0.059999999999999998" sweep="0.040000000000000001" thickness="0.0030000000000000001" bodyRadius="0.0395" finCount="6"/>
+            <offset x="0" y="0" z="-0.38"/>
+            <children/>
+          </part>
+          <part type="BodyTube" name="MultiCoupler">
+            <params innerRadius="0.035999999999999997" outerRadius="0.037600000000000001" length="0.080000000000000002" density="1700"/>
+            <offset x="0" y="0" z="0.48999999999999999"/>
+            <children/>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <motor commonName="M1350W"/>
+  <sim dragCoefficient="1" referenceArea="0.001134" referenceAreaOverridden="false"/>
+</QtRocketDesign>
