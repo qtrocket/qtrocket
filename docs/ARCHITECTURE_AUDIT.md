@@ -214,12 +214,12 @@ No angle of attack, no lift or side force, no moments, no CP computation, no CG-
 
 ### 3.4 Motor Data & File I/O (`model/`, `utils/`, `data/`) 🟡
 
-*(The motor stack moved `utils/` → `model/` since the original audit: `MotorModelDatabase`, `ThrustCurveAPI`, `RSEDatabaseLoader`, `ThrustCurve`, `MotorModel`.)*
+*(The motor stack moved `utils/` → `model/` since the original audit: `MotorModelDatabase`, `ThrustCurveClient`, `RSEDatabaseLoader`, `ThrustCurve`, `MotorModel`.)*
 
 **Motor database.** `MotorModelDatabase` stores motors in a `std::map<std::string, model::MotorModel>` keyed by common name (`model/MotorModelDatabase.h:159`). Ingestion is deliberately private (`model/MotorModelDatabase.h:144-149`); motors enter via three working paths:
 
 1. **RSE import** — `importRSEFile` (`model/MotorModelDatabase.h:98`, impl `model/MotorModelDatabase.cpp:53`) delegates to `RSEDatabaseLoader`, which parses RockSim XML via `boost::property_tree::read_xml` and walks `engine-database.engine-list` (`model/RSEDatabaseLoader.cpp:24,27`). Bundled data: `data/Aerotech.rse` (252 `<engine` entries; `grep -c '<engine ' data/Aerotech.rse`).
-2. **thrustcurve.org REST** — `searchOnline`/`getOnlineSearchFacets` (`model/MotorModelDatabase.h:125,134`) drive `ThrustCurveAPI` against `https://www.thrustcurve.org/` (`model/ThrustCurveAPI.cpp:235`): `api/v1/search.json` (`:284`), `api/v1/download.json` for samples (`:248`), `api/v1/metadata.json` (`:268`), parsed with jsoncpp. HTTP is a thin libcurl wrapper (`utils/CurlConnection.cpp:25-37,39-76`). **TLS certificate verification is now on**: the explicit `CURLOPT_SSL_VERIFYPEER=false` override was removed, so libcurl's secure default applies; the wrapper sets only timeouts (`CONNECTTIMEOUT 10s`, `TIMEOUT 30s`, `NOSIGNAL`) at `utils/CurlConnection.cpp:48-56`.
+2. **thrustcurve.org REST** — `searchOnline`/`getOnlineSearchFacets` (`model/MotorModelDatabase.h:125,134`) drive `ThrustCurveClient` through the internal `ThrustCurveAPI` interface against `https://www.thrustcurve.org/` (`model/ThrustCurveClient.cpp:235`): `api/v1/search.json` (`:284`), `api/v1/download.json` for samples (`:248`), `api/v1/metadata.json` (`:268`), parsed with jsoncpp. HTTP is a thin libcurl wrapper (`utils/CurlConnection.cpp:25-37,39-76`). **TLS certificate verification is now on**: the explicit `CURLOPT_SSL_VERIFYPEER=false` override was removed, so libcurl's secure default applies; the wrapper sets only timeouts (`CONNECTTIMEOUT 10s`, `TIMEOUT 30s`, `NOSIGNAL`) at `utils/CurlConnection.cpp:48-56`.
 3. **`.qmd` save/load round-trip** — `saveMotorDatabase`/`loadMotorDatabase` write/read a `<QtRocketMotorDatabase version="0.1">` XML document via property_tree (`model/MotorModelDatabase.cpp:165-227` with `write_xml` at `:226`; `:229-297` with `read_xml` at `:237`). Reached from the GUI (Tools menu `gui/MainWindow.cpp:75`; Cannonball tab buttons `gui/CannonballTab.cpp:69-77`) and the CLI (`savedb`/`loaddb`, `cli/Repl.cpp:202,223`). Round-trip is tested (`tests/MotorDatabasePersistenceTests.cpp:77`).
 
 **The headline absence: rocket-*design* persistence.** Nothing serializes a rocket (parts, masses, geometry, sim setup). Evidence: the File menu's New/Open/Save/Save As/Close actions exist but ship disabled (`enabled=false` at `gui/MainWindow.ui:117,129,141,153,170`) with no slots behind them (`gui/MainWindow.h:38-44` declares only Quit/About/SaveMotorDatabase handlers); the once-planned boost serialization is a commented-out include marked "CURRENTLY UNUSED" (`model/MotorModel.h:10-13`); and `grep -rniE "saveRocket|loadRocket|\.ork\b|boost::archive|QAbstractItemModel" --include=*.cpp --include=*.h --include=*.ui .` returns no matches.
@@ -452,7 +452,7 @@ Vocabulary: **solid** (do not rewrite — extend), **partial** (works, with real
 | `sim/USStandardAtmosphere.h` | `21` | "Fix this implementation. See the 1976 NOAA paper" |
 | `utils/Logger.h` | `18` | "@todo write docs" |
 | `utils/Bin.h` / `.cpp` | `h:22`; `cpp:15,39` | STL-ify/templatize Bin; `<format>` availability in Clang; efficiency |
-| `model/ThrustCurveAPI.cpp` | `197,198` | "fill in certOrg" / "fill in delays" for online motors |
+| `model/ThrustCurveClient.cpp` | `197,198` | "fill in certOrg" / "fill in delays" for online motors |
 | `gui/GuiRunner.cpp` | `34` | US-English-only translation note |
 | `tests/PhysicsIntegrationTests.cpp` | `37` | References **TODO.md P1** |
 
@@ -487,7 +487,7 @@ Several of these point into `TODO.md`, which was deleted in the working tree whe
 - RK45 accuracy controls — tolerance (default `1.0e-6`, `sim/RK45Solver.h:52`) and step cap (`hMax`, default `maxStepFactor ×` the seeded step, `sim/RK45Solver.h:72`; settable via `setMaxStepSize` `:76`) are real, tested knobs that no front end (and not even `Integrator`) can reach.
 - State-retention toggle (`retainStates`, `sim/Propagator.h:64`) — unbounded trajectory memory growth is not controllable from any front end.
 - The entire Part-tree API — `addChildPart`/`clone`/`findById` (§4.1).
-- Motor ejection delays — parsed from RSE (`model/RSEDatabaseLoader.cpp:58-68`), stored (`model/MotorModel.h:393`), serialized to `.qmd`, and consumed by **nothing**: the sim has no ejection/recovery phase of any kind (termination is ground impact, §3.2), and thrustcurve.org imports don't even populate the field (`model/ThrustCurveAPI.cpp:198`).
+- Motor ejection delays — parsed from RSE (`model/RSEDatabaseLoader.cpp:58-68`), stored (`model/MotorModel.h:393`), serialized to `.qmd`, and consumed by **nothing**: the sim has no ejection/recovery phase of any kind (termination is ground impact, §3.2), and thrustcurve.org imports don't even populate the field (`model/ThrustCurveClient.cpp:198`).
 
 **GUI vs CLI parity:**
 - The CLI reports apogee, max speed, downrange, and landing position (`cli/Repl.cpp:579-608`); the GUI can plot only z-altitude and z-velocity (`gui/AnalysisWindow.cpp:39,66`) even though x is integrated — the data exists, the GUI just can't show it.

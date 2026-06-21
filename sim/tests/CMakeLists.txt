@@ -1,6 +1,8 @@
 
 add_executable(sim_tests
    USStandardAtmosphereTests.cpp
+   SimpleAtmosphereTests.cpp
+   EnvironmentTests.cpp
    RK45SolverTests.cpp
    SphericalGeoidAndGravityTests.cpp
    IntegratorTests.cpp

@@ -28,8 +28,8 @@ add_library(model
    RSEDatabaseLoader.h
    ThrustCurve.cpp
    ThrustCurve.h
-   ThrustCurveAPI.cpp
-   ThrustCurveAPI.h
+   ThrustCurveClient.cpp
+   ThrustCurveClient.h
    InertiaTensors.cpp
    InertiaTensors.h)
 qtrocket_enable_coverage(model)
