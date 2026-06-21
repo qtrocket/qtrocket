@@ -128,9 +128,20 @@ bool parseDoubleStr(const std::string& s, double& out)
 }
 bool parseUIntStr(const std::string& s, unsigned int& out)
 {
-   try { std::size_t pos = 0; const unsigned long v = std::stoul(s, &pos);
-         if(pos != s.size()) return false; out = static_cast<unsigned int>(v); return true; }
-   catch(...) { return false; }
+   try
+   {
+      std::size_t pos = 0; const unsigned long v = std::stoul(s, &pos);
+      if(pos != s.size())
+      {
+         return false;
+      }
+      out = static_cast<unsigned int>(v);
+      return true;
+   }
+   catch(...)
+   {
+      return false;
+   }
 }
 bool parseULLStr(const std::string& s, unsigned long long& out)
 {

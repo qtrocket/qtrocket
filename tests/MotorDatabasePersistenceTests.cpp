@@ -3,7 +3,6 @@
 
 /// \cond
 #include <algorithm>
-#include <cstdio>      // std::remove
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -308,7 +307,7 @@ TEST_F(MotorDatabaseRoundTrip, SaveThenLoadReproducesTheDatabase)
 
    model::MotorModelDatabase reloaded;
    reloaded.loadMotorDatabase(tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    EXPECT_EQ(reloaded.size(), original.size());
 
@@ -388,7 +387,7 @@ B6 18 70 4-6 0.006 0.018 Estes
    EXPECT_EQ(db.size(), firstImport);
 
    const std::size_t secondImport = db.importRASPFile(fixture.string());
-   std::remove(fixture.c_str());
+   std::filesystem::remove(fixture);
    EXPECT_EQ(secondImport, 0u);
    EXPECT_EQ(db.size(), firstImport);
 
@@ -412,7 +411,7 @@ TEST_F(MotorDatabaseRoundTrip, ListMotorsReturnsSortedSummariesAndAppliesEveryLo
 
    model::MotorModelDatabase db;
    db.loadMotorDatabase(fixture.string());
-   std::remove(fixture.c_str());
+   std::filesystem::remove(fixture);
 
    ASSERT_EQ(db.size(), 3u);
 
@@ -476,7 +475,7 @@ TEST_F(MotorDatabaseRoundTrip, LoadSkipsNonMotorNodesHonorsDefaultsAndSavesEmpty
 
    model::MotorModelDatabase db;
    db.loadMotorDatabase(fixture.string());
-   std::remove(fixture.c_str());
+   std::filesystem::remove(fixture);
 
    ASSERT_EQ(db.size(), 2u);
    EXPECT_FALSE(db.getMotorModel("This node is not a motor and must be ignored.").has_value());
@@ -509,7 +508,7 @@ TEST_F(MotorDatabaseRoundTrip, LoadSkipsNonMotorNodesHonorsDefaultsAndSavesEmpty
 
    model::MotorModelDatabase reloaded;
    reloaded.loadMotorDatabase(saved.string());
-   std::remove(saved.c_str());
+   std::filesystem::remove(saved);
 
    ASSERT_EQ(reloaded.size(), 2u);
    auto reloadedNoCurve = reloaded.getMotorModel("NoCurve");

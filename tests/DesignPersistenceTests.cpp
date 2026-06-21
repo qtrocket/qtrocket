@@ -3,7 +3,6 @@
 // add_child guarantee, motor-absent tolerance, and rejection of an unsupported file version.
 
 /// \cond
-#include <cstdio>      // std::remove
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -63,7 +62,7 @@ TEST_F(DesignRoundTrip, GeometryRoundTripsMassCgStructureAndMultiChild)
    model::MotorModelDatabase motors; // this design has no motor
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    // Structure: nose root -> one child (body); body -> two children (both survived: add_child, not put).
    ASSERT_NE(r2.getTopPart(), nullptr);
@@ -98,7 +97,7 @@ TEST_F(DesignRoundTrip, ReferenceAreaOverrideAndDragRoundTrip)
    model::MotorModelDatabase motors;
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    EXPECT_TRUE(r2.isReferenceAreaOverridden());
    EXPECT_DOUBLE_EQ(r2.getReferenceArea(), 0.0421);
@@ -117,7 +116,7 @@ TEST_F(DesignRoundTrip, NonOverriddenReferenceAreaStaysUnoverriddenOnLoad)
    model::MotorModelDatabase motors;
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    EXPECT_FALSE(r2.isReferenceAreaOverridden());
 }
@@ -139,7 +138,7 @@ TEST_F(DesignRoundTrip, MotorByNameRoundTripsAndPreservesMassCurve)
 
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
    ASSERT_TRUE(r2.isMotorSet());
    r2.launch();
 
@@ -167,7 +166,7 @@ TEST_F(DesignRoundTrip, MotorAbsentInDatabaseLoadsGeometryWithoutTheMotor)
    model::MotorModelDatabase empty; // does NOT contain G80T
    model::RocketModel r2;
    model::DesignSerializer::load(r2, empty, tmp); // logs a warning, loads geometry only
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    EXPECT_FALSE(r2.isMotorSet());
    EXPECT_EQ(r2.getTopPart()->typeName(), "BodyTube"); // geometry still loaded
@@ -186,7 +185,7 @@ TEST_F(DesignRoundTrip, UnsupportedMajorVersionIsRejectedAndLeavesRocketUntouche
    model::MotorModelDatabase motors;
    model::RocketModel r; // boot placeholder
    EXPECT_THROW(model::DesignSerializer::load(r, motors, tmp), std::exception);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    // The version check happens before setRoot, so the rocket is unchanged.
    EXPECT_EQ(r.getTopPart()->typeName(), "HollowSphere");
@@ -203,7 +202,7 @@ TEST_F(DesignRoundTrip, LeafRootWithNoChildrenRoundTrips)
    model::MotorModelDatabase motors;
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    EXPECT_EQ(r2.getTopPart()->typeName(), "BodyTube");
    EXPECT_EQ(r2.getTopPart()->getName(), "Solo");
@@ -232,7 +231,7 @@ TEST_F(DesignRoundTrip, DeeplyNestedDesignRoundTrips)
    model::MotorModelDatabase motors;
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
 
    EXPECT_DOUBLE_EQ(r2.getMass(0.0), r.getMass(0.0));
    const auto& l1 = std::get<0>(r2.getTopPart()->getChildParts().at(0)); // body
@@ -260,7 +259,7 @@ TEST_F(DesignRoundTrip, MotorThrustWorksAfterReload)
 
    model::RocketModel r2;
    model::DesignSerializer::load(r2, motors, tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
    ASSERT_TRUE(r2.isMotorSet());
 
    r.launch();

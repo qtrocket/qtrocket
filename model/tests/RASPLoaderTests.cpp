@@ -1,6 +1,4 @@
 /// \cond
-// C headers
-#include <cstdio>
 // C++ headers
 #include <filesystem>
 #include <fstream>
@@ -56,7 +54,7 @@ D12 24 70 0-3-5-7 0.0211 0.0438 Estes
 )"));
 
    model::RASPLoader loader(path.string());
-   std::remove(path.c_str());
+   std::filesystem::remove(path);
 
    ASSERT_EQ(loader.getMotors().size(), 1u);
    const model::MotorModel motor = loader.getMotorModelByName("D12");
@@ -97,7 +95,7 @@ G80T 29 124 4-7 0.060 0.100 AeroTech
 )"));
 
    model::RASPLoader loader(path.string());
-   std::remove(path.c_str());
+   std::filesystem::remove(path);
 
    ASSERT_EQ(loader.getMotors().size(), 2u);
    const model::MotorModel halfA = loader.getMotorModelByName("1/2A3");
@@ -120,7 +118,7 @@ A8 18 70 3 0.003 0.016 Estes
 )"));
 
    EXPECT_THROW((void)model::RASPLoader(path.string()), std::runtime_error);
-   std::remove(path.c_str());
+   std::filesystem::remove(path);
 }
 
 TEST_F(RASPLoaderTest, RejectsZeroThrustBeforeMoreSampleData)
@@ -134,7 +132,7 @@ A8 18 70 3 0.003 0.016 Estes
 )"));
 
    EXPECT_THROW((void)model::RASPLoader(path.string()), std::runtime_error);
-   std::remove(path.c_str());
+   std::filesystem::remove(path);
 }
 
 TEST_F(RASPLoaderTest, RejectsInvalidDelayToken)
@@ -147,7 +145,7 @@ A8 18 70 PORK 0.003 0.016 Estes
 )"));
 
    EXPECT_THROW((void)model::RASPLoader(path.string()), std::runtime_error);
-   std::remove(path.c_str());
+   std::filesystem::remove(path);
 }
 
 TEST_F(RASPLoaderTest, RSELoaderUsesSharedImpulseClassParser)
@@ -170,7 +168,7 @@ TEST_F(RASPLoaderTest, RSELoaderUsesSharedImpulseClassParser)
 )"));
 
    model::RSEDatabaseLoader loader(path.string());
-   std::remove(path.c_str());
+   std::filesystem::remove(path);
 
    ASSERT_EQ(loader.getMotors().size(), 1u);
    EXPECT_EQ(loader.getMotors()[0].data.impulseClass, "1/2A");

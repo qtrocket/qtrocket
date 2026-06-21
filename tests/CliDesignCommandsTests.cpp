@@ -3,7 +3,6 @@
 // same. This is the user-visible proof of the P2 milestone.
 
 /// \cond
-#include <cstdio>      // std::remove
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -96,7 +95,7 @@ TEST(CliDesignCommands, BuildSaveReloadFlyEndToEnd)
    ASSERT_TRUE(ok(run(repl, "savedesign " + tmp)));
    ASSERT_TRUE(ok(run(repl, "cleardesign")));
    const std::string loadOut = run(repl, "loaddesign " + tmp);
-   std::remove(tmp.c_str());
+   std::filesystem::remove(tmp);
    ASSERT_TRUE(ok(loadOut));
    EXPECT_NE(loadOut.find("G80T"), std::string::npos); // motor re-resolved by name
 
@@ -149,7 +148,7 @@ TEST(CliDesignCommands, LoadMotorsImportsRaspEngFiles)
 )"));
 
    const std::string loadOut = run(repl, "loadmotors " + fixture.string());
-   std::remove(fixture.c_str());
+   std::filesystem::remove(fixture);
    ASSERT_TRUE(ok(loadOut));
    EXPECT_NE(loadOut.find("1 motors"), std::string::npos);
    EXPECT_TRUE(ok(run(repl, "setmotor 1/2A3")));
