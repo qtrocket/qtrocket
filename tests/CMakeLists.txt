@@ -78,4 +78,19 @@ target_link_libraries(design_matrix_tests
 
 gtest_discover_tests(design_matrix_tests)
 
+# The ladder-sweep cases (FlightMatrix, Atmosphere) fly every motor of each class's full 1/4A -> M
+# ladder, in vacuum and through the atmosphere -- with high-impulse motors coasting to tens of km this
+# dominates the runtime. Register the suite two ways:
+#   * the default ("light") entry runs the whole suite but flies only ONE motor per class for the
+#     sweeps (a fast smoke check that still covers every diameter);
+#   * the "heavy" entry re-runs just the sweeps with QTROCKET_FULL_LADDER=1, flying the COMPLETE ladder
+#     (and so the apogee-monotonicity and per-motor drag checks). It is LABELS-tagged `heavy`.
+# So: `ctest -R qtrocket_*` runs both (full coverage); `ctest -LE heavy` is the fast loop (everything
+# except the full-ladder sweeps, including the unit suites); `ctest -L heavy` runs only the sweeps.
 add_test(NAME qtrocket_design_matrix_tests COMMAND design_matrix_tests)
+
+add_test(NAME qtrocket_design_matrix_heavy_tests
+         COMMAND design_matrix_tests "--gtest_filter=FlightMatrix.*:Atmosphere.*")
+set_tests_properties(qtrocket_design_matrix_heavy_tests PROPERTIES
+   LABELS heavy
+   ENVIRONMENT "QTROCKET_FULL_LADDER=1")

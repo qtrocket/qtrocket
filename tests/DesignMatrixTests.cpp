@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -363,6 +364,17 @@ std::string designPath(const std::string& stem)
 {
    return (kDesignsDir / (stem + ".qrd")).string();
 }
+
+// Which motors of a class's ladder a flight test actually flies. The "heavy" ctest entry sets
+// QTROCKET_FULL_LADDER=1 to sweep the COMPLETE ladder (and so exercise apogee monotonicity and the
+// per-motor drag check); the default "light" run flies only the smallest motor per class -- a fast
+// smoke check that still covers every diameter. See tests/CMakeLists.txt.
+std::vector<std::string> motorsToFly(const Ladder& lad)
+{
+   if(std::getenv("QTROCKET_FULL_LADDER") != nullptr)
+      return lad.motors;
+   return { lad.motors.front() };
+}
 } // namespace
 
 // =================================================================================================
@@ -443,8 +455,8 @@ TEST(FlightMatrix, LadderApogeeIsNominalPositiveAndMonotonicInImpulse)
       SCOPED_TRACE(lad.basicFile);
       ASSERT_TRUE(ok(run(repl, "loaddesign " + designPath(lad.basicFile))));
 
-      double prev = -1.0;
-      for(const auto& motor : lad.motors)
+      double prev = -1.0; // the monotonicity check is only meaningful over >1 motor (full-ladder run)
+      for(const auto& motor : motorsToFly(lad))
       {
          SCOPED_TRACE(motor);
          ASSERT_TRUE(ok(run(repl, "setmotor " + motor)));
@@ -497,37 +509,67 @@ TEST(MotorPersistence, BakedInMotorSurvivesDesignFileRoundTrip)
 }
 
 // =================================================================================================
-// Atmosphere realism + integrator agreement on a representative mid-power airframe.
+// Atmosphere realism: drag lowers the apogee vs vacuum, swept across the full 1/4A -> M ladder on
+// EVERY reference airframe, for BOTH integrators. Each motor flies twice from the same state -- once
+// in Vacuum (drag-free) and once through the US Standard 1976 atmosphere with a representative Cd --
+// and the atmospheric flight must always reach a lower apogee. The design's own geometry-derived
+// reference area (per-class frontal disc) is used, so drag scales with the airframe.
 // =================================================================================================
 
-TEST(Atmosphere, DragReducesApogeeVersusVacuum)
+namespace
 {
-   quietLogs();
-   cli::Repl repl(QtRocket::getInstance());
+void runDragVsVacuumSweep(cli::Repl& repl, const std::string& integrator)
+{
    loadMotorFixtures(repl);
-
-   ASSERT_TRUE(ok(run(repl, "loaddesign " + designPath("mid29_basic"))));
-   ASSERT_TRUE(ok(run(repl, "setmotor G80T")));
    ASSERT_TRUE(ok(run(repl, "setgravity Constant Gravity")));
-   ASSERT_TRUE(ok(run(repl, "setintegrator Runge-Kutta 4th Order")));
+   ASSERT_TRUE(ok(run(repl, "setintegrator " + integrator)));
    ASSERT_TRUE(ok(run(repl, "settimestep 0.01")));
    ASSERT_TRUE(ok(run(repl, "setvelocity " + std::to_string(kLaunchSpeed))));
    ASSERT_TRUE(ok(run(repl, "setangle 0")));
 
-   ASSERT_TRUE(ok(run(repl, "setatmosphere Vacuum")));
-   ASSERT_TRUE(ok(run(repl, "setdrag 0")));
-   const double vac = flyApogee(repl);
+   for(const auto& lad : kLadders)
+   {
+      SCOPED_TRACE(lad.basicFile);
+      ASSERT_TRUE(ok(run(repl, "loaddesign " + designPath(lad.basicFile))));
+      for(const auto& motor : motorsToFly(lad))
+      {
+         SCOPED_TRACE(motor);
+         ASSERT_TRUE(ok(run(repl, "setmotor " + motor)));
 
-   ASSERT_TRUE(ok(run(repl, "setatmosphere US Standard 1976")));
-   ASSERT_TRUE(ok(run(repl, "setdrag 0.75")));
-   ASSERT_TRUE(ok(run(repl, "setarea 0.00066"))); // ~29 mm frontal disc
-   const double drag = flyApogee(repl);
-   cleanupRunCsv();
+         ASSERT_TRUE(ok(run(repl, "setatmosphere Vacuum"))); // run 1: drag-free reference
+         ASSERT_TRUE(ok(run(repl, "setdrag 0")));
+         const double vac = flyApogee(repl);
 
-   EXPECT_GT(vac, 0.0);
-   EXPECT_GT(drag, 0.0);
-   EXPECT_LT(drag, vac) << "atmospheric drag must lower the apogee vs vacuum";
+         ASSERT_TRUE(ok(run(repl, "setatmosphere US Standard 1976"))); // run 2: same flight, with drag
+         ASSERT_TRUE(ok(run(repl, "setdrag 0.75")));
+         const double drag = flyApogee(repl);
+
+         EXPECT_GT(vac, 0.0);
+         EXPECT_GT(drag, 0.0);
+         EXPECT_LT(drag, vac) << "atmospheric drag must lower the apogee vs vacuum";
+      }
+      cleanupRunCsv();
+   }
 }
+} // namespace
+
+TEST(Atmosphere, DragReducesApogeeVersusVacuumRK4)
+{
+   quietLogs();
+   cli::Repl repl(QtRocket::getInstance());
+   runDragVsVacuumSweep(repl, "Runge-Kutta 4th Order");
+}
+
+TEST(Atmosphere, DragReducesApogeeVersusVacuumRK45)
+{
+   quietLogs();
+   cli::Repl repl(QtRocket::getInstance());
+   runDragVsVacuumSweep(repl, "Runge-Kutta-Fehlberg");
+}
+
+// =================================================================================================
+// Integrator agreement: adaptive RK45 tracks fixed-step RK4 in vacuum on a representative airframe.
+// =================================================================================================
 
 TEST(Integrator, AdaptiveRk45TracksRk4UnderVacuum)
 {

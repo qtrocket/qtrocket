@@ -21,18 +21,23 @@ cmake --build --preset debug-clang     # build everything
 
 ## Tests
 
-GoogleTest, five aggregate suites, all registered with ctest under names matching `qtrocket_*`:
+GoogleTest, six test binaries, all registered with ctest under names matching `qtrocket_*`:
 
 ```bash
 ctest --test-dir build -R 'qtrocket_*'                 # all suites (what CI runs)
+ctest --test-dir build -R 'qtrocket_*' -LE heavy       # fast loop: skip the full-ladder flight sweeps
+ctest --test-dir build -R 'qtrocket_*' -L heavy        # ONLY the heavy full-ladder flight sweeps
 ctest --test-dir build -R PartTests                    # tests are also discovered individually via gtest_discover_tests
 ./build/model/tests/model_tests                        # Part composition / inertia tests
 ./build/sim/tests/sim_tests                            # RK45 solver, US Standard Atmosphere tests
 ./build/tests/integration_tests                        # end-to-end physics + motor DB persistence
 ./build/tests/propagator_tests                         # focused Propagator behavior
 ./build/tests/cli_tests                                # CLI/REPL command behavior
+./build/tests/design_matrix_tests                      # CLI design/persistence/part-type + 1/4A->M flight matrix
 ./build/model/tests/model_tests --gtest_filter='PartTests.Clone*'   # single test
 ```
+
+The `design_matrix` binary is registered with ctest twice: `qtrocket_design_matrix_tests` flies one motor per class for the flight sweeps (fast smoke), and `qtrocket_design_matrix_heavy_tests` (label `heavy`, sets `QTROCKET_FULL_LADDER=1`) re-runs the `FlightMatrix`/`Atmosphere` sweeps over each class's complete 1/4A→M motor ladder. So `-LE heavy` is the fast loop and `-L heavy` is the full sweep; both are covered by a plain `-R 'qtrocket_*'`.
 
 Test sources live next to what they test: `model/tests/`, `sim/tests/`, and top-level `tests/` for integration.
 
