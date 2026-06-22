@@ -86,6 +86,12 @@ enable_testing()
 if (MSVC)
     # warning level 4
     add_compile_options(/W4 /WX)
+    # std::getenv and friends are standard C++; MSVC's C4996 "use the _s variant" deprecations are
+    # non-standard MS editorializing, and /WX turns them into hard errors. Allow the standard functions
+    # tree-wide. This only silences the CRT secure-function nags -- genuine [[deprecated]] uses still
+    # warn (different C4996 trigger), and GCC/Clang -Wall -Wextra remain the real safety net.
+    # We also run ASAN and clang-tidy for additional security
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
     # additional warnings
     add_compile_options(-Wall -Wextra -Wpedantic -Werror)
