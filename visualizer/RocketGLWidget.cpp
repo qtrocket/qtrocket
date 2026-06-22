@@ -3,6 +3,7 @@
 
 // Qt headers
 #include <QOpenGLShaderProgram>
+#include <QOpenGLContext>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QColor>
@@ -19,36 +20,37 @@ namespace viz
 namespace
 {
 
-/// @brief Vertex shader for the lit rocket geometry: transforms position by the MVP and passes the
-///        world(model)-space position and normal to the fragment stage.
-constexpr const char* kLitVert = R"(#version 330 core
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aNormal;
+// Shaders are written for the lowest-common-denominator dialects so they run on whatever context
+// main.cpp's unconstrained surface format yields: GLSL 1.20 on a desktop compatibility context, or
+// GLSL ES 1.00 on a GLES2 context. Both use attribute/varying and gl_FragColor (no in/out, no
+// layout qualifiers); attribute locations are bound explicitly in buildProgram(). initializeGL()
+// picks the desktop or ES pair via QOpenGLContext::isOpenGLES().
+
+/// @brief Vertex shader for the lit rocket geometry (desktop GLSL 1.20): transforms position by the
+///        MVP and passes the model-space normal to the fragment stage.
+constexpr const char* kLitVertDesktop = R"(#version 120
+attribute vec3 aPos;
+attribute vec3 aNormal;
 
 uniform mat4 uMvp;
 uniform mat4 uModel;
 
-out vec3 vNormal;
-out vec3 vWorldPos;
+varying vec3 vNormal;
 
 void main()
 {
    gl_Position = uMvp * vec4(aPos, 1.0);
    vNormal     = mat3(uModel) * aNormal;
-   vWorldPos   = vec3(uModel * vec4(aPos, 1.0));
 }
 )";
 
-/// @brief Fragment shader: single directional headlight, Lambert diffuse + healthy ambient + mild
-///        specular. Two-sided shading so thin fins and tube interiors read correctly.
-constexpr const char* kLitFrag = R"(#version 330 core
-in vec3 vNormal;
-in vec3 vWorldPos;
+/// @brief Fragment shader (desktop GLSL 1.20): single directional headlight, Lambert diffuse +
+///        healthy ambient + mild specular. Two-sided shading so thin fins and tube interiors read.
+constexpr const char* kLitFragDesktop = R"(#version 120
+varying vec3 vNormal;
 
 uniform vec3 uColor;
 uniform vec3 uLightDir;
-
-out vec4 fragColor;
 
 void main()
 {
@@ -68,13 +70,13 @@ void main()
    float spec    = pow(max(dot(n, halfVec), 0.0), 24.0) * 0.20;
 
    vec3 color = uColor * (ambient + 0.65 * diffuse) + vec3(spec);
-   fragColor  = vec4(color, 1.0);
+   gl_FragColor = vec4(color, 1.0);
 }
 )";
 
-/// @brief Vertex shader for the unlit overlays (grid + axes).
-constexpr const char* kLineVert = R"(#version 330 core
-layout(location = 0) in vec3 aPos;
+/// @brief Vertex shader for the unlit overlays (grid + axes), desktop GLSL 1.20.
+constexpr const char* kLineVertDesktop = R"(#version 120
+attribute vec3 aPos;
 
 uniform mat4 uMvp;
 
@@ -84,15 +86,77 @@ void main()
 }
 )";
 
-/// @brief Fragment shader for the unlit overlays: a flat color.
-constexpr const char* kLineFrag = R"(#version 330 core
+/// @brief Fragment shader for the unlit overlays: a flat color (desktop GLSL 1.20).
+constexpr const char* kLineFragDesktop = R"(#version 120
 uniform vec3 uColor;
-
-out vec4 fragColor;
 
 void main()
 {
-   fragColor = vec4(uColor, 1.0);
+   gl_FragColor = vec4(uColor, 1.0);
+}
+)";
+
+/// @brief GLSL ES 1.00 twin of @ref kLitVertDesktop (no #version => defaults to ES 1.00).
+constexpr const char* kLitVertEs = R"(attribute vec3 aPos;
+attribute vec3 aNormal;
+
+uniform mat4 uMvp;
+uniform mat4 uModel;
+
+varying vec3 vNormal;
+
+void main()
+{
+   gl_Position = uMvp * vec4(aPos, 1.0);
+   vNormal     = mat3(uModel) * aNormal;
+}
+)";
+
+/// @brief GLSL ES 1.00 twin of @ref kLitFragDesktop (adds the required float precision qualifier).
+constexpr const char* kLitFragEs = R"(precision mediump float;
+varying vec3 vNormal;
+
+uniform vec3 uColor;
+uniform vec3 uLightDir;
+
+void main()
+{
+   vec3 n = normalize(vNormal);
+   vec3 l = normalize(-uLightDir);
+
+   if (dot(n, l) < 0.0)
+      n = -n;
+
+   float ambient = 0.35;
+   float diffuse = max(dot(n, l), 0.0);
+
+   vec3  viewDir = vec3(0.0, 0.0, 1.0);
+   vec3  halfVec = normalize(l + viewDir);
+   float spec    = pow(max(dot(n, halfVec), 0.0), 24.0) * 0.20;
+
+   vec3 color = uColor * (ambient + 0.65 * diffuse) + vec3(spec);
+   gl_FragColor = vec4(color, 1.0);
+}
+)";
+
+/// @brief GLSL ES 1.00 twin of @ref kLineVertDesktop.
+constexpr const char* kLineVertEs = R"(attribute vec3 aPos;
+
+uniform mat4 uMvp;
+
+void main()
+{
+   gl_Position = uMvp * vec4(aPos, 1.0);
+}
+)";
+
+/// @brief GLSL ES 1.00 twin of @ref kLineFragDesktop.
+constexpr const char* kLineFragEs = R"(precision mediump float;
+uniform vec3 uColor;
+
+void main()
+{
+   gl_FragColor = vec4(uColor, 1.0);
 }
 )";
 
@@ -115,6 +179,9 @@ QMatrix4x4 standUpMatrix()
 }
 
 /// @brief Compile + link a two-stage shader program; qWarning on failure. Returns nullptr on error.
+///        Attribute locations are bound by name (GLSL 1.20 / ES 1.00 have no layout qualifiers) to
+///        the fixed slots the VBO setup uses: aPos -> 0, aNormal -> 1. Binding a name a given shader
+///        does not declare (e.g. aNormal in the line shader) is harmless.
 std::unique_ptr<QOpenGLShaderProgram> buildProgram(const char* vertSrc, const char* fragSrc,
                                                    const char* label)
 {
@@ -131,6 +198,8 @@ std::unique_ptr<QOpenGLShaderProgram> buildProgram(const char* vertSrc, const ch
                prog->log().toUtf8().constData());
       return nullptr;
    }
+   prog->bindAttributeLocation("aPos", 0);
+   prog->bindAttributeLocation("aNormal", 1);
    if (!prog->link())
    {
       qWarning("RocketGLWidget: %s shader link failed: %s", label,
@@ -244,8 +313,13 @@ void RocketGLWidget::initializeGL()
    glClearColor(static_cast<float>(bg.redF()), static_cast<float>(bg.greenF()),
                 static_cast<float>(bg.blueF()), 1.0F);
 
-   litProgram  = buildProgram(kLitVert, kLitFrag, "lit");
-   lineProgram = buildProgram(kLineVert, kLineFrag, "line");
+   // The unconstrained surface format (see main.cpp) may yield either a desktop compatibility
+   // context or a GLES2 context; compile the matching shader dialect for whichever we got.
+   const bool gles = context() != nullptr && context()->isOpenGLES();
+   litProgram  = buildProgram(gles ? kLitVertEs : kLitVertDesktop,
+                              gles ? kLitFragEs : kLitFragDesktop, "lit");
+   lineProgram = buildProgram(gles ? kLineVertEs : kLineVertDesktop,
+                              gles ? kLineFragEs : kLineFragDesktop, "line");
 
    glReady = true;
 
@@ -314,9 +388,6 @@ void RocketGLWidget::paintGL()
    // --- rocket geometry (lit) ---
    if (litProgram && !meshes.empty())
    {
-      if (wireframe)
-         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
       litProgram->bind();
       litProgram->setUniformValue("uMvp", mvp);
       litProgram->setUniformValue("uModel", model);
@@ -325,19 +396,29 @@ void RocketGLWidget::paintGL()
       for (const auto& meshPtr : meshes)
       {
          GpuMesh& gm = *meshPtr;
-         if (gm.indexCount == 0)
-            continue;
          litProgram->setUniformValue("uColor", gm.color);
-         gm.vao.bind();
-         glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gm.indexCount), GL_UNSIGNED_INT,
-                        nullptr);
-         gm.vao.release();
+
+         // Wireframe draws the pre-expanded edge buffer as GL_LINES; solid draws indexed triangles.
+         if (wireframe)
+         {
+            if (gm.wireVertexCount == 0)
+               continue;
+            gm.wireVao.bind();
+            glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gm.wireVertexCount));
+            gm.wireVao.release();
+         }
+         else
+         {
+            if (gm.indexCount == 0)
+               continue;
+            gm.vao.bind();
+            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gm.indexCount), GL_UNSIGNED_INT,
+                           nullptr);
+            gm.vao.release();
+         }
       }
 
       litProgram->release();
-
-      if (wireframe)
-         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
    }
 }
 
@@ -436,6 +517,36 @@ void RocketGLWidget::uploadMeshes()
       gm->indexCount = static_cast<int>(src.indices.size());
       gm->typeName   = item.typeName;
 
+      // Wireframe geometry: expand each triangle into its three edges as an explicit GL_LINES
+      // buffer (positions + normals preserved so the lit shader shades the lines identically). This
+      // replaces glPolygonMode(GL_LINE), which does not exist on GLES2 / the generic functions.
+      std::vector<Vertex> wireVerts;
+      wireVerts.reserve(src.indices.size() * 2U);
+      for (std::size_t i = 0; i + 2U < src.indices.size(); i += 3U)
+      {
+         const Vertex& a = src.vertices[src.indices[i]];
+         const Vertex& b = src.vertices[src.indices[i + 1U]];
+         const Vertex& c = src.vertices[src.indices[i + 2U]];
+         wireVerts.insert(wireVerts.end(), {a, b, b, c, c, a});
+      }
+
+      gm->wireVao.create();
+      gm->wireVao.bind();
+      gm->wireVbo.create();
+      gm->wireVbo.bind();
+      gm->wireVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+      gm->wireVbo.allocate(wireVerts.data(),
+                           static_cast<int>(wireVerts.size() * sizeof(Vertex)));
+      glEnableVertexAttribArray(0);
+      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
+                            reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+      glEnableVertexAttribArray(1);
+      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+                            reinterpret_cast<const void*>(3 * sizeof(float)));
+      gm->wireVao.release();
+      gm->wireVbo.release();
+      gm->wireVertexCount = static_cast<int>(wireVerts.size());
+
       meshes.push_back(std::move(gm));
    }
 
@@ -522,6 +633,10 @@ void RocketGLWidget::cleanup()
          meshPtr->ibo.destroy();
       if (meshPtr->vao.isCreated())
          meshPtr->vao.destroy();
+      if (meshPtr->wireVbo.isCreated())
+         meshPtr->wireVbo.destroy();
+      if (meshPtr->wireVao.isCreated())
+         meshPtr->wireVao.destroy();
    }
    meshes.clear();
 

@@ -16,9 +16,16 @@ as interactive, user-colorable 3D geometry. Greenfield; lives entirely in `visua
 - C++23, SI units (meters, kg, seconds). Match the surrounding house style: include-guard macros
   (already in the headers), Doxygen-ish `///`/`/** */` comments, 3-space-ish indentation as seen in
   the repo (follow each header's existing indentation).
-- OpenGL **3.3 core profile**, modern pipeline (VAOs/VBOs/shaders). No fixed-function/legacy GL.
-- Use Qt's GL wrappers: `QOpenGLFunctions_3_3_Core` (the widget already inherits it — call GL
-  through `this`/the inherited members), `QOpenGLShaderProgram`, `QOpenGLBuffer`,
+- Modern programmable pipeline (VAOs/VBOs/shaders), **no fixed-function/legacy GL**, but written
+  against the version-agnostic GL/GLES2 common subset rather than a forced 3.3 core profile. The
+  default `QSurfaceFormat` requests no specific version/profile (see `main.cpp`) so Qt can create
+  whatever the platform supports — a desktop compatibility context or a GLES2 context — which is
+  what keeps it working across drivers (forcing 3.3 core fails with `EGL_BAD_MATCH` on EGL/NVIDIA).
+  Shaders ship in GLSL 1.20 and GLSL ES 1.00 twins, chosen at runtime via
+  `QOpenGLContext::isOpenGLES()`. Because there is no `glPolygonMode` on GLES2, wireframe is drawn
+  as explicit `GL_LINES` edge geometry, not a polygon-mode toggle.
+- Use Qt's GL wrappers: `QOpenGLFunctions` (the generic common-subset class — the widget inherits
+  it; call GL through `this`/the inherited members), `QOpenGLShaderProgram`, `QOpenGLBuffer`,
   `QOpenGLVertexArrayObject`, `QMatrix4x4`, `QVector3D`.
 
 ## Geometry conventions (CRITICAL — get these exactly right)
@@ -140,10 +147,13 @@ Convert `QColor`→`QVector3D` via `redF()/greenF()/blueF()`.
 - Color buttons keyed by typeName in `colorButtons`; `rebuildColorButtons()` builds them for the
   scheme's known types (use the union of the default scheme's types so all of NoseCone/BodyTube/
   FinSet/HollowSphere always appear). `onPickColor()` uses `sender()`/a property to know which type.
-- `main.cpp`: `QApplication`; set a `QSurfaceFormat` with version 3.3, `CoreProfile`, depth buffer
-  24 (NO multisample request -- asking for MSAA in the default format makes context creation fail
-  with EGL_BAD_MATCH on EGL paths that expose no multisampled window config), and
-  `QSurfaceFormat::setDefaultFormat(...)` **before** creating the window;
+- `main.cpp`: set `qputenv("QT_WIDGETS_RHI", "0")` (so the widget compositor doesn't try to create
+  its own GLES2 RHI backing-store context) and a deliberately minimal `QSurfaceFormat` — depth
+  buffer 24, but NO version, NO profile, and NO multisample request — then
+  `QSurfaceFormat::setDefaultFormat(...)` **before** creating the `QApplication`/window. Forcing a
+  version/profile (or MSAA) here makes context creation fail with `EGL_BAD_MATCH` (0x3009) on
+  EGL/NVIDIA paths while still working on GLX, i.e. it runs on one machine but goes black on
+  another; leaving it unconstrained lets Qt pick a context the platform can actually create. Then
   construct `VisualizerWindow`, `resize(~1200x800)`, `show()`; if `argc>1` treat `argv[1]` as a
   `.qrd` path and `openFile` it; `return app.exec();`.
 
