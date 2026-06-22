@@ -1,0 +1,219 @@
+\section{Overlap \& constraint diagnostics}\label{sec:diagnostics}
+
+Placement that derives center of mass from physical intent (\cref{sec:resolver}) removes one
+class of error --- the simulator and the visualizer can no longer disagree about where a part
+sits, because they read the same resolved \code{Pose}. It does not, by itself, remove the
+other class: a relationship can be geometrically \emph{consistent} yet physically
+\emph{impossible}. A coupler can be told to nest forty millimetres into a bore that is only
+thirty millimetres deep; a tube can be seated against a rim of the wrong radius; a part nested
+near a tube's fore end can project past that tube into the tapering nose beyond it. The
+resolver will happily place all of these --- the arithmetic is well defined --- and the result
+will be a self-intersecting solid that is meaningless as a rocket. The diagnostics layer is the
+component that refuses such designs, and refuses them with a \emph{located} reason rather than a
+silent miscomputation.
+
+The design splits this work into three escalating layers, ordered cheapest-first, and feeds a
+single verdict structure that gates both downstream consumers. The verdict is computed once per
+structural resolve and cached alongside the placement cache (\cref{sec:resolver}), so the gate
+that protects the per-step ODE loop costs nothing per step. \Cref{fig:diagnostics} traces the
+control flow from a structural edit through the three layers to the cached \code{SolveResult}
+and the two consumer gates.
+
+\tikzfig{activity-diagnostics}{The diagnostics pipeline: one structural resolve runs the three
+escalating layers and caches a single \texttt{SolveResult}; both the simulator and the
+visualizer consult that cached verdict before they will solve or render.}{fig:diagnostics}
+
+\subsection{The verdict structures}
+
+The two POD types live in the new \srcf{model/parts/Placement.h} alongside the resolver
+(\cref{sec:datamodel}). An \code{OverlapDiagnostic} is a single \emph{located} violation: who
+intrudes, into what, where, and by how much. A \code{SolveResult} is the aggregate verdict ---
+a boolean the consumers can branch on, plus the full diagnostic list for surfacing to the
+author.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+struct OverlapDiagnostic {
+   Part::Id    offender;
+   Part::Id    host;          // the part it intrudes into (may be a non-tree
+                              // neighbour, e.g. the nose)
+   double      zWorld;        // located station of worst violation (root frame, +z fwd)
+   double      penetration;   // metres the offender radius exceeds host capacity
+   std::string message;
+};
+
+struct SolveResult {
+   bool ok{true};
+   std::vector<OverlapDiagnostic> diagnostics;
+};
+\end{minted}
+\caption{The diagnostics verdict types. \code{offender} and \code{host} are
+\srccap{model/parts/Part.h}{56} \code{Part::Id} values (\code{std::uint64\_t}), the stable
+per-instance identifiers retrieved via \code{getId()} (\srccap{model/parts/Part.h}{191}); every
+instance, including a \code{clone()} copy, carries a distinct id (a copy is re-minted to a fresh one,
+\srccap{model/parts/Part.h}{188}) that never changes once assigned, so attribution is
+unambiguous even when two parts share a human-facing name (which need not be unique,
+\srccap{model/parts/Part.h}{193}).}\label{lst:diagstructs}
+\end{listing}
+
+The choice to identify offender and host by \code{Part::Id} rather than by name or by pointer is
+deliberate. Names are explicitly not required to be unique (\src{model/parts/Part.h}{193}), so a
+name-keyed diagnostic could point at the wrong part; raw pointers would dangle if the tree were
+edited between the resolve and the report. The \code{Part::Id} is assigned once at construction,
+re-minted on copy, and never changed, which makes it the only safe handle to carry in a cached
+verdict.
+
+\subsection{Layer 1 --- radial seam check, on every resolve}
+
+The first layer runs as each child is placed, at the moment its \code{StationLink} is resolved
+against its parent. It is a single radius comparison between the two mated stations, dispatched
+on the \code{SeatKind} that the link declares, because the seat kind is precisely what fixes
+\emph{which} two radii must agree and \emph{how}. Using the worked corpus fixture
+\src{tests/data/designs/xl75\_multi.qrd}{1} for concrete numbers:
+
+\begin{itemize}
+  \item \seat{Abut}: the two outer radii must match ---
+        $\lvert p.\mathit{rOuter} - c.\mathit{rOuter}\rvert \le \mathit{tol}$. The nose base
+        rim ($0.0395\,\mathrm{m}$) equals the body fore rim ($0.0395\,\mathrm{m}$), so the seam
+        is clean. \ok
+  \item \seat{OnSurface}: the child's outer radius must equal the parent's outer radius at the
+        seat station --- the fin's \code{bodyRadius} ($0.0395\,\mathrm{m}$) against the tube OD
+        ($0.0395\,\mathrm{m}$). \ok
+  \item \seat{NestInBore}: the child's outer radius must fit inside the parent's bore ---
+        $c.\mathit{rOuter} \le p.\mathit{rInner} + \mathit{tol}$. The coupler OD
+        ($0.0376\,\mathrm{m}$) is no larger than the body ID ($0.0376\,\mathrm{m}$), so it
+        fits. \ok
+\end{itemize}
+
+Layer~1 is local and $O(1)$ per attachment. It catches the common authoring mistakes ---
+mating mismatched rims, nesting an over-wide coupler --- at the seam, before any global query
+runs, and at essentially no cost. What it cannot see is interference between parts that are not
+directly mated: a part placed at one seam can still collide with a third part somewhere else
+along the axis. That is Layer~2's job.
+
+\subsection{Layer 2 --- envelope sweep, after the whole tree resolves}
+
+\begin{designrule}[The spatial query]
+Layer~2 is a concrete one-dimensional spatial query over the fully resolved tree. Once
+\code{resolvePlacements} has produced its \cppinline|std::vector<Placed>| in deterministic DFS
+order, the sweep builds a world-frame axial interval $[z_{\mathrm{aft}}, z_{\mathrm{fore}}]$ for
+every part with a non-trivial envelope and asks, at every feature breakpoint, whether any part's
+outer radius exceeds the radial capacity available to it at that station.
+\end{designrule}
+
+The query proceeds in three steps.
+
+\paragraph{1. Build and sort intervals.} From each \code{Placed} pose, the part's local span
+$[0, \mathrm{axialLength}]$ is mapped to a world interval $[z_{\mathrm{aft}}, z_{\mathrm{fore}}]$.
+The intervals are sorted by $z_{\mathrm{aft}}$ in $O(N\log N)$. Sorting once lets every
+subsequent host lookup be a sweep over an active set rather than a quadratic scan, which matters
+because the sweep is the most expensive layer and must remain comfortably sub-quadratic for
+realistic designs.
+
+\paragraph{2. Sample at feature breakpoints and find hosts.} For each offender, its world span
+is sampled not at uniform steps but at \emph{feature breakpoints}: its own two endpoints, plus
+every other interval endpoint that falls within its span. This is exact rather than approximate
+because each part's radius profile $r(z)$ is closed-form and monotone --- a cone tapers
+linearly, a tube is constant, a sphere bulges --- so a thin protrusion cannot slip between
+samples and go unnoticed. At each sample station $z_{\mathrm{world}}$, candidate hosts are found
+by advancing through the sorted interval list (the active set of intervals covering that
+station). The interference test at each candidate is
+\[
+  \text{offender.radiusOuterAt}(z_{\mathrm{local}})
+    \;>\;
+  \text{host.innerCapacityAt}(z_{\mathrm{local}}) + \mathit{tol},
+\]
+applying the \emph{solid-host rule} established in the data model (\cref{sec:datamodel}). That
+rule is what makes a single predicate correct for both bored and solid hosts:
+\code{innerCapacityAt} returns the bore radius (\code{radiusInnerAt}) for a part with a wall,
+and the outer-skin radius (\code{radiusOuterAt}) for a solid. A naive ``offender OD versus host
+inner radius'' test would read $0$ for every solid part --- whose \code{radiusInnerAt} is $0$
+--- and flag everything; the solid-host rule instead compares the offender against the solid's
+outer skin, which is exactly the poke-through test one wants.
+
+\paragraph{3. Deterministic tie-break.} When more than one interval covers a sample station, the
+host is chosen as the covering part with the \emph{smallest} \code{Part::Id}, excluding the
+offender itself and the offender's own ancestor chain through the seat it legitimately occupies.
+Because ids are assigned at construction and re-minted deterministically in DFS load order
+(\cref{sec:datamodel}), this tie-break is reproducible across runs and across reloads of the
+same design --- a property the diagnostics must have if a reported violation is to be
+debuggable.
+
+\begin{keyinsight}[Why the sweep walks into a non-tree neighbour]
+The host of a violation need not be the offender's parent, or any ancestor at all. Consider the
+worked coupler, nested at the body's fore end with a $0.04\,\mathrm{m}$ insertion depth so that
+its fore plane projects forward \emph{past} the body fore rim. Over the world span
+$z \in [0, +0.04]$ the offender lies forward of the body and inside the nose region. The
+sorted-interval query at those samples finds the host to be the \emph{nose cone} --- a
+non-tree neighbour the coupler is never linked to. The solid-host rule evaluates the nose's
+tapering skin, \code{nose.radiusOuterAt}, at each station; the coupler OD ($0.0376\,\mathrm{m}$)
+exceeds the nose skin ($0.0342\,\mathrm{m}$ at $z = 0.04$), and the forward poke-through is
+flagged with a located $z_{\mathrm{world}}$. The global sweep sees the collision precisely
+because it does not restrict itself to the ownership tree.
+\end{keyinsight}
+
+\paragraph{FinSet, handled honestly.} A \code{FinSet} is not axisymmetric, so it has no scalar
+outer radius the sweep could meaningfully consume. The design treats it accordingly rather than
+pretending otherwise. For \emph{axial} occupancy the fin set contributes only its body-disc
+radius --- its \code{getBodyRadius()} (\src{model/parts/FinSet.h}{67}), the same disc it reports
+as its reference area (\src{model/parts/FinSet.h}{72}) --- so it hosts nothing inside it and is
+not falsely modelled as a $\code{bodyRadius} + \code{span}$ disc that would collide with every
+adjacent body tube. The radial fin-to-fin and fin-to-tube interference --- the \code{span}
+extent occupying azimuthal sectors --- is \emph{explicitly scoped out of v1} and documented as
+unchecked.
+
+\begin{rejected}[A full \texttt{bodyRadius + span} disc for fins]
+Reporting a fin set's outer radius as $\code{bodyRadius} + \code{span}$ --- its true tip extent,
+\code{getMaxRadius()} (\src{model/parts/FinSet.h}{73}) --- would let the existing sweep
+``check'' fins for free, but dishonestly. The tip extent occupies only a few azimuthal sectors,
+not a full disc; modelled as a solid disc it would produce a false positive against every body
+tube it passes. Honest sectored interference needs a fin clocking/azimuth model that QtRocket
+does not yet have, so v1 declines to fake it. Layer~1 still verifies fin-root radial
+compatibility, and the fin set's axial placement is exact. The geometry needed for the future
+sectored check --- \code{getSpan()} (\src{model/parts/FinSet.h}{64}), \code{getSweep()}
+(\src{model/parts/FinSet.h}{65}), \code{getTipChord()} (\src{model/parts/FinSet.h}{63}) ---
+remains available for when that model lands.
+\end{rejected}
+
+\subsection{Layer 3 --- DOF accounting}
+
+The third layer is forward-looking. In the 3-DOF regime that QtRocket integrates today, a single
+axial \code{StationLink} fully pins a child's position, because coaxiality is implicit --- every
+part shares the body-frame orientation and sits on the longitudinal axis (\cref{sec:sixdof}).
+One axial constraint is therefore sufficient, and the layer simply records that invariant.
+
+Once 6-DOF is enabled, that is no longer true. A single \code{StationLink} cannot express
+``concentric to a third part'': under free orientation a child constrained by one link has an
+unpinned rotational degree of freedom. The full resolution --- a companion concentricity
+constraint --- requires the deferred joint graph (\cref{sec:deferred}) and is out of scope for
+v1. What v1 \emph{does} provide is the detector: Layer~3 emits a warning when a child has only
+one link under free orientation, so that the missing constraint is surfaced rather than silently
+producing an under-determined placement. The detector is cheap and the warning is honest about
+what it can and cannot fix.
+
+\subsection{The gate}
+
+\begin{hardfail}[\texttt{SolveResult.ok == false} stops both consumers]
+When the diagnostics produce \code{SolveResult.ok == false}, \emph{both} downstream consumers
+refuse the solve. \code{computeCompositeAt} (\src{model/parts/Part.cpp}{169}), the routine the
+simulator drives every ODE step through \code{ensureCompositeCache}
+(\src{model/parts/Part.h}{288}), throws and logs rather than returning an inertia computed
+over a self-intersecting solid. \code{RocketMesh::walk} (\srcf{visualizer/RocketMesh.cpp}, the
+DFS at line~427) renders the offender in an error colour and surfaces the diagnostic message
+instead of drawing the impossible geometry. The coupler-through-nose case is thus a hard,
+located failure in \emph{both} views --- never the silent render of the legacy
+\src{tests/data/designs/xl75\_multi.qrd}{1} fixture, where each consumer drew the
+interpenetration without complaint.
+\end{hardfail}
+
+The gate is correct only because it is also cheap. If the diagnostics ran per ODE step they
+would dominate the integration cost; if they ran lazily inside \code{computeCompositeAt} they
+would re-fire on every mass-delta rebuild during a burn (the mass-delta gate
+\code{ensureCompositeCache} fires every step while the motor mass changes,
+\src{model/parts/Part.h}{288}). Neither happens. The \code{SolveResult} is produced exactly
+once per structural resolve --- when a part is added or removed, or a geometry edit changes the
+tree --- and cached alongside the placement cache described in \cref{sec:resolver}. Each
+consumer reads the cached boolean: the simulator branches on it before re-weighting the cached
+geometry by \code{getMass(t)}, and the visualizer branches on it before walking the resolved
+poses. The verdict is computed where the geometry changes, not where it is consumed, so guarding
+the inner loop is a single boolean test.

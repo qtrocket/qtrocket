@@ -1,0 +1,53 @@
+% Geometry convention: +z = forward, part local frame [0, L], fractional stations,
+% and the cone CM at L/4 (the (geom-center - CM) divergence the design eliminates).
+% Consumed by section 02 (philosophy & convention). Scale: 1 unit = 1 cm, L = 6.
+\begin{tikzpicture}[x=1cm,y=1cm,>={Stealth[length=2.2mm]}]
+  \def\L{8}      % length in cm
+  \def\R{1.5}    % base radius in cm
+
+  % --- the longitudinal axis ---
+  \draw[axis] (-0.8,0) -- (\L+1.2,0) node[right,font=\small]{$+z$ (forward, toward nose tip)};
+
+  % --- the cone (solid nose cone) in its own local frame: base at z=0, tip at z=L ---
+  \fill[qrBlue!10] (0,\R) -- (\L,0) -- (0,-\R) -- cycle;
+  \draw[part] (0,\R) -- (\L,0) -- (0,-\R) -- cycle;
+
+  % aft plane (base rim) at z = 0
+  \draw[station] (0,-\R-0.5) -- (0,\R+0.9);
+  \node[align=center,font=\scriptsize,above] at (0,\R+0.9)
+    {aft plane (base rim)\\ \texttt{station01}=0,\ \ $r=$ baseRadius};
+  \node[font=\scriptsize,below,text=qrGray] at (0,-\R-0.5) {local origin: on axis, at aft plane};
+
+  % fore point (tip) at z = L
+  \draw[station] (\L,-0.4) -- (\L,1.1);
+  \node[align=center,font=\scriptsize,above] at (\L,1.1) {fore (tip)\\ \texttt{station01}=1,\ $r=0$};
+
+  % mid-length (geometric center) at z = L/2
+  \draw[ghost] (\L/2,-\R-0.2) -- (\L/2,\R+0.2);
+  \node[font=\scriptsize,below,text=qrGray,align=center] at (\L/2,-\R-0.2) {$L/2$\\ geometric\\ centre};
+
+  % center of mass at z = L/4 (solid cone) -- near the wide base
+  \node[cmdot] (cm) at (\L/4,0) {};
+  \node[font=\scriptsize,text=qrRed,align=center] (cmlbl) at (\L*0.16,1.95)
+    {CM $=L/4$\\ \texttt{cmStationLocal()}};
+  \draw[qrRed,line width=0.4pt] (cmlbl.south) -- (\L/4,0.06);
+
+  % the divergence brace: (CM) -> (geom centre) = L/4
+  \draw[decorate,decoration={brace,amplitude=4pt,mirror,raise=2pt},qrAmber]
+    (\L/4,-\R-1.35) -- (\L/2,-\R-1.35)
+    node[midway,below=4pt,font=\scriptsize,text=qrAmber,align=center]
+    {$(\text{geom centre}-\text{CM})=L/4$\\ the offset the legacy CM-to-CM link bakes in};
+
+  % a generic interior station s
+  \draw[station] (0.62*\L,-0.9) -- (0.62*\L,0.9);
+  \node[font=\scriptsize,below,text=qrTeal] at (0.62*\L,-0.9) {\texttt{stationAt(s)}: $z=s\cdot L$};
+
+  % radius profile annotation
+  \node[font=\scriptsize,align=left,anchor=west,text=qrDeep] at (\L*0.30,\R*0.62)
+    {$\texttt{radiusOuterAt}(z)=\text{baseR}\,(1-z/L)$};
+
+  % occupancy span [0, L]
+  \draw[dimline] (0,-\R-0.45) -- (\L,-\R-0.45);
+  \node[font=\scriptsize,fill=white,inner sep=1pt] at (\L/2,-\R-0.45) {part occupies $z\in[0,\,L]$};
+
+\end{tikzpicture}

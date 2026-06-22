@@ -1,0 +1,143 @@
+\section{Deliberately deferred / not adopted}\label{sec:deferred}
+
+A design is defined as much by what it refuses as by what it adopts. The station-pair
+backbone of \cref{sec:datamodel} was selected from five competing sketches and hardened
+against an adversarial critique; that process produced a set of alternatives that were
+explicitly considered and set aside. This section records each one together with the
+reasoning, so that a future contributor revisiting any of these choices inherits the
+argument rather than rediscovering it. The rejections fall into two kinds: choices that
+are \emph{wrong} for QtRocket and should stay rejected, and choices that are \emph{correct
+in the limit} but premature for a rigid inline stack and are therefore deferred rather than
+dismissed. The distinction matters --- a deferred idea is a planned extension point, not a
+dead end.
+
+\begin{description}
+
+  \item[\zaft\ as the longitudinal convention --- \textbf{rejected (sign-inverted).}]
+  Adopting \zaft\ would invert the longitudinal axis relative to every component that
+  already exists. The visualizer builds its primitives with the fore extent at positive
+  $z$ (\code{buildCone} and \code{buildTube} place the tip / top at $+z$), and every legacy
+  \code{.qrd} fixture --- including \src{tests/data/designs/xl75\_multi.qrd}{1} --- expresses
+  its offsets in a \zfwd\ frame. Choosing \zaft\ would force a whole-axis inversion of the
+  renderer (cap normals, sphere poles, every primitive) \emph{and} a sign-negating
+  migration of every stored file. Adopting \zfwd\ instead reduces the renderer change to a
+  consumer swap with no sign inversion, and the file migration to a pure re-expression with
+  no axial flip. The convention was settled once, in agreement with the code and the data
+  on disk; see \cref{sec:philosophy}.
+
+  \item[A stored resolved transform as ground truth --- \textbf{rejected (reintroduces
+  staleness).}] One tempting simplification is to resolve each part's absolute pose once
+  and store it as the canonical placement. This was rejected because it reintroduces a
+  staleness class that is the exact inverse of the bug this design exists to remove: edit a
+  part's length and its stored transform is silently wrong, with nothing to recompute it.
+  QtRocket already commits to a ``derive, don't store'' discipline for composite
+  quantities, and this design extends that discipline to placement. The \code{Pose} /
+  \code{compose} mechanics and the snap-operator verbs are adopted from the scene-graph
+  sketch, but only \emph{intent} is stored; the absolute pose is re-derived on every read.
+
+  \item[A rich named-datum enum with an escape hatch --- \textbf{rejected
+  (over-engineering).}] A datum vocabulary such as \cppinline|enum { FORE, MID, AFT, ... }|
+  with a parametric escape hatch for arbitrary positions was rejected as paying two costs at
+  once: the rigidity of a closed enum \emph{and} the complexity of the mechanism for
+  escaping it. The named edges are merely fractions --- \code{FORE}, \code{MID}, and
+  \code{AFT} are exactly $1$, $0.5$, and $0$ --- and an arbitrary station such as a
+  mid-tube rail-button location is just another fraction in $[0,1]$. Two fractional
+  stations plus a small closed \code{SeatKind} therefore express everything the enum would,
+  with nothing to extend (\cref{sec:datamodel}).
+
+  \item[Parallel \code{childParts} and \code{childLinks} vectors --- \textbf{rejected
+  (desync hazard).}] Storing the child pointers and their links in two side-by-side vectors
+  was rejected because the two arrays must be kept index-aligned by hand across every
+  structural mutation. The single-vector storage at \src{model/parts/Part.h}{326} is
+  touched by \code{clone()}, \code{removeChildById}, and \code{addChildPart}; splitting it
+  invites an off-by-one or a missed erase that silently attaches the wrong link to the
+  wrong child. The design keeps a single vector and changes only the element type, from a
+  \cppinline|std::tuple<std::shared_ptr<Part>, Vector3>| to a
+  \cppinline|std::pair<std::shared_ptr<Part>, StationLink>| (\cref{sec:datamodel}), so the
+  pointer and its link cannot drift apart.
+
+  \item[``Every link mandatory'' --- \textbf{rejected (punishes the trivial stack).}]
+  Requiring an explicit link on every attachment was rejected because it taxes the common
+  case to no benefit. The overwhelmingly typical relationship --- a child abutting aft of
+  its parent in a straight inline stack --- should cost zero authored numbers. The
+  defaulted \seat{Abut} link (parent aft plane to child fore plane, zero gap) preserves
+  that, so \cppinline|nose->addChildPart(body)| remains a valid, fully specified
+  attachment; see \cref{sec:authoring}.
+
+  \item[Scalar \code{radiusOuterAt} for \code{FinSet} --- \textbf{rejected (dishonest).}]
+  A fin set is not axisymmetric, so reporting a single scalar outer radius for the overlap
+  sweep would be a fabrication: a \cppinline|bodyRadius + span| disc would collide falsely
+  with every adjacent body tube. The design instead has a fin set contribute only its
+  \emph{body disc} to the axial envelope, with true azimuthal (sectored) fin interference
+  scoped out of v1 and documented as unchecked, pending a fin-clocking model QtRocket does
+  not yet have. This is honest under-reporting rather than confident wrong-reporting; the
+  diagnostics treatment is detailed in \cref{sec:diagnostics}.
+
+  \item[Off-axis ($r > 0$) placement in 3-DOF --- \textbf{deferred to 6-DOF.}] Placing a
+  part radially off the longitudinal axis --- a single rail button, an asymmetric pod --- is
+  deferred because seating mass at $x = r$ without an accompanying orientation is itself a
+  half-correct stored placement, the very error class this design eliminates. The radial
+  value $r$ is therefore used \emph{now} only for the seam and overlap \emph{check}, while
+  the pose solve sets $x = y = 0$; correct off-axis seating arrives together with
+  \code{childRot} and a per-part body-frame CM offset in the 6-DOF work (\cref{sec:sixdof}).
+
+\end{description}
+
+Three of these warrant fuller treatment, because each guards a correctness invariant that
+is easy to violate under future pressure to ``simplify.''
+
+\begin{rejected}[Storing the resolved transform]
+The single most attractive --- and most dangerous --- shortcut is to cache the absolute
+\code{Pose} of each part as its source of truth. It would make reads trivially cheap and
+the data model flat. It is rejected because it merely relocates the staleness bug from the
+input side to the output side: today a stale \emph{CM-to-CM offset} disagrees with geometry
+when a length is edited; a stored \emph{resolved transform} would disagree with geometry in
+exactly the same situations, with no mechanism short of a full re-resolve to detect it. The
+design keeps placement strictly derived and gates the re-derive on a structural-dirty flag
+(\cref{sec:resolver}), so the cache is an optimization that can never be wrong, not a second
+copy of the truth that can.
+\end{rejected}
+
+\begin{rejected}[A rich named-datum enum with an escape hatch]
+A vocabulary of named datums looks more expressive than two bare fractions, but it is
+strictly worse. It hard-codes the three edges (\code{FORE}/\code{MID}/\code{AFT}) that are
+already representable as $1$/$0.5$/$0$, and then needs a parametric escape hatch for every
+station that is not one of those edges --- so it pays for a closed enum and for the machinery
+to open it. The chosen representation, two stations in $[0,1]$ plus a closed three-value
+\code{SeatKind}, is both smaller and more general: there is no enum to extend because there
+is nothing the enum was buying. \code{SeatKind} itself stays closed deliberately, because a
+rigid axisymmetric stack genuinely expresses only three radial relationships (\cref{sec:datamodel}).
+\end{rejected}
+
+The most consequential ``not yet'' is the full joint graph. Unlike the rejections above, it
+is the correct long-term model and is deferred only because the present scope does not need
+it.
+
+\begin{rejected}[A full joint graph with a sibling \texttt{<joints>} block]
+A general design would model attachments as a graph of joint entities, serialized in a
+sibling \mintinline{xml}{<joints>} block keyed independently of the part tree. This is the
+correct long-term chassis: clusters, struts, off-axis pods, and the 6-DOF
+companion-concentricity constraint that \cref{sec:diagnostics}'s Layer 3 will eventually need
+all require a part to relate to more than its single tree parent --- relationships an
+ownership tree cannot express. It is nonetheless deferred, for two reasons. First, for a
+rigid inline stack it is over-engineering: every relationship QtRocket authors today is a
+single parent-to-child seam, which the inline \cppinline|std::pair<std::shared_ptr<Part>, StationLink>|
+captures exactly. Second, a sibling joints block keyed by name is an active hazard given
+that part names need not be unique (\src{model/parts/Part.h}{193}); keeping the link
+\emph{inline} with its part sidesteps that ambiguity entirely (\cref{sec:serialization}).
+The inline pair is forward-compatible with the graph: when real multi-host designs appear,
+the single \code{StationLink} per child can widen into a list of links --- or a separate
+joint table --- without disturbing the resolver's interface or the serialization of the
+common case.
+\end{rejected}
+
+\begin{keyinsight}[Deferred is not dismissed]
+The joint graph and off-axis seating are not rejected ideas; they are staged ones. The data
+model is deliberately shaped so that adopting them later is additive: \code{Pose} already
+carries a \code{Quaternion} and \code{compose()} already rotates child translations
+correctly (the ``no rotation'' limit at \src{model/parts/Part.h}{43} is a property of
+today's identity \code{childRot}, not of the resolver), and the single-link-per-child
+storage can widen to a graph. Each deferral therefore leaves a defined extension point
+rather than a wall, which is why the convention, the seat semantics, and the \code{Pose}
+mechanics were all settled now even though only their 3-DOF subset is exercised today.
+\end{keyinsight}

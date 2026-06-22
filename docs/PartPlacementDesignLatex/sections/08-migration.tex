@@ -1,0 +1,198 @@
+\section{Migration plan}\label{sec:migration}
+
+The refactor described in the preceding sections rewrites the very heart of the
+composition math---the meaning of the stored child offset, the input to
+\src{model/parts/Part.cpp}{169}'s two-pass mass/CM/parallel-axis loop, and the axial
+station threaded through \src{model/parts/Part.cpp}{214}'s aero walk. A change of that
+reach to a shipping simulator cannot be validated by inspection. The migration is
+therefore structured around a single load-bearing claim: the new geometry-driven
+placement model is \emph{physics-invariant} on every existing design. The center of
+mass, the composite inertia tensor, and every resolved axial station that the legacy
+CM-to-CM reader produces must be reproduced \emph{bit-for-bit} by the migrated reader.
+The plan is consequently analytic rather than empirical---no flight re-runs, no
+tolerance fudging---and it is gated by a test that is written and made to pass
+\emph{before} any production type changes.
+
+The four phases below are ordered so that the build stays green at every step and the
+invariance claim is proven, not assumed.
+
+\subsection{Phase 0 --- the invariance gate, written first}
+
+Before a single type changes, a test loads every fixture in
+\srcf{tests/data/designs} (the 24 \code{.qrd} designs spanning the \code{micro13}
+through \code{xl75} ladders) through the \emph{current} reader and snapshots three
+quantities per design: \cppinline|getCompositeCm(0)| (\src{model/parts/Part.h}{134}),
+\cppinline|getCompositeI(0)| (\src{model/parts/Part.h}{146}), and the resolved axial
+station of every part in the existing \zfwd{} CM-to-CM convention.
+
+The discipline that makes this a \emph{gate} rather than a self-fulfilling check is that
+the snapshot is taken from the legacy reader's own output, not re-derived from the
+design's intended geometry. A re-derivation could silently share whatever bug the
+legacy path contains; the legacy reader's literal output cannot. These frozen values
+become the ground truth the migration is held against.
+
+\begin{designrule}[Invariance is defined by the incumbent, not the spec]
+The Phase-0 snapshot is whatever the current CM-to-CM code computes today, including
+quantities the new model would consider mis-placed. The migration's job is to reproduce
+the incumbent numerics exactly; \emph{correcting} a design's geometry (the
+\code{xl75\_multi} poke-through) is deferred to Phase 3, where it is done deliberately
+and visibly, not folded silently into the type swap.
+\end{designrule}
+
+\subsection{Phase 1 --- types and resolver land, both APIs coexist}
+
+Phase 1 introduces the new machinery alongside the old without removing anything the
+build depends on. The new header \srcf{model/parts/Placement.h}
+(\cref{sec:datamodel}) lands with \seat{Abut}/\seat{NestInBore}/\seat{OnSurface}, the
+\code{StationLink}, \code{Station}, and \code{Pose} value types, and the free-function
+resolver and overlap sweep (\cref{sec:resolver}, \cref{sec:diagnostics}). The geometry
+virtuals---\code{stationAt}, \code{radiusOuterAt}/\code{radiusInnerAt},
+\code{axialLength}, \code{isSolid}, \code{cmStationLocal}---are added to the base
+\code{Part} and overridden on the four concrete part types. The single child-storage
+slot at \src{model/parts/Part.h}{326} is swapped in place from
+\cppinline|std::tuple<std::shared_ptr<Part>, Vector3>| to
+\cppinline|std::pair<std::shared_ptr<Part>, StationLink>|, and
+\src{model/parts/Part.cpp}{169} and \src{model/parts/Part.cpp}{214} are rewritten to
+consume the resolver's geometric pose.
+
+Crucially, the legacy authoring surface survives. The current sole overload
+\src{model/parts/Part.h}{239}, \cppinline|addChildPart(std::shared_ptr<Part>, Vector3)|,
+is retained as a \cppinline|[[deprecated]]| shim so that every existing tuple-style call
+site and every legacy \code{.qrd} fixture still compiles and still produces the
+legacy placement. The shim is the analytic core of the migration: it must synthesize a
+\code{StationLink} whose resolved geometry reproduces the legacy CM-to-CM offset
+exactly.
+
+\subsubsection{The CM-to-CM recovery formula}
+
+The legacy \code{Vector3} is the child's CM expressed relative to the parent's CM. The
+resolver, by contrast, places a child by its \emph{aft-plane origin} in the parent
+frame (\cref{sec:resolver}). The shim bridges the two by inverting the CM-to-station
+relationship, working entirely in the \zfwd{} frame so that no axis is mirrored.
+\Cref{lst:shim} gives the recovery.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// All quantities in +z = forward. legacyOffset.z is the child CM minus the
+// parent CM (the legacy CM-to-CM coupling).
+//
+// 1. Recover the child's aft-plane origin in the parent frame. *CmStationLocal
+//    is cmStationLocal() evaluated in the +z-forward local frame; the cone is
+//    the only part whose adapter differs (see the cone frame adapter).
+childOriginZ_fwd = parentCmStationLocal - childCmStationLocal + legacyOffset.z;
+
+// 2. Choose a station pair, then back the gap out of the resolved geometry.
+//    childStation / parentStation are the picked Station landmarks.
+gap_unsigned = childOriginZ_fwd + childStation.z - parentStation.z;  // unsigned
+
+// 3. Infer the seat from the PART PAIR -- BEFORE applying any sign:
+//      tube fore-rim against tube aft-rim         => Abut
+//      small-tube OD inside large-tube ID         => NestInBore
+//      fin root on the wall                       => OnSurface
+seat = inferSeat(parent, child);
+
+// 4. Apply the seat sign LAST. NestInBore inserts aft (-z); all others stand
+//    off forward (+z).
+gap = (seat == SeatKind::NestInBore) ? -gap_unsigned : +gap_unsigned;
+\end{minted}
+\caption{The \code{[[deprecated]]} shim's analytic recovery of a
+\code{StationLink} from a legacy CM-to-CM \code{Vector3}. The \code{cmStationLocal}
+adapter is consumed here (its first production use); the cone supplies the only
+non-trivial override.}\label{lst:shim}
+\end{listing}
+
+Two details in \cref{lst:shim} carry the correctness of the entire migration, and both
+are easy to get backwards.
+
+\begin{keyinsight}[+z is forward throughout --- no mirror]
+The legacy \code{xl75\_multi} coupler stores \cppinline|z = +0.49| relative to the body
+(\src{tests/data/designs/xl75\_multi.qrd}{19}). Because the convention is \zfwd{} on both
+sides of the recovery, that \cppinline|+0.49| is read directly as \emph{forward}---toward
+the nose tip---with no sign flip and no whole-rocket inversion. The migration is a pure
+re-expression of the same axis, which is precisely why \zfwd{} was chosen over \zaft{}
+(\cref{sec:philosophy}): \zaft{} would have forced a sign-negating rewrite of every
+fixture here. The cone is the sole part whose \emph{internal} CM frame
+(\code{coneCmOffset}, \src{model/parts/ConicalNoseCone.cpp}{49}) opposes the forward
+convention, and that single discrepancy is absorbed by the
+\code{cmStationLocal} adapter (\cref{sec:datamodel}), never by mirroring the link.
+\end{keyinsight}
+
+\begin{keyinsight}[Seat is inferred before the gap sign]
+The seat must be determined from the part pair \emph{before} the gap sign is applied,
+because \seat{NestInBore} is the one seat that flips the sign (step~4 of
+\cref{lst:shim}). Computing an unsigned gap first, then choosing the sign from a
+seat inferred independently of that gap, is what makes the ``reproduces the exact
+station'' invariant hold for \emph{every} seat---not only the sign-preserving
+\seat{Abut} and \seat{OnSurface} cases. Inferring the seat from the already-signed gap
+would be circular and would mis-place every nested coupler.
+\end{keyinsight}
+
+By the end of Phase 1 the build is green, the new and legacy APIs coexist, and the shim
+reproduces legacy behavior analytically.
+
+\subsection{Phase 2 --- run the gate against the migrated reader}
+
+Phase 2 loads every fixture through the now \code{0.2}-capable reader---legacy
+\cppinline|<offset>| elements flow through the shim of \cref{lst:shim} into
+\code{StationLink}s---and asserts \emph{bit-identical} \cppinline|getCompositeCm(0)|,
+\cppinline|getCompositeI(0)|, and resolved axial stations against the Phase-0
+snapshots. Equality is exact, not within a tolerance: the migration is a re-expression
+of the same arithmetic over the same geometry, so any deviation is a defect, and a
+tolerance would merely hide it.
+
+A dedicated sub-test pins the nose CM to a hand-computed value as the specific guard
+that the cone frame adapter is correct. For the \code{xl75\_multi} nose---a solid cone
+of length \cppinline|L = 0.30| (\src{tests/data/designs/xl75\_multi.qrd}{5})---the
+centroid sits at $L/4$ forward of the base, i.e. \cppinline|cmStationLocal = 0.075|.
+This is the forward-frame image of \code{coneCmOffset}'s internal $z = L/2 - \bar{h}$
+with $\bar{h} = L/4$ (\src{model/parts/ConicalNoseCone.cpp}{49}); the adapter maps it to
+$L/2 - (L/2 - \bar{h}) = \bar{h} = L/4$ (\cref{sec:datamodel}). Pinning this one scalar to a value computed
+by hand---independently of both the legacy and migrated code paths---is the test that
+catches a sign or frame error in the single most correctness-critical conversion in the
+design.
+
+\begin{keyinsight}[Why the cone gets its own hand-checked sub-test]
+A symmetric part has its CM at mid-length, so \code{cmStationLocal} is $L/2$ and any
+frame error cancels by symmetry. The cone is the only current part whose CM is
+off-center, so it is the only part for which a forward-vs-internal frame mistake would
+survive the bit-identical aggregate check yet still be wrong. The hand-computed
+\cppinline|0.075| isolates exactly that risk.
+\end{keyinsight}
+
+\subsection{Phase 3 --- cut over the fixtures and retire the shim}
+
+With invariance proven, Phase 3 re-saves the corpus to version \code{0.2}
+(\cref{sec:serialization}), replacing each \cppinline|<offset>| with an explicit
+\cppinline|<link>|. Here the migration deliberately stops preserving the past. The
+\code{xl75\_multi} coupler---legacy-placed forward into and through the nose by its
+\cppinline|+0.49| CM-to-CM offset---migrates to a \seat{NestInBore} link, and at that
+point its Layer-2 envelope sweep \emph{fires}: the coupler outer radius exceeds the
+tapering nose skin forward of the body fore rim, and the resolver returns
+\cppinline|solve.ok == false| with a located \code{OverlapDiagnostic}
+(\cref{sec:diagnostics}, \cref{sec:worked}).
+
+\begin{hardfail}[The migration reports the pre-existing bug instead of preserving it]
+The legacy file drew an interpenetrating coupler silently because the simulator and the
+visualizer each consumed the bad offset in their own divergent way (\cref{sec:intro}).
+Once the relationship is expressed as ``nest into the body's fore bore,''
+\seat{NestInBore} constrains the insertion direction and the envelope sweep makes the
+forward poke-through a hard, located \fail{}. The correct response is not to suppress
+the diagnostic but to fix the fixture---reduce the insertion depth or shorten the
+coupler---until it resolves \ok{}.
+\end{hardfail}
+
+After each fixture resolves clean, the invariance gate is re-run against the fresh
+\code{0.2} files to confirm the corrected designs are stable under reload. Only then is
+the \cppinline|[[deprecated]]| overload at \src{model/parts/Part.h}{239} removed,
+collapsing the authoring surface onto the single \code{StationLink} API
+(\cref{sec:authoring}) and completing the cutover. The accessor side---\code{getChildParts()}
+returning a \code{pair} rather than a \code{tuple}---is migrated explicitly at its
+enumerated call sites (\cref{sec:files}); the shim covers only the setter.
+
+\Cref{fig:migration} summarizes the phased flow and the gate that ties it together.
+
+\tikzfig{activity-migration}{The four-phase migration: the invariance gate is built
+first (Phase~0), the new types and the analytic shim land with both APIs coexisting
+(Phase~1), the gate is run against the migrated reader and the cone CM is pinned by hand
+(Phase~2), and the fixtures are cut over---surfacing and fixing the pre-existing
+poke-through---before the deprecated shim is retired (Phase~3).}{fig:migration}

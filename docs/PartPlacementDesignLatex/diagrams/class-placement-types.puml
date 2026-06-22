@@ -1,0 +1,90 @@
+@startuml class-placement-types
+' New value/data model introduced by model/parts/Placement.h.
+' These are PODs + free functions -- pure geometry, no CM, no time.
+!include _style.iuml
+title New model::part::Placement.h — value types & the single resolver
+
+enum SeatKind <<enumc>> {
+  Abut
+  NestInBore
+  OnSurface
+}
+note bottom of SeatKind
+  Closed set: a rigid axisymmetric
+  stack expresses exactly three
+  radial relationships. An arbitrary
+  station is a fraction in [0,1] —
+  nothing to extend.
+end note
+
+class StationLink <<pod>> {
+  +parentStation01 : double = 0.0
+  +childStation01 : double = 0.0
+  +gap : double = 0.0
+  +seat : SeatKind = Abut
+  +childRot : Quaternion = Identity  ' 6-DOF seam; identity today
+}
+note right of StationLink
+  The STORED link = physical intent
+  (feature-to-feature). Stations are
+  FRACTIONS of live length, resolved
+  every read, so editing a length
+  moves the seam. Replaces the
+  legacy (Part, Vector3).
+end note
+
+class Station <<pod>> {
+  +z : double        ' = station01 * getLength()
+  +rOuter : double
+  +rInner : double   ' 0 for solids
+}
+
+class Pose <<pod>> {
+  +origin : Vector3 = Zero   ' aft-plane origin, in ROOT frame
+  +orient : Quaternion = Identity
+  --
+  +compose(childInThis : Pose) : Pose
+}
+
+class Placed <<pod>> {
+  +part : const Part*
+  +pose : Pose
+}
+
+class OverlapDiagnostic <<pod>> {
+  +offender : Part::Id
+  +host : Part::Id
+  +zWorld : double
+  +penetration : double
+  +message : std::string
+}
+
+class SolveResult <<pod>> {
+  +ok : bool = true
+  +diagnostics : vector<OverlapDiagnostic>
+}
+
+class "resolvePlacements()\nsweepOverlaps()" as Resolver <<freefn>> {
+  +resolvePlacements(root, rootPose) : vector<Placed>
+  +sweepOverlaps(placed) : SolveResult
+}
+note bottom of Resolver
+  THE resolver. DFS over the ownership
+  tree; pure geometry. Both the sim
+  (computeCompositeAt) and the viz
+  (RocketMesh::walk) consume its output.
+end note
+
+StationLink *-- SeatKind : seat
+StationLink ..> "utils::Quaternion" : childRot
+Pose ..> "utils::Vector3"
+Pose ..> "utils::Quaternion"
+Placed *-- Pose : pose
+Placed ..> "Part" : observes
+SolveResult *-- "0..*" OverlapDiagnostic : diagnostics
+
+Resolver ..> StationLink : reads
+Resolver ..> Station : queries (stationAt)
+Resolver ..> Placed : <<produces>>
+Resolver ..> SolveResult : <<produces>>
+@enduml

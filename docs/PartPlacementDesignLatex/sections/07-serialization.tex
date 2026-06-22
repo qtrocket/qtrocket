@@ -1,0 +1,148 @@
+\section{Serialization to \texttt{.qrd}}\label{sec:serialization}
+
+The on-disk \texttt{.qrd} format must carry the same shift the rest of this design
+makes everywhere else: it stops recording resolved geometry and starts recording
+\emph{intent}. Today a child's spatial relationship to its parent is persisted as an
+opaque \code{<offset x y z/>} triple --- the serialized form of the CM-to-CM
+\cppinline|Vector3| stored in \code{childParts}. That triple inherits every pathology
+discussed in \cref{sec:datamodel}: it is a resolved coordinate, it conflates the cone's
+internal CM frame with the assembly frame, and it bakes a particular set of part lengths
+into the file so that a later geometry edit silently invalidates it. Replacing the
+storage type (\cref{sec:datamodel}) without replacing its serialized projection would
+merely move the bug onto disk. This section defines the replacement element, the
+reader/writer changes, and why the format version need not gate the loader.
+
+\subsection{The \texttt{<link>} element, kept inline}
+
+The \code{<offset>} child element is replaced, per child, by an inline \code{<link>}
+element that serializes the \seat{}-bearing \cppinline|StationLink| rather than a
+resolved vector. The element is attached to the child \code{<part>} it governs, exactly
+where \code{<offset>} sat, and it carries the four authored quantities of the link:
+the parent station, the child station, the gap, and the seat kind.
+
+\begin{designrule}[The link is stored inline with its child, not in a sibling block]
+A tempting alternative --- collecting all parent$\rightarrow$child relationships into a
+single sibling \code{<joints>} block keyed by part name --- is a hazard, because part
+\emph{names need not be unique}: \code{getName()} is explicitly documented as
+non-identifying (\src{model/parts/Part.h}{193}; identity is the per-instance
+\code{getId()}, which is not serialized). A name-keyed joints block would therefore be
+ambiguous the moment a design contains two parts with the same name, which is a
+permitted and common state. Anchoring each \code{<link>} to its owning child element
+sidesteps name resolution entirely: the ownership tree in the XML \emph{is} the keying.
+\end{designrule}
+
+\Cref{lst:qrd} shows the target \texttt{0.2} encoding of the \code{xl75\_multi} design,
+with each of its three non-root attachments expressed as a \code{<link>}.
+
+\begin{listing}[htbp]
+\begin{minted}{xml}
+<QtRocketDesign version="0.2">         <!-- minor bump; loader still accepts 0.1 -->
+  <part type="NoseCone" name="MultiNose">
+    <params baseRadius="0.0395" length="0.30" wallThickness="0"
+            density="1700" solid="true"/>
+    <!-- root: no <link> -->
+    <children>
+      <part type="BodyTube" name="MultiBody">
+        <params innerRadius="0.0376" outerRadius="0.0395" length="0.90"
+                density="1700"/>
+        <link seat="Abut" parentStation="0.0" childStation="1.0" gap="0"/>
+        <!-- ^ equals the default link; omittable -->
+        <children>
+          <part type="BodyTube" name="MultiCoupler">
+            <params innerRadius="0.036" outerRadius="0.0376" length="0.08"
+                    density="1700"/>
+            <link seat="NestInBore" parentStation="1.0" childStation="1.0"
+                  gap="0.04"/>
+          </part>
+          <part type="FinSet" name="MultiFins">
+            <params rootChord="0.10" tipChord="0.04" span="0.06" sweep="0.04"
+                    thickness="0.003" bodyRadius="0.0395" finCount="6"
+                    density="1700"/>
+            <link seat="OnSurface" parentStation="0.06" childStation="0.0"
+                  gap="0"/>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <motor commonName="M1350W"/>
+  <sim .../>
+</QtRocketDesign>
+\end{minted}
+\caption{The \code{xl75\_multi} design in the target \texttt{0.2} format. Each child's
+spatial relationship is an intent-bearing \code{<link>}, never a resolved coordinate.
+The root carries no link; the body's link equals the default and could be omitted.}
+\label{lst:qrd}
+\end{listing}
+
+\subsection{Writer: \texttt{writeOffset} becomes \texttt{writeLink}}
+
+The current writer emits the resolved offset through \code{writeOffset}
+(\src{model/DesignSerializer.cpp}{53}), which puts \code{x}/\code{y}/\code{z} attributes
+from a \cppinline|Vector3|; \code{writePart} adds that node as the child's \code{offset}
+sub-element. Under the new model this helper is replaced by
+\code{writeLink(const StationLink\&)}, which emits the four link attributes ---
+\code{seat}, \code{parentStation}, \code{childStation}, and \code{gap} --- in place of
+the coordinate triple. The \seat{} enumerator is mapped to and from its attribute string
+through a single shared lookup table, so the writer and the reader agree on the
+spelling (\seat{Abut}, \seat{NestInBore}, \seat{OnSurface}) by construction rather than
+by two independently maintained switch statements.
+
+\begin{keyinsight}[A default-equal link is omittable]
+Because the zero-config default is a meaningful physical relationship --- the child's
+fore plane abutting the parent's aft plane (\cref{sec:authoring}) --- a link whose
+fields all equal that default carries no information and may be omitted from the file
+entirely. The writer can elide it, and the reader (below) reconstructs the same default.
+This keeps the common nose$\rightarrow$body$\rightarrow$\ldots stack as terse on disk as
+it is in the authoring API, and it makes the serialized form proportional to the design's
+actual complexity rather than to its part count.
+\end{keyinsight}
+
+\subsection{Reader: \texttt{buildPart} consumes the link}
+
+The reader's recursion lives in \code{buildPart} (\src{model/DesignSerializer.cpp}{117}).
+Today it reconstructs a \cppinline|Vector3| from the child's
+\code{offset.<xmlattr>.x/y/z} (defaulting each to \code{0.0}) and calls the legacy
+\code{addChildPart(child, Vector3)}. Under the new model it instead reads the link
+attributes --- \code{parentStation}, \code{childStation}, \code{seat}, \code{gap} ---
+defaulting them respectively to \code{0.0}, \code{1.0}, \seat{Abut}, and \code{0},
+then constructs a \cppinline|StationLink{...}| and calls
+\cppinline|addChildPart(child, StationLink{...})|. Those defaults are exactly the
+zero-config link, so a minimal \code{<part>} carrying \emph{no} \code{<link>} at all
+still attaches by abutting its parent --- the omittable-link property of the writer and
+the defaulting behavior of the reader are two halves of the same contract.
+
+The reader inherits the existing fail-closed discipline. A \code{seat} string that maps
+to no \seat{} enumerator is a load error, raised on the same path as today's
+\code{makePart} rejection of an unknown part type, so a malformed or hand-edited file is
+refused with a clear diagnostic rather than silently coerced to \seat{Abut}.
+
+\begin{designrule}[Resolved coordinates are never serialized]
+The file stores only authored intent --- station fractions, a gap, and a seat kind. The
+absolute \code{Pose} of each part is recomputed by the resolver (\cref{sec:resolver}) on
+load. This is the on-disk expression of the ``derive, never store'' rule: a \texttt{.qrd}
+file can be edited (lengthen a tube, swap a cone) and reloaded, and the seams move to
+follow the new geometry because nothing in the file pins them to the old. It is also the
+natural validation point for migration --- recomputing the placement on load is precisely
+when the overlap sweep (\cref{sec:diagnostics}) gets to run against a freshly read tree.
+\end{designrule}
+
+\subsection{Version: writer emits \texttt{0.2}; no loader gate change}
+
+The format version moves from \texttt{0.1} to \texttt{0.2} to mark the
+\code{<offset>}$\rightarrow$\code{<link>} change. This is a minor bump because the
+loader's acceptance rule is already keyed on the \emph{major} component only: the gate
+(\src{model/DesignSerializer.cpp}{186}) splits the version on the dot and rejects only an
+unrecognized major, so it admits any minor within major~\texttt{0}. Both \texttt{0.1}
+(legacy \code{<offset>}) and \texttt{0.2} (\code{<link>}) therefore pass the same gate
+with no change to it; the reader distinguishes the two element shapes structurally, by
+which element is present on the child, not by inspecting the version string.
+
+\begin{hardfail}[The current writer still emits \texttt{0.1}]
+In the present working tree the writer hard-codes the version string \texttt{"0.1"}
+(\src{model/DesignSerializer.cpp}{156}), and \code{writeOffset} still emits the
+coordinate triple. The \texttt{0.2}/\code{<link>} encoding described above is the
+\emph{target} of this design, not the current behavior; the only file-format work the
+loader gate needs is none, precisely because \src{model/DesignSerializer.cpp}{186}
+already tolerates the minor bump.
+\end{hardfail}

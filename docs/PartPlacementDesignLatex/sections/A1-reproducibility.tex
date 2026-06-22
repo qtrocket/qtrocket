@@ -1,0 +1,165 @@
+\section{Reproducing this document (toolchain)}\label{sec:repro}
+
+This whitepaper is itself a small, self-contained build: a contributor who clones the
+repository should be able to regenerate the PDF, with every diagram, from the sources
+checked into \srcf{docs/PartPlacementDesignLatex/}. This appendix documents that build so
+that the figures referenced throughout the preceding sections remain reproducible rather
+than opaque binary artifacts. The guiding principle is that nothing rendered into the final
+document is committed in its rendered form: the figures are derived, on demand, from text
+sources by a deterministic pipeline, so a reviewer can audit \emph{how} every diagram was
+produced and regenerate it.
+
+\subsection{Directory layout}
+
+The document is assembled from a small number of well-separated source kinds. The master
+file \srcf{PartPlacement.tex} carries only the document scaffolding---title block, front
+matter, and an ordered list of \cppinline|\input| directives---while the prose lives in
+\srcf{sections/}, one file per section (this appendix is
+\srcf{sections/A1-reproducibility.tex}). The shared style contract is isolated in
+\srcf{preamble.tex}, which defines the colour palette, the fonts (XCharter text,
+\code{newtxmath}, Inconsolata mono), every callout environment, and the domain macros
+(\code{\textbackslash src}, \code{\textbackslash classfig}, \code{\textbackslash tikzfig},
+and the rest) that the section files depend on. Keeping the preamble separate is what lets
+each section file be authored and reviewed in isolation: a section is just a body, never a
+standalone \LaTeX{} program.
+
+\begin{designrule}[Two diagram toolchains, by figure kind]
+Class diagrams are authored in PlantUML and live as \srcf{diagrams/*.puml}; activity,
+component, geometry, and worked-example figures are hand-built in Ti\emph{k}Z and live as
+\srcf{diagrams/tikz/*.tex}. The split is deliberate: PlantUML excels at laying out
+box-and-line class structure with no manual coordinate work, whereas the flow, axis, and
+geometry figures need pixel-level control that is far easier to express directly in
+Ti\emph{k}Z than to coerce out of a layout engine.
+\end{designrule}
+
+The remaining directories are mechanical. \srcf{diagrams/out/} holds the rendered diagram
+artifacts (the intermediate SVGs and the PDFs that \LaTeX{} actually includes); it is a
+build output and is reconstructed from sources. \srcf{tools/plantuml.jar} is the pinned
+PlantUML renderer, fetched on demand rather than vendored as a hand-managed binary. The
+shared PlantUML theme \src{diagrams/\_style.iuml}{1} is given the \code{.iuml} extension
+precisely so that it stays out of the Makefile's \srcf{diagrams/*.puml} glob---it is an
+include, not a diagram, and must not be rendered as one.
+
+\subsection{The rendering pipeline}
+
+Diagrams flow through three stages before they reach the document. Each PlantUML source is
+first rendered to SVG, the SVG is converted to a vector PDF, and that PDF is pulled into the
+document by \code{\textbackslash includegraphics} (via the \code{\textbackslash classfig}
+macro). Schematically:
+
+\begin{minted}{text}
+diagrams/*.puml      --(plantuml -tsvg)-->     diagrams/out/*.svg
+diagrams/out/*.svg   --(rsvg-convert -f pdf)-->  diagrams/out/*.pdf
+diagrams/out/*.pdf + sections/*.tex  --(latexmk -pdf)-->  PartPlacement.pdf
+\end{minted}
+
+SVG is used as the intermediate because it is PlantUML's cleanest vector output; the
+SVG-to-PDF step uses \code{rsvg-convert} so the figures embed as resolution-independent
+vectors rather than rasterized bitmaps. The converter is configurable---the Makefile exposes
+a \code{SVG2PDF} variable (\src{Makefile}{33}) so a contributor without \code{rsvg-convert}
+can substitute, for example, an Inkscape export command without editing the rules. The
+Ti\emph{k}Z figures need no such pipeline: they are \LaTeX{} sources included directly by
+\code{\textbackslash tikzfig} and compiled in line by the main engine.
+
+The document engine is \code{pdflatex}, driven by \code{latexmk} so that the multi-pass
+dance (cross-references, the table of contents, \code{cleveref}, and the bookmark tree)
+converges automatically. The one non-default requirement is \code{-shell-escape}: the
+listings throughout this document are typeset by \code{minted}, which shells out to the
+Python \code{pygmentize} tool to perform syntax highlighting. As the preamble notes at
+\src{preamble.tex}{3}, \code{minted} cannot run without shell-escape, so the Makefile's
+\code{latexmk} invocation enables it unconditionally (\src{Makefile}{35}).
+
+\begin{keyinsight}[PlantUML resolves \texttt{!include} relative to the working directory]
+Every \srcf{*.puml} begins with \cppinline|!include _style.iuml| to pull in the shared theme
+(\src{diagrams/class-current.puml}{4}). PlantUML resolves that path relative to the
+\emph{current working directory}, not the file being rendered, so running it from the
+repository root would fail to find the theme. The Makefile therefore \code{cd}s into
+\srcf{diagrams/} before invoking the renderer, passing the jar and the output directory as
+absolute paths (\src{Makefile}{60}). This is the single most common foot-gun when rebuilding
+a diagram by hand: invoke PlantUML from \srcf{diagrams/}, or the \code{!include} will not
+resolve.
+\end{keyinsight}
+
+\subsection{Authoring format: a sample class diagram}
+
+A PlantUML class diagram is a compact text description of types and their relations; the
+renderer handles all layout. \Cref{lst:puml-sample} shows the head of
+\srcf{diagrams/class-current.puml} (the source behind \cref{fig:class-current}): it includes
+the shared theme, sets a title, and declares the abstract \code{Part} with its members and
+the stereotype that drives its colour. The full file goes on to declare the concrete part
+subclasses, the composition edge, and an explanatory note, but the excerpt is enough to show
+that the diagram is fully auditable text---there is no hand-placed geometry to drift out of
+sync with the code it depicts.
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+@startuml class-current
+!include _style.iuml
+title Current model::part composite tree — CM-to-CM child offset
+
+abstract class "Part" as Part <<abstract>> {
+  +using Id = std::uint64_t
+  --
+  -cm : Vector3
+  -needsRecomputing : bool
+  -childParts : vector<tuple<shared_ptr<Part>, Vector3>>
+  --
+  +getId() : Id
+  +addChildPart(child, Vector3 position)
+  +getChildParts() : const vector<tuple<..>>&
+  #computeCompositeAt(t)
+}
+Part "1" o-- "childParts *" Part : composite (by move)
+@enduml
+\end{minted}
+\caption{Head of \texttt{diagrams/class-current.puml}: a PlantUML class diagram is plain
+text, themed by \texttt{!include \_style.iuml} and rendered to SVG then PDF by the Makefile.}
+\label{lst:puml-sample}
+\end{listing}
+
+The shared theme \src{diagrams/\_style.iuml}{21} maps stereotypes (\code{<<abstract>>},
+\code{<<concrete>>}, \code{<<pod>>}, \code{<<newtype>>}, \code{<<enumc>>}, \code{<<freefn>>},
+\code{<<legacy>>}) onto the same colour palette as the body text, so the class diagrams and
+the prose share one visual language. Per its own header comment, this PlantUML build rejects
+the block form \code{skinparam class<<stereo>> \{ \}} (it exits with status 200); the theme
+therefore uses the supported \code{Property<<stereo>>} suffix form inside a single
+\code{skinparam class \{ \}} block (\src{diagrams/\_style.iuml}{5}). A contributor adapting
+the theme should preserve that form.
+
+\subsection{Commands}
+
+The Makefile wires the whole pipeline into a handful of phony targets. From
+\srcf{docs/PartPlacementDesignLatex/}:
+
+\begin{minted}{text}
+make            # default: render all diagrams, then build PartPlacement.pdf
+make diagrams   # render only the PlantUML class diagrams to diagrams/out/*.pdf
+make tools      # fetch tools/plantuml.jar (pinned version) if it is missing
+make clean      # remove LaTeX aux files, the minted cache, and diagram SVGs
+make veryclean  # clean, and also remove PartPlacement.pdf + rendered diagram PDFs
+\end{minted}
+
+The dependency graph is arranged so that a clean checkout builds in a single \code{make}
+invocation: the PDF target depends on the rendered diagram PDFs (\src{Makefile}{67}), each
+diagram PDF depends on its SVG, and each SVG depends on its \srcf{*.puml} source, the shared
+theme, and---as an order-only prerequisite---the PlantUML jar. The jar rule
+(\src{Makefile}{50}) fetches a pinned PlantUML version over \code{curl} into \srcf{tools/}
+only when the jar is absent, so the network is touched at most once and the version is
+reproducible. The intermediate SVGs are marked \code{.SECONDARY} (\src{Makefile}{42}) so
+\code{make} does not delete them as transient by-products between the two diagram stages.
+
+\code{make clean} runs \code{latexmk -c} to drop the \LaTeX{} auxiliary files, then removes
+the \code{minted} cache (the \srcf{\_minted-*} directories that hold the cached highlighter
+output) and the intermediate SVGs, while leaving the finished PDF and the rendered diagram
+PDFs in place for inspection; \code{make veryclean} additionally runs \code{latexmk -C} and
+deletes the final PDF and the entire \srcf{diagrams/out/} tree, returning the directory to a
+pristine, source-only state.
+
+\subsection{Prerequisites}
+
+To rebuild from a clean checkout a contributor needs: a Java runtime (\code{java}, to run
+the fetched \srcf{tools/plantuml.jar}); \code{curl} (to fetch the jar on first build);
+\code{rsvg-convert} or a substitute set via \code{SVG2PDF} (for the SVG-to-PDF step); and a
+\TeX{} distribution providing \code{latexmk}, \code{pdflatex}, and the \code{minted} package
+together with its \code{pygmentize} helper. With those present, \code{make} reproduces this
+document end to end.

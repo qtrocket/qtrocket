@@ -1,0 +1,152 @@
+\section{The 6-DOF path}\label{sec:sixdof}
+
+The placement model defined in \cref{sec:datamodel} and resolved in \cref{sec:resolver} is, by
+construction, a three-degree-of-freedom (3-DOF) system: every part is seated coaxially, child
+origins differ from their parents only by an axial translation, and no relative orientation is
+modeled. That restriction is not accidental --- it matches what the current integrator can use
+(\cref{sec:intro}) --- but it is a deliberately \emph{soft} restriction. The data model was shaped
+so that the eventual move to six degrees of freedom (6-DOF) costs \emph{no schema change, no
+signature change, and no second resolver}. This section documents exactly which seams were widened
+in advance, why each widening is free today, and what the one structural code change will be when
+the rotational degrees of freedom are switched on. Nothing here is implemented or exercised in the
+3-DOF cut; it is the forward-compatibility argument for the choices already made.
+
+The motivating constraint is stated in the source itself. The composite mathematics today rests on
+an explicit frame assumption: ``all parts share the same body-frame orientation, so child position
+offsets are pure translations and tensors combine by addition (no rotation) \ldots\ relative part
+rotation is not modeled'' (\src{model/parts/Part.h}{43}--45). The value of the 6-DOF shaping is that
+it converts this from a structural assumption baked across the tree into a single localized
+limitation --- one identity-valued quaternion and one composition line --- that can be lifted in
+place.
+
+\subsection{Orientation already lives in the value types}
+
+Two carriers for orientation are present in the data model from day one, both holding the identity
+quaternion in the 3-DOF cut so that behavior is bit-identical to a pure-translation tree.
+
+The first is \code{Pose}, the resolver's output type (\cref{sec:resolver}). It pairs the part-local
+origin with an orientation, and its \code{compose} operator already rotates the child translation by
+the parent orientation rather than merely adding it:
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+struct Pose {
+   Vector3    origin {Vector3::Zero()};        // aft-plane origin, in ROOT frame
+   Quaternion orient {Quaternion::Identity()}; // (x,y,z,w); identity in 3-DOF
+
+   Pose compose(const Pose& childInThis) const {
+      return Pose{ origin + orient * childInThis.origin,
+                   (orient * childInThis.orient).normalized() };
+   }
+};
+\end{minted}
+\caption{\code{Pose::compose} rotates the child translation by the parent orientation. With every
+\code{orient} equal to identity, \code{orient * childInThis.origin} is the input unchanged, so
+the composed pose is a pure translation --- bit-identical to the current
+tree.}\label{lst:pose-compose}
+\end{listing}
+
+Because \code{orient} is \cppinline|Quaternion::Identity()| everywhere in 3-DOF, the rotation
+\cppinline|orient * childInThis.origin| is the identity map and \code{compose} degenerates to vector
+addition. The operator is written correctly for the rotated case now, so no edit to the resolver's
+spine is required later; the rotations simply stop being identities.
+
+The second carrier is \code{StationLink::childRot}, the per-seam orientation defined in the link
+struct (\cref{sec:datamodel}). It is a \emph{value} in the already-existing struct, not a new field
+introduced by the 6-DOF work --- the storage layout does not reshape. It defaults to
+\cppinline|Quaternion::Identity()| and is consumed by the resolver as the child's local orientation
+relative to its parent. This is where canted fins and side boosters --- parts that genuinely seat at
+a fixed relative angle --- are expressed: a non-identity \code{childRot} on the seam, resolved
+through \code{compose} into a world orientation, with no other part of the pipeline aware that
+anything changed.
+
+\begin{keyinsight}[Zero schema cost is the point]
+Carrying \code{orient} on \code{Pose} and \code{childRot} on \code{StationLink} from the first
+commit means the on-disk \code{.qrd} schema (\cref{sec:serialization}), the storage type for
+\code{childParts}, and the resolver signature \cppinline|resolvePlacements(const Part&, const Pose&)|
+are all already 6-DOF-shaped. Enabling rotation adds behavior, not types. A design that bolted
+orientation on later would have to migrate every stored design and re-break every consumer of
+\code{getChildParts()} a second time --- precisely the churn this whitepaper exists to avoid.
+\end{keyinsight}
+
+\subsection{The one new composition line: rotating the inertia tensor}
+
+The single structural change that distinguishes 6-DOF from 3-DOF lives in the composite derivation,
+not the resolver. The two-pass mass-weighted CM and parallel-axis routine in \code{computeCompositeAt}
+(\src{model/parts/Part.cpp}{169}--204) is preserved verbatim by the placement refactor
+(\cref{sec:resolver}); only its \emph{input} changes from stored CM-to-CM offsets to
+resolver-derived geometric stations. The 6-DOF step adds exactly one operation to that preserved
+routine: before a child's inertia tensor is shifted to the composite CM by the parallel-axis theorem
+(\code{parallelAxisTerm}, \src{model/parts/Part.cpp}{17}--23), it must first be rotated out of the
+child's body frame into the root frame.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// In computeCompositeAt's pass 2, per child, with R = childPose.orient:
+const Matrix3 R    = childPose.orient.toRotationMatrix();
+const Matrix3 Irot = R * childI * R.transpose();   // I' = R I R^T  (NEW for 6-DOF)
+const Vector3 d    = childCmInRoot - compositeCm;   // child CM -> composite CM
+I += Irot + childMass * parallelAxisTerm(d);        // parallel-axis shift, unchanged
+\end{minted}
+\caption{The lone 6-DOF addition to the composite math: the similarity transform
+\(I' = R\,I\,R^{\mathsf T}\) re-expresses the child's centroidal tensor in the root frame before the
+parallel-axis shift. In 3-DOF \(R = \mathbf{I}_3\), so \code{Irot == childI} and the line is an
+identity.}\label{lst:tensor-rotate}
+\end{listing}
+
+The transform \(I' = R\,I\,R^{\mathsf T}\) is the standard congruence that re-expresses a centroidal
+inertia tensor under a change of body orientation, where \(R\) is the rotation matrix of
+\code{childPose.orient}. It must precede the parallel-axis shift because the displacement tensor
+\code{parallelAxisTerm} operates on the offset \code{d} in the root frame; the child tensor must be
+in that same frame before the two are summed. In the 3-DOF cut \(R\) is the identity, so \code{Irot}
+equals \code{childI} bit-for-bit and the routine reduces to exactly the addition it performs today.
+This is why \src{model/parts/Part.h}{43}--45 can be cited as the \emph{current} limit rather than a
+permanent one: that ``no rotation'' assumption is now localized to this single line, and lifting it
+is a one-line change to a routine whose structure is otherwise untouched.
+
+\subsection{Off-axis radial seating arrives with rotation, not before}
+
+\cref{sec:resolver} deliberately scopes the radial coordinate \(r\) to the seam and overlap
+\emph{check} only: the pose solve sets \(x = y = 0\) and every part is seated coaxially. Off-axis
+radial placement --- a single rail button, an asymmetric pod, a clustered side booster offset from
+the centerline --- is not a 3-DOF feature held back arbitrarily. It is physically meaningful only
+once two ingredients are present together: \code{childRot} (so the off-axis part is correctly
+\emph{oriented} at its radial station, not merely translated to \(x = r\) while still pointing along
+the parent axis) and a per-part body-frame center-of-mass offset.
+
+The second ingredient is the latent purpose of \code{getCenterMassOffset()}
+(\src{model/parts/Part.h}{96}). That accessor returns the part's \code{cm} member, which is
+documented as not currently consumed by the composition math but kept as ``the natural home for that
+offset once asymmetric parts or 6-DOF force application \ldots\ need it'' (\src{model/parts/Part.h}{310}--316).
+In the 3-DOF cut its sole consumer is the cone CM-frame adapter \code{cmStationLocal}
+(\cref{sec:datamodel}). Under 6-DOF it gains its second documented use: the radial components of the
+body-frame CM offset, rotated by \code{childPose.orient} alongside the axial \code{cmStationLocal}
+term, place a genuinely off-axis part's mass correctly in the root frame.
+
+\begin{designrule}[Do not store a half-correct off-axis placement]
+Seating a part at \(x = r\) in 3-DOF --- with no orientation and no body-frame CM offset --- would
+record a placement that is correct in translation but wrong in attitude and inertia. That is exactly
+the staleness-and-divergence error class this design exists to eliminate (\cref{sec:philosophy}).
+Off-axis seating therefore lights up \emph{here}, with \code{childRot} and the body-frame CM offset
+integrated together, and not one step sooner. Until then \(r\) drives only the diagnostic check
+(\cref{sec:diagnostics}), where a value with no placement consequence is harmless.
+\end{designrule}
+
+\subsection{A body-frame integrator reuses the same resolver}
+
+The final piece of the 6-DOF path requires no change to the placement subsystem at all. A future
+body-frame integrator --- one that integrates the rocket's attitude as well as its translation ---
+supplies the rocket's world orientation by multiplying the \code{rootPose} passed to
+\cppinline|resolvePlacements(root, rootPose)| by the integrated attitude quaternion. Today
+\code{rootPose} is conventionally the identity (the rocket's aft datum at the world origin,
+\zfwd); a body-frame integrator passes the live attitude instead.
+
+Because \code{compose} (\cref{lst:pose-compose}) already propagates that root orientation down the
+entire tree, the very same resolver then yields every part's full world pose --- position and
+orientation --- which the force and aero paths can consume to apply thrust and aerodynamic loads in
+world coordinates. There is no schema change, no resolver-signature change, and no second code path:
+the single resolver that serves the simulator and the visualizer in 3-DOF (\cref{sec:resolver})
+serves the attitude-aware integrator unchanged. The 6-DOF work is thereby reduced to three localized
+edits --- stop forcing \code{childRot} to identity at authoring and load time, rotate the child
+tensor by the one line of \cref{lst:tensor-rotate}, and feed the integrated attitude into
+\code{rootPose} --- against a data model and a resolver that were built to receive them.

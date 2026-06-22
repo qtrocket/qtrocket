@@ -1,0 +1,162 @@
+\section{Design philosophy \& the longitudinal convention}\label{sec:philosophy}
+
+Before a single type is introduced, the design fixes the small set of invariants that
+everything downstream must respect. These are deliberately stated as rules rather than
+as code, because their value is exactly that they constrain every later decision: the
+data model (\cref{sec:datamodel}), the resolver (\cref{sec:resolver}), the
+serialization format (\cref{sec:serialization}), and the migration (\cref{sec:migration})
+are all forced to be consistent with them. Two things are settled here: the three
+non-negotiable rules that govern \emph{how} placement is represented and computed, and
+the single longitudinal sign convention that makes the geometry unambiguous.
+
+\subsection{The three non-negotiable rules}
+
+The central defect of the legacy link (\cref{sec:intro}) is that it conflates two ideas
+that must be kept apart: the \emph{author's intent} (``this rim seats against that rim'')
+and a \emph{derived numeric placement} (the resolved axial offset). The legacy
+\code{Vector3} stored a derived quantity --- a center-of-mass-to-center-of-mass offset ---
+and then asked the author to hand-compute it. The rules below exist to make that class of
+error structurally impossible.
+
+\begin{designrule}[The three non-negotiable rules]
+\textbf{1. Placement is \emph{derived}, recomputed by exactly one resolver.}
+Absolute coordinates are never stored, and the resolved pose is never stored. There is a
+single function (\cref{sec:resolver}) that turns intent into geometry, and both the
+simulator and the visualizer read its output. \\[2pt]
+\textbf{2. The stored link is physical \emph{intent}} --- a feature-to-feature relationship
+between a station on the parent and a station on the child --- never an opaque offset. The
+center of mass falls out as a consequence of the geometry, not as an authored input. \\[2pt]
+\textbf{3. The common case costs zero authored numbers.} A child attached with no explicit
+link simply abuts its parent; the trivial nose\,$\rightarrow$\,body\,$\rightarrow$\,fins
+stack requires no coordinates at all (\cref{sec:authoring}).
+\end{designrule}
+
+Rule~1 is not a new discipline imposed from outside; it is the discipline the existing
+codebase already follows for every other derived quantity. The Barrowman aerodynamic
+contribution is documented as a ``\emph{Pure function of geometry; NOT stored (no staleness,
+no \texttt{-Werror} field)}'' (\src{model/parts/Part.h}{154}), and the
+center-of-mass-versus-middle offset is explicitly marked ``\emph{NOT CURRENTLY CONSUMED}''
+and recomputed rather than cached (\src{model/parts/Part.h}{310}). Composite mass, CM, and
+inertia are themselves rebuilt lazily behind a dirty flag rather than persisted. Placement
+is simply the last quantity to be brought under the same rule.
+
+\begin{rejected}[Storing the resolved transform]
+The obvious shortcut --- resolve once, store the resulting transform, and read it back ---
+was considered and rejected. It reintroduces a staleness class that is the exact
+\emph{inverse} of today's bug: edit a part's length and its stored transform is silently
+wrong, instead of (as today) edit an offset and the geometry is silently wrong. Either
+direction leaves two sources of truth that can disagree. The design keeps a single source
+of truth --- intent --- and re-derives geometry on every read, accepting a recompute cost
+that the caching split in \cref{sec:resolver} keeps off the per-step hot path.
+\end{rejected}
+
+\subsection{Settling the longitudinal convention}
+
+A placement model needs an unambiguous axial sign convention: a part's local origin must
+sit at a defined plane, and ``forward'' must mean one direction. The design fixes
+\textbf{\zfwd} --- the local origin of every part lies on the longitudinal axis at its
+\emph{aft} plane, so the part occupies $z \in [0, +\text{length}]$ moving forward toward the
+nose tip.
+
+This is not an arbitrary choice. It is the \emph{cheapest correct} choice, because both the
+renderer and the existing design files already use it; choosing the opposite would impose a
+sign-inverting rewrite on both with no offsetting benefit.
+
+\begin{itemize}
+  \item \textbf{The visualizer is already \zfwd{}.} \code{buildCone} places the cone base at
+  $z_{\text{base}} = -L/2$ and the tip at $z_{\text{tip}} = +L/2$
+  (\src{visualizer/RocketMesh.cpp}{93}), with the base-cap normal pointing $-z$ (``outward
+  $=$ aft'', \src{visualizer/RocketMesh.cpp}{132}). \code{buildTube} agrees, naming its
+  $+z$ end ``forward'' and its $-z$ end ``aft'' (\src{visualizer/RocketMesh.cpp}{156}). The
+  sphere is built from a $+z$ pole to a $-z$ pole on the same axis
+  (\src{visualizer/RocketMesh.cpp}{294}). Every primitive the renderer already emits treats
+  $+z$ as forward.
+  \item \textbf{Legacy \texttt{.qrd} files are already \zfwd{}.} In the
+  \texttt{xl75\_multi} fixture, the body is placed at a negative $z$ (extending aft, toward
+  $-z$) and the coupler at a positive $z$ relative to the body (forward, toward the nose).
+  The files encode the same sense the renderer does.
+\end{itemize}
+
+\begin{rejected}[$+z = $ aft]
+Adopting \zaft{} would require a whole-axis inversion of the renderer --- every cone
+base-cap normal, every sphere pole, every primitive endpoint --- \emph{and} a sign-negating
+migration of every legacy file. Under \zfwd{}, by contrast, wiring the renderer to the new
+resolver is a pure \emph{consumer swap} with no sign inversion, and the file migration
+(\cref{sec:migration}) is a re-expression of the same numbers with no axial flip. The
+alternative pays a large, error-prone cost to arrive at an equivalent model.
+\end{rejected}
+
+\subsection{The per-part-type local frame}
+
+With \zfwd{} fixed, each concrete part type's local frame is fully determined. The aft plane
+is always the origin; the part extends forward to its length.
+
+\begin{itemize}
+  \item \textbf{\code{ConicalNoseCone}.} The aft plane (the base rim) is at $z = 0$ with
+  $r = \text{baseRadius}$; the fore point (the tip) is at $z = +\text{length}$ with $r = 0$.
+  The outer radius tapers linearly,
+  $\text{radiusOuterAt}(z) = \text{baseRadius}\,(1 - z/\text{length})$.
+  \item \textbf{\code{BodyTube}, \code{FinSet}, \code{HollowSphere}.} The aft plane is at
+  $z = 0$ and the fore plane at $z = +\text{length}$.
+\end{itemize}
+
+\tikzfig{convention-zframe}{The settled \zfwd{} convention. Each part's local origin sits on
+the longitudinal axis at its aft plane, occupying $z \in [0, +\text{length}]$. The single
+frame collision --- the cone's internal CM frame, whose origin is at mid-length and whose
+$+z$ points toward the base --- is shown opposed to the chosen forward direction and is
+reconciled by an explicit adapter rather than by altering the cone's tensor
+math.}{fig:convention}
+
+\Cref{fig:convention} also depicts the one place where the chosen convention does not match a
+pre-existing frame inside the code, which the next subsection treats as the single most
+correctness-critical detail of the whole design.
+
+\subsection{The one frame collision: the cone's internal CM frame}
+
+The cone's inertia tensor is centroidal, and the helper that reports where that centroid sits
+--- \code{coneCmOffset} (\src{model/parts/ConicalNoseCone.cpp}{49}) --- works in a frame that
+is \emph{opposite} to the convention just settled. It places the cone in $[-L/2, +L/2]$ with
+the base at $+L/2$, so its centroid is computed as
+$z = +L/2 - \bar{h}$, with $\bar{h} = L/4$ for a solid cone and $L/3$ for a thin shell:
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// The tensor is centroidal; report where that CM sits relative to the component middle so
+// the assembly's addChildPart position is CM-to-CM. With the cone in [-L/2, +L/2] (base at
+// +L/2), the centroid is hbar forward of the base: L/4 (solid), L/3 (shell) => z = +L/2 - hbar.
+Vector3 ConicalNoseCone::coneCmOffset(double L, bool solid)
+{
+   const double hbar = solid ? (L / 4.0) : (L / 3.0);
+   return Vector3{0.0, 0.0, L / 2.0 - hbar};
+}
+\end{minted}
+\caption{The cone's internal CM frame (\srccap{model/parts/ConicalNoseCone.cpp}{49}):
+mid-length origin, base at $+z$ --- the reverse of the chosen \zfwd{} placement frame, whose
+origin is the aft (base) plane with the tip at $+z$.}\label{lst:conecmoffset}
+\end{listing}
+
+This frame (\cref{lst:conecmoffset}) is the only place in the codebase whose $+z$ disagrees
+with the chosen forward direction. The tempting fix --- flip the cone's tensor and CM math so
+its $+z$ matches --- is precisely the wrong move: that math is correct, is exercised by the
+existing inertia tests, and is unrelated to placement. Inverting it to satisfy a placement
+convention would risk a correctness regression in the physics core in order to avoid a
+two-line coordinate transform.
+
+\begin{keyinsight}[The single most correctness-critical detail]
+The cone's internal CM frame (mid-length origin, base at $+z$) is the reverse of the chosen
+\zfwd{} placement frame (aft-plane origin, tip at $+z$). The design reconciles the two with
+\emph{one explicitly specified, unit-tested adapter} --- not by flipping the cone's tested
+tensor math. In the placement frame the cone's CM lies at $\text{cmZ}_{\text{fwd}} = \bar{h}$,
+i.e.\ $L/4$ forward of the base for a solid cone and $L/3$ for a shell, equivalently
+$L - \bar{h}$ aft of the tip ($3L/4$ for a solid cone). This adapter (developed in
+\cref{sec:datamodel}) is the \emph{only} consumer of \code{getCenterMassOffset()}
+(\src{model/parts/Part.h}{96}); it lives behind the new \code{cmStationLocal()} virtual, which
+the cone is the only part type to override for a frame flip. For a part whose CM is at mid-length
+$\text{cmZ}_{\text{fwd}} = L/2$. Getting this one transform right is what makes the cone's CM
+a correctly derived consequence of the geometry rather than a quietly inverted offset.
+\end{keyinsight}
+
+Isolating the collision to a single adapter is what allows the rest of the design to treat
+placement as pure geometry. No implicit cross-frame vector addition survives anywhere else:
+the resolver works entirely in the \zfwd{} placement frame, and the only translation between
+frames happens at one named, tested boundary.

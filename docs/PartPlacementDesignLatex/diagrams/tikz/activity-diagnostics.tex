@@ -1,0 +1,37 @@
+% Activity diagram: the three escalating diagnostic layers + the shared gate.
+% Consumed by section 06 (diagnostics).
+\begin{tikzpicture}[node distance=7mm and 14mm]
+  \node[startstop] (start) {structural resolve complete: \texttt{vector<Placed>}};
+
+  \node[act,below=of start,text width=70mm] (l1)
+    {\textbf{Layer 1 — radial seam check} \footnotesize(per resolve)\\[1pt]
+     \footnotesize compare the two stations' radii by seat:\\
+     \seat{Abut}: $|p.r_o-c.r_o|\le$ tol \ \textbullet\ \ \seat{OnSurface}: $c.r_o=p.r_o$\\
+     \seat{NestInBore}: $c.r_o \le p.r_i +$ tol};
+
+  \node[act,below=of l1,text width=70mm] (l2)
+    {\textbf{Layer 2 — envelope sweep} \footnotesize(after whole tree resolves)\\[1pt]
+     \footnotesize build world axial intervals, sort by $z_\text{aft}$ \ (\,$O(N\log N)$\,)\\
+     sample at feature breakpoints; for each find candidate hosts\\
+     apply the \textbf{solid-host rule}: $r_\text{off}>\texttt{innerCapacityAt}(z)+$tol\\
+     \footnotesize\texttt{innerCapacityAt} $=$ bore (tube) \emph{or} outer skin (solid)};
+
+  \node[act,below=of l2,text width=70mm] (l3)
+    {\textbf{Layer 3 — DOF accounting} \footnotesize(detector, v1)\\[1pt]
+     \footnotesize 3-DOF: one axial station-pair pins $z$ (coaxiality implicit)\\
+     warn if a child has only one link under free orientation\\
+     \footnotesize(companion-concentricity resolution deferred to 6-DOF)};
+
+  \node[decision,below=9mm of l3] (gate) {\texttt{SolveResult}\\ \texttt{.ok}?};
+  \node[oknode,below=9mm of gate,text width=56mm] (ok)
+    {\textbf{proceed}: cache \texttt{SolveResult} (one per structural resolve) --- costs nothing per ODE step};
+  \node[failnode,right=12mm of gate,text width=46mm] (fail)
+    {\textbf{both consumers refuse}\\ \footnotesize sim throws/logs; viz renders offender in error colour + surfaces the located diagnostic};
+
+  \draw[flow] (start) -- (l1);
+  \draw[flow] (l1) -- node[flowlbl]{escalate} (l2);
+  \draw[flow] (l2) -- node[flowlbl]{escalate} (l3);
+  \draw[flow] (l3) -- (gate);
+  \draw[flow] (gate) -- node[flowlbl]{true} (ok);
+  \draw[flow] (gate) -- node[flowlbl]{false} (fail);
+\end{tikzpicture}

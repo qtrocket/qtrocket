@@ -1,0 +1,249 @@
+\section{The single resolver}\label{sec:resolver}
+
+The data model of \cref{sec:datamodel} stores only physical \emph{intent}: a child carries a
+\code{StationLink} describing which feature of itself seats against which feature of its parent.
+Nothing in that model is an absolute coordinate. The job of turning a tree of intents into a set of
+absolute placements --- one transform per part, expressed in a common root frame --- belongs to a
+\emph{single} pure function. This section specifies that function, shows how the center of mass
+becomes a quantity \emph{derived} from its output rather than an authored input, and explains the
+caching discipline that keeps the geometry resolve off the per-step integration hot path.
+
+The architectural commitment is that there is exactly one authority for absolute placement, and that
+both the simulator's composite-mass code and the visualizer's mesh walker consume \emph{its} output
+rather than computing their own. \Cref{fig:component} shows the resulting shape: the resolver sits
+between the part tree and its two consumers, and the divergence described in \cref{sec:intro} --- in
+which \src{model/parts/Part.cpp}{224} threaded a CM-to-CM axial offset while
+\src{visualizer/RocketMesh.cpp}{472} threaded a geometric-center offset --- is removed by
+construction, because neither consumer is permitted to invent its own placement.
+
+\tikzfig{component-architecture}{One resolver is the sole authority for absolute placement; the
+simulator's composite/aero code and the visualizer's mesh walk are both pure consumers of its
+output.}{fig:component}
+
+\subsection{Pose and Placed}
+
+The resolver works in terms of a \code{Pose}: the rigid transform that carries a part's local frame
+(origin on the longitudinal axis at the part's aft plane, \zfwd) into the shared root frame. A
+\code{Pose} is an origin translation plus an orientation quaternion, and the only operation it needs
+is composition --- placing a child whose pose is known \emph{relative to its parent} into the root
+frame by left-multiplying the parent's pose (\cref{lst:pose}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+struct Pose {
+   Vector3    origin {Vector3::Zero()};        // aft-plane origin, on axis, in ROOT frame
+   Quaternion orient {Quaternion::Identity()}; // (x,y,z,w); identity in 3-DOF
+
+   Pose compose(const Pose& childInThis) const {
+      return Pose{ origin + orient * childInThis.origin,
+                   (orient * childInThis.orient).normalized() };
+   }
+};
+
+struct Placed { const Part* part; Pose pose; }; // deterministic DFS (attachment) order
+\end{minted}
+\caption{\code{Pose} and \code{Placed} (new, in \srcfcap{model/parts/Placement.h}). \code{compose}
+rotates the child translation by the parent orientation before adding it, so the same code is exact
+for the present pure-translation tree (\code{orient} = identity) and for the future 6-DOF tree
+without reshape.}\label{lst:pose}
+\end{listing}
+
+Writing composition this way --- rotate-then-translate, with the quaternion product renormalized ---
+is deliberate. In the present 3-DOF regime every \code{orient} is the identity, so \code{compose}
+degenerates to vector addition and the resolved tree is bit-identical to the legacy pure-translation
+walk. But the \emph{same line} is correct once orientations become non-trivial (\cref{sec:sixdof}):
+the child's local origin is rotated into the parent frame before the parent's translation is applied,
+which is exactly the rigid-transform composition law. Carrying the quaternion from day one costs one
+identity multiply per child today and buys a zero-schema-change path to 6-DOF.
+
+A \code{Placed} is simply a non-owning pointer to a part paired with its resolved pose. The resolver
+returns these in a deterministic depth-first, attachment-order sequence, which both gives the overlap
+sweep of \cref{sec:diagnostics} a stable ordering and makes the resolved sequence reproducible across
+runs.
+
+\subsection{The resolver signature and per-child algorithm}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// THE resolver. DFS over the ownership tree from rootPose.
+// Pure geometry: no center of mass, no time, no mass.
+std::vector<Placed>
+resolvePlacements(const part::Part& root, const Pose& rootPose);
+\end{minted}
+\caption{The single resolver entry point (new, in \srcfcap{model/parts/Placement.h}). It takes the tree
+root and the pose at which to plant it (conventionally identity --- the rocket's aft datum at the
+world origin, \zfwd) and returns one \code{Placed} per part.}\label{lst:resolver}
+\end{listing}
+
+The resolver visits the root at \code{rootPose} and then descends. For each child of an
+already-placed parent, carrying \code{StationLink m}, the placement is computed entirely from the two
+parts' \emph{geometry} --- never from any stored coordinate (\cref{lst:perchild}). The parent and
+child are each asked for the live landmark at the relevant fractional station via \code{stationAt}
+(\cref{sec:datamodel}); the seat kind then fixes both the radial compatibility check and the
+\emph{sign} of the gap.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// parentPose is already known (root planted at rootPose; children by DFS).
+const Station p = parent.stationAt(m.parentStation01); // parent frame
+const Station c = child .stationAt(m.childStation01);   // child frame
+
+// signedGap encodes the seat direction in +z = FORWARD:
+//   Abut       => +m.gap   (forward standoff; flush at gap = 0)
+//   OnSurface  => +m.gap   (axial standoff along the parent wall)
+//   NestInBore => -m.gap   (m.gap = insertion depth >= 0; child seats AFT, -z, into bore)
+const double signedGap = (m.seat == SeatKind::NestInBore) ? -m.gap : +m.gap;
+
+// Child's aft-plane origin along the parent axis: line the two stations up,
+// then displace by the signed gap.
+const double childOriginZ = p.z + signedGap - c.z;
+
+// Coaxial today: x = y = 0. (Radial r is a CHECK, not a placement -- see below.)
+const Pose childInParent{ Vector3(0.0, 0.0, childOriginZ),
+                          m.childRot /* Identity in 3-DOF */ };
+const Pose childInRoot = parentPose.compose(childInParent);
+\end{minted}
+\caption{The per-child placement step, in \zfwd. Pure geometry: the child's aft-plane origin is
+placed so the chosen child station lands on the chosen parent station, offset by the seat-signed
+gap; the result is composed into the root frame.}\label{lst:perchild}
+\end{listing}
+
+The expression \cppinline|childOriginZ = p.z + signedGap - c.z| reads directly as physical intent.
+The parent station sits at axial coordinate \cppinline|p.z| in the parent frame; the child must be
+positioned so that its own chosen station \cppinline|c.z| lands there (hence the \cppinline|- c.z|,
+because the pose locates the child's \emph{aft plane}, not its station); and the seat-signed gap
+then separates or inserts the two. The seat kind is what makes the sign correct without authored
+negatives: \seat{Abut} and \seat{OnSurface} treat the gap as a forward standoff, so a positive gap
+moves the child forward (\zfwd); \seat{NestInBore} treats the gap as an insertion \emph{depth}, so a
+positive depth drives the child aft into the bore. Encoding the direction in the seat kind, rather
+than asking the author to sign the gap, is what lets a \seat{NestInBore} of depth $0.04$ and an
+\seat{Abut} standoff of $0.04$ both be written as a plain positive number.
+
+\Cref{fig:resolver-activity} traces the full control flow: plant the root, then for each child in
+DFS order sample both stations, run the Layer-1 radial seam check (\cref{sec:diagnostics}), compute
+\code{childOriginZ}, build the local pose, compose into the root frame, and recurse.
+
+\tikzfig{activity-resolver}{The resolver's depth-first traversal: each child is placed purely from
+the two parts' live station landmarks and the seat-signed gap, then composed into the root
+frame.}{fig:resolver-activity}
+
+\subsection{Why radial placement is a check, not a coordinate}
+
+The per-child step sets $x = y = 0$: every child is placed coaxially with its parent. The radial
+value $r$ recovered from the two stations (\cppinline|p.rOuter|, \cppinline|p.rInner|,
+\cppinline|c.rOuter|) is used \emph{only} for the seam and overlap \emph{check} of
+\cref{sec:diagnostics} --- never to displace the pose off-axis.
+
+This is a deliberate scope line, not an oversight. It is exactly correct for every part type QtRocket
+models today: tubes, cones, and spheres are axisymmetric, and a fin set's mass distribution is
+on-axis by symmetry, so their physically correct 3-DOF placement \emph{is} coaxial. The temptation
+is to support a genuinely off-axis feature --- a single rail button, an asymmetric pod --- by setting
+$x = r$ in the pose. We reject that in 3-DOF on correctness grounds.
+
+\begin{rejected}[Off-axis seating in 3-DOF]
+Placing a part at $x = r$ without also rotating it into a body-frame orientation stores a
+\emph{half-correct} placement: the mass is moved off the axis, but the part is not oriented to sit
+against the surface it nominally seats on, and no per-part body-frame CM offset is applied. That is
+precisely the class of silently-wrong stored placement this entire design exists to eliminate ---
+just relocated from the axial axis to the radial one. True off-axis seating is therefore deferred to
+the 6-DOF work (\cref{sec:sixdof}), where \code{StationLink::childRot} and a per-part body-frame CM
+offset make an \seat{OnSurface} placement at $x = r$ \emph{correctly oriented}. Until then $r$ earns
+its keep as a diagnostic, not as a coordinate.
+\end{rejected}
+
+\subsection{How the center of mass becomes derived}
+
+The legacy composite routine consumed the stored CM-to-CM \code{Vector3} directly: in
+\code{computeCompositeAt} the child's CM in the parent frame was \cppinline|pos + cc.cm|, where
+\cppinline|pos| was the authored offset (the two-pass loop at \src{model/parts/Part.cpp}{179}). The
+refactor severs that coupling. The placement is now \emph{geometric} (station-to-station, produced by
+the resolver), and the CM is its derived consequence.
+
+Crucially, the two-pass, mass-weighted CM plus parallel-axis structure of \code{computeCompositeAt}
+is \emph{preserved unchanged in shape}. Pass~1 still accumulates a mass-weighted sum to find the
+composite CM; pass~2 still shifts every child tensor to that CM via the parallel-axis displacement
+tensor \code{parallelAxisTerm} at \src{model/parts/Part.cpp}{17} (the helper $f(d) = (d\cdot
+d)\,I_3 - d\,d^{\mathsf T}$ used twice in the composite loop). What changes is solely the
+\emph{input} to that arithmetic. Instead of reading the stored \cppinline|pos|, each child's CM in
+the root frame is derived from its resolved pose and its own-frame CM station (\cref{lst:cm-derive}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// For each child, from its resolved Pose and its OWN-frame CM station:
+const Vector3 childCmInRoot =
+     childPose.origin
+   + childPose.orient * Vector3(0.0, 0.0, child.cmStationLocal());
+   // (+ child.getCenterMassOffset() radial parts, zero for every current part)
+
+// Pass 1 (mass-weighted CM):  weighted += childMass(t) * childCmInRoot
+// Pass 2 (parallel-axis):     d = childCmInRoot - compositeCm
+//                             I += childI + childMass * parallelAxisTerm(d)
+//                             AND (6-DOF) I' = R * I * R^T, R = childPose.orient
+\end{minted}
+\caption{The CM derivation. \code{cmStationLocal()} returns the child's CM as a scalar axial station
+in its own \zfwd{} frame; it is the only place \code{getCenterMassOffset()}
+(\srccap{model/parts/Part.h}{96}) is consumed. The cone overrides it to apply the explicit frame
+adapter of \cref{sec:datamodel}; all symmetric parts return $L/2$.}\label{lst:cm-derive}
+\end{listing}
+
+The single scalar \code{cmStationLocal()} is what makes this safe across the cone's frame collision.
+The cone's internal CM helper \code{coneCmOffset} at \src{model/parts/ConicalNoseCone.cpp}{49}
+expresses the CM in a mid-length-origin, base-at-$+z$ frame whose forward sense is the
+\emph{opposite} of the resolver's. Rather than risk an implicit cross-frame vector addition --- the
+original sin this design corrects --- the cone is the one part that overrides \code{cmStationLocal()}
+to return its CM as a single, unit-tested scalar in the \zfwd{} frame, and every symmetric part
+returns $L/2$. No vector arithmetic crosses a frame boundary unwatched.
+
+The aero path is updated in the same spirit. \code{accumulateAeroAt} previously threaded the axial
+station as \cppinline|axialStation + pos.z()| in the recursive descent at
+\src{model/parts/Part.cpp}{224}. It now threads each child's resolved \cppinline|childPose.origin.z()|
+--- the same root-frame station every other consumer sees. The visualizer's \code{walk} lambda,
+which recursed with \cppinline|station + offset| at \src{visualizer/RocketMesh.cpp}{472} and read the
+legacy tuple at \src{visualizer/RocketMesh.cpp}{468}, instead translates each geometric-centered
+primitive by the resolver's \code{Pose.origin} (and, when 6-DOF arrives, rotates by
+\code{Pose.orient}).
+
+\begin{designrule}[Both consumers, one resolver, identical numbers]
+The simulator's composite/aero code and the visualizer's mesh walk both obtain every part's absolute
+placement from the \emph{same} call to \code{resolvePlacements}. They no longer each compute an axial
+station from the stored offset, so they cannot disagree: the number the integrator uses to place a
+part's mass is, by construction, the number the renderer uses to draw it. The CM-to-CM versus
+geometric-center divergence of \cref{sec:intro} is structurally impossible in the new model.
+\end{designrule}
+
+\subsection{Caching: the resolve must not run per ODE step}
+
+The composite cache today is gated on mass change. \code{ensureCompositeCache}
+(\src{model/parts/Part.h}{288}) rebuilds the cached CM and inertia tensor whenever the structure is
+dirty \emph{or} the composite mass has moved since the last build, keyed on \code{builtAtCompositeMass}
+(\src{model/parts/Part.h}{304}). That gate is correct for mass: while a motor burns, the composite
+mass differs every integration step, so the mass-delta gate fires every step --- exactly when the
+CM and inertia genuinely need re-weighting.
+
+But the \emph{geometry} does not change during a burn. The station landmarks, the radii, the seat
+gaps, and therefore every resolved \code{Pose} are rigid functions of the parts' lengths and seat
+intents; they are invariant under mass loss. Re-running the resolver --- a full DFS, with the
+quaternion compositions and the overlap sweep --- on every ODE step would be pure waste, and during
+the heavy full-ladder flight sweeps it would dominate the cost of an otherwise cheap arithmetic
+update.
+
+The design therefore splits placement into its \emph{own} cache, gated on \emph{structural} change
+rather than mass change. The present tree has a single dirty flag, \code{needsRecomputing}
+(\src{model/parts/Part.h}{322}), propagated up the ownership chain by \code{markAsNeedsRecomputing}
+(\src{model/parts/Part.h}{293}); the refactor adds a \emph{separate} \code{placementDirty} flag and a
+\code{resolvedCache} member.
+
+\begin{keyinsight}[Two gates, two cadences]
+\code{resolvedCache} (a \cppinline|std::vector<Placed>|) is rebuilt by \code{ensurePlacementCache}
+\emph{only} when \code{placementDirty} is set --- by \code{addChildPart}, \code{removeChildById}, or a
+geometry/length edit --- and \emph{never} by mass change. \code{computeCompositeAt(t)} reads the
+mass-independent \code{resolvedCache} and re-weights only by \code{getMass(t)}. A burning motor thus
+re-runs the cheap mass/CM/parallel-axis arithmetic over \emph{fixed geometry}, while the resolver and
+the overlap sweep (\cref{sec:diagnostics}) run once per structural change. The mass-delta gate fires
+every step; the placement gate fires only when the rocket is actually re-built.
+\end{keyinsight}
+
+This separation is the operational counterpart of the ``derive, don't store'' rule
+(\cref{sec:philosophy}): the resolved poses are \emph{derived} (never serialized, never authored), but
+they are also \emph{memoized} against the correct invalidation key, so deriving them is not paid for
+on a cadence the physics does not warrant.

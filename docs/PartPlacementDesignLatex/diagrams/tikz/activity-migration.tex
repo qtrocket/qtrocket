@@ -1,0 +1,35 @@
+% Activity diagram: the four-phase, build-stays-green, sign-correct migration.
+% Consumed by section 08 (migration).
+\begin{tikzpicture}[node distance=8mm and 14mm]
+  \node[startstop,fill=qrTeal!15,draw=qrTeal] (p0)
+    {\textbf{Phase 0 — invariance gate FIRST}};
+  \node[act,below=of p0,text width=92mm] (p0d)
+    {Before any type change: load every \texttt{tests/data/designs/*.qrd} through the
+     \emph{current} reader; snapshot \texttt{getCompositeCm(0)}, \texttt{getCompositeI(0)},
+     and every part's resolved axial station. \footnotesize These snapshots are the ground truth.};
+
+  \node[startstop,below=of p0d,fill=qrBlue!12,draw=qrBlue] (p1) {\textbf{Phase 1 — types \& resolver land; both APIs coexist}};
+  \node[act,below=of p1,text width=92mm] (p1d)
+    {Add \texttt{Placement.h}, the \texttt{stationAt}/\texttt{radius*At}/\texttt{cmStationLocal} virtuals,
+     \texttt{StationLink} pair storage, the resolver + sweep, and the
+     \texttt{[[deprecated]] addChildPart(child, Vector3)} shim. Rewrite \texttt{computeCompositeAt} /
+     \texttt{accumulateAeroAt} / \texttt{RocketMesh::walk} to consume the resolver. \footnotesize
+     The shim synthesizes a link reproducing the legacy CM-to-CM station (seat inferred \emph{before} gap sign).};
+
+  \node[startstop,below=of p1d,fill=qrBlue!12,draw=qrBlue] (p2) {\textbf{Phase 2 — run the gate against the migrated reader}};
+  \node[act,below=of p2,text width=92mm] (p2d)
+    {Load every fixture through the \texttt{0.2}-capable reader; assert \textbf{bit-identical}
+     \texttt{getCompositeCm(0)} / \texttt{getCompositeI(0)} / stations vs the Phase-0 snapshots.
+     A sub-test pins the \textbf{nose CM} to a hand value (solid cone: $L/4=0.075$ for $L=0.30$)
+     --- the guard that the cone frame adapter is correct.};
+
+  \node[startstop,below=of p2d,fill=qrAmber!15,draw=qrAmber] (p3) {\textbf{Phase 3 — cut over fixtures \& retire the shim}};
+  \node[act,below=of p3,text width=92mm] (p3d)
+    {Re-save the corpus to \texttt{0.2}. The \texttt{xl75\_multi} coupler migrates to \seat{NestInBore};
+     its \textbf{Layer-2 sweep fires} (coupler OD exceeds the tapering nose skin), so the migration
+     \emph{reports the pre-existing bug} instead of silently preserving it. Fix the fixture until clean,
+     re-run the gate, then remove the \texttt{[[deprecated]]} overload.};
+
+  \foreach \a/\b in {p0/p0d,p0d/p1,p1/p1d,p1d/p2,p2/p2d,p2d/p3,p3/p3d}
+     \draw[flow] (\a) -- (\b);
+\end{tikzpicture}

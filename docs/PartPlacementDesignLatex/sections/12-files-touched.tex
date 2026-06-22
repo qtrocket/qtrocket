@@ -1,0 +1,166 @@
+\section{Files this design touches}\label{sec:files}
+
+This section enumerates the concrete edits the refactor makes to the working tree, mapping
+each file to its change and then bounding the change's reach. It serves two purposes: it is
+the implementer's manifest, and it makes the surface area of the change auditable up front.
+Every line number below was verified against the current tree (branch \texttt{PartPlacement},
+namespace \code{model::part}); the design specification's own citations were pinned to an
+older commit and several have since drifted, so the table reflects the live source, not the
+spec. The defining property of the design is that it is \emph{narrow}: a single in-slot
+storage swap, one new header, and a fixed set of consumer rewrites. There is no change to the
+force path, the integrator, or the state vector.
+
+\Cref{tab:files} is the file-by-file change map. The intent of presenting it this way is to
+make explicit that almost every edit is either (a) adding a closed-form geometry virtual to a
+part that already stores the backing radii, or (b) swapping a consumer from the legacy
+CM-to-CM offset to the resolver's geometric \code{Pose}. The single genuinely new
+artifact is \srcf{model/parts/Placement.h} (\cref{sec:datamodel}); everything else is an
+amendment to existing code.
+
+\begin{table}[htbp]
+\caption{Files this design touches, with the change applied to each. Line numbers are pinned
+to the current working tree, not the design spec. \emph{New} marks the one wholly new file;
+all other entries amend existing code.}\label{tab:files}
+\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.27\linewidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{File} & \textbf{Change} \\
+\midrule
+\src{model/parts/Part.h}{326}
+  & Storage member \code{childParts} changes type from
+    \code{std::vector<std::tuple<\allowbreak std::shared\_ptr<Part>,\allowbreak Vector3>>} to
+    \code{std::vector<std::pair<\allowbreak std::shared\_ptr<Part>,\allowbreak StationLink>>} --- a single
+    in-slot swap (\cref{sec:datamodel}). Adds the geometry virtuals \code{stationAt},
+    \code{radiusOuterAt}, \code{radiusInnerAt}, \code{axialLength}, \code{isSolid}, and
+    \code{cmStationLocal} to the base class (none exist today; the only base geometry virtual
+    is \code{getReferenceArea}, \src{model/parts/Part.h}{176}). Promotes the new
+    \code{StationLink} \code{addChildPart} overload (\src{model/parts/Part.h}{239}) and
+    updates the \code{getChildParts} return type (\src{model/parts/Part.h}{212}). Adds a
+    \code{placementDirty} flag and a \code{resolvedCache} member. \\
+\addlinespace
+\srcf{model/parts/Placement.h}
+  & \emph{New.} Houses the value types and free functions: \code{Station}, \code{StationLink},
+    \seat{SeatKind}, \code{Pose}, \code{Placed}, \code{resolvePlacements},
+    \code{sweepOverlaps}, \code{OverlapDiagnostic}, and \code{SolveResult}
+    (\cref{sec:datamodel,sec:resolver,sec:diagnostics}). \\
+\addlinespace
+\srcf{model/parts/Part.cpp}
+  & \code{computeCompositeAt} (\src{model/parts/Part.cpp}{169}) is rewritten to consume the
+    resolver's \code{Pose} and derive CM through \code{cmStationLocal}, preserving the
+    two-pass mass-weighted CM and parallel-axis structure (\cref{sec:resolver}).
+    \code{accumulateAeroAt} (\src{model/parts/Part.cpp}{214}) threads each child's resolved
+    \code{Pose.origin.z()} instead of \code{axialStation + pos.z()}
+    (\src{model/parts/Part.cpp}{224}). Adds \code{ensurePlacementCache}. Every structured
+    binding over \code{childParts} is updated from the tuple to the pair (see below). \\
+\addlinespace
+\srcf{model/parts/ConicalNoseCone.cpp}
+  & Adds \code{radiusOuterAt} (the linear taper $\text{baseRadius}\cdot(1-z/L)$), the
+    \code{cmStationLocal} frame adapter of \cref{sec:datamodel} (the cone is the only part
+    that overrides it), and \code{isSolid}. The internal cone CM math in \code{coneCmOffset}
+    (\src{model/parts/ConicalNoseCone.cpp}{49}) is \emph{not} touched; only the adapter that
+    reconciles its frame is added. \\
+\addlinespace
+\srcf{model/parts/BodyTube.h}, \srcf{model/parts/BodyTube.cpp},
+\srcf{model/parts/FinSet.h}, \srcf{model/parts/FinSet.cpp},
+\srcf{model/parts/HollowSphere.h}, \srcf{model/parts/HollowSphere.cpp}
+  & Each gains \code{radiusOuterAt} / \code{radiusInnerAt} and \code{isSolid} backed by its
+    existing wall radii (\code{BodyTube}: \src{model/parts/BodyTube.h}{49};
+    \code{HollowSphere}: \src{model/parts/HollowSphere.h}{52}). \code{FinSet} reports its
+    \emph{body-disc} radius only (\code{getBodyRadius}, \src{model/parts/FinSet.h}{67}) for
+    axial occupancy; sectored fin interference is scoped out (\cref{sec:diagnostics}). \\
+\addlinespace
+\srcf{visualizer/RocketMesh.cpp}
+  & \code{walk} (\src{visualizer/RocketMesh.cpp}{427}) consumes the resolver's \code{Pose}
+    instead of accumulating \code{station + offset} (\src{visualizer/RocketMesh.cpp}{472}).
+    Because the convention is \zfwd{} --- already the visualizer's own frame
+    (\src{visualizer/RocketMesh.cpp}{156}) --- this is a pure consumer swap with \textbf{no
+    axis flip} (\cref{sec:philosophy}). \\
+\addlinespace
+\srcf{model/DesignSerializer.cpp}
+  & \code{writeOffset} (\src{model/DesignSerializer.cpp}{53}) becomes \code{writeLink},
+    emitting \code{seat}/\code{parentStation}/\code{childStation}/\code{gap} instead of an
+    \code{x}/\code{y}/\code{z} offset. \code{buildPart}
+    (\src{model/DesignSerializer.cpp}{117}) reads a \code{<link>} element. The version
+    string bumps from \texttt{0.1} (\src{model/DesignSerializer.cpp}{156}) to \texttt{0.2};
+    the loader's \code{major == "0"} tolerance (\src{model/DesignSerializer.cpp}{186})
+    already accepts it, so no gate change is needed (\cref{sec:serialization}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection*{The tuple-to-pair destructure sites in \texttt{Part.cpp}}
+
+Changing the element type of \code{childParts} mechanically invalidates every structured
+binding that walks it. These are local, internal sites --- all within
+\srcf{model/parts/Part.cpp} --- and each must be re-spelled to bind a
+\cppinline|pair<shared_ptr<Part>, StationLink>| (and, where it matters, to read the resolved
+geometric station rather than the stored offset). The complete, verified set is: \code{clone}
+(\src{model/parts/Part.cpp}{117}, including the \code{emplace\_back} that reconstructs the
+element at \src{model/parts/Part.cpp}{121}), \code{getCompositeMass}
+(\src{model/parts/Part.cpp}{131}), \code{computeCompositeAt} pass~1
+(\src{model/parts/Part.cpp}{179}), \code{accumulateAeroAt}
+(\src{model/parts/Part.cpp}{221}), \code{maxFrontalReferenceArea}
+(\src{model/parts/Part.cpp}{231}), \code{findById} (\src{model/parts/Part.cpp}{244}), and
+both loops in \code{removeChildById} --- the \cppinline|std::get<0>| direct-child scan
+(\src{model/parts/Part.cpp}{261}) and the recursive descent
+(\src{model/parts/Part.cpp}{272}).
+
+\begin{keyinsight}[Two sites the spec's enumeration mis-states]
+The design spec lists the destructure sites as lines \texttt{179, 197, 221, 231, 244, 261,
+272}. Verification against the live tree corrects this in two ways. First, line~197 is
+\emph{not} a \code{childParts} site: it destructures the local
+\cppinline|std::vector<std::pair<Vector3, CompositeProperties>>| accumulator in
+\code{computeCompositeAt} pass~2, which is unaffected by the storage swap. Second, the spec
+omits two real \code{childParts} sites entirely --- \code{clone}
+(\src{model/parts/Part.cpp}{117}) and \code{getCompositeMass}
+(\src{model/parts/Part.cpp}{131}). Both bind the element shape and so both must be migrated.
+An implementer working from the spec's list alone would leave \code{clone} and
+\code{getCompositeMass} broken.
+\end{keyinsight}
+
+\subsection*{Blast radius: the public \texttt{getChildParts()} return type}
+
+The destructure sites above are private to \code{Part}. The change with reach beyond the class
+is the public accessor: \code{getChildParts} (\src{model/parts/Part.h}{209}) currently returns
+\cppinline|const std::vector<std::tuple<std::shared_ptr<Part>, Vector3>>&|, and the refactor
+changes that to the \code{pair<ptr, StationLink>} vector. Every external consumer that iterates
+the returned view therefore breaks at compile time and must be migrated --- a
+\cppinline|std::get<0>| $\rightarrow$ \code{.first} (and \cppinline|std::get<1>| $\rightarrow$
+\code{.second}) rename, or the equivalent structured-binding rewrite. This is mechanical and
+enumerated, not hidden.
+
+\begin{designrule}[The shim does not cover the accessor]
+The \cppinline|[[deprecated]]| transitional \code{addChildPart(child, Vector3)} overload
+(\cref{sec:authoring}) keeps legacy \emph{setter} call sites compiling through the migration.
+It does \textbf{not} shield the \emph{accessor}: \code{getChildParts}'s element type is part of
+the public contract, and there is no way to return both shapes from one signature. Accessor
+consumers must therefore be migrated explicitly, in lockstep with the storage swap, rather than
+deferred behind the shim.
+\end{designrule}
+
+The confirmed external call sites are the visualizer's tree walk
+(\src{visualizer/RocketMesh.cpp}{466}, which today reaches the element through
+\cppinline|std::get<0>| / \cppinline|std::get<1>|) and the serializer's child-writing loop
+(\src{model/DesignSerializer.cpp}{73}); both files already appear in \cref{tab:files} for their
+primary changes, so the accessor migration folds into work those files receive regardless.
+Beyond these, the CLI and GUI tree-walkers and any tests that iterate \code{getChildParts}
+update the same way.
+
+\subsection*{A new base virtual: \texttt{getLength()}}
+
+One amendment in \cref{tab:files} is easy to overlook because it is implied rather than stated
+as a line edit: \code{getLength()} is \emph{promoted to a base \code{Part} virtual}. Today
+there is no \code{getLength()} on \code{Part} at all. It exists only as a non-virtual accessor
+on the concrete types that have an axial length --- \code{ConicalNoseCone}
+(\src{model/parts/ConicalNoseCone.h}{53}) and \code{BodyTube}
+(\src{model/parts/BodyTube.h}{51}) --- while \code{FinSet} and \code{HollowSphere} have none.
+The base \code{stationAt} and the default \code{axialLength()} both need a part-level length to
+resolve fractional stations, so the refactor lifts \code{getLength()} onto the base class.
+
+\code{HollowSphere} consequently gains a \code{getLength()} override: a sphere has no length
+member (\src{model/parts/HollowSphere.h}{52} exposes only radii), so its axial extent must be
+reported as its diameter, $2\cdot\text{outerRadius}$. Without this override the inherited
+default \code{axialLength()} would have nothing to read for a sphere. This is the smallest of
+the file changes, but it is the one that makes the fractional-station model
+(\cref{sec:datamodel,sec:resolver}) well defined for every concrete part type rather than only
+the two that happened to carry a length already.

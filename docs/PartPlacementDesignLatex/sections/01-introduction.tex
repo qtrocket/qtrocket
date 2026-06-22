@@ -1,0 +1,147 @@
+\section{Introduction \& the problem this replaces}\label{sec:intro}
+
+QtRocket is an open-source model-rocket simulator built on a shared C++23 simulation core that
+drives both a Qt6 Widgets GUI and a headless command-line REPL, with a standalone OpenGL viewer
+sharing the same rocket model. This document specifies a replacement for the way that core
+expresses \emph{where one part sits relative to another}. The replacement is structural rather
+than cosmetic: it removes a coordinate convention that is correct only by accident and replaces it
+with one that is correct by construction.
+
+\subsection{How parts are linked today}
+
+A rocket is a composite tree of \code{Part} objects (concrete types such as \code{ConicalNoseCone},
+\code{BodyTube}, \code{FinSet}, and \code{HollowSphere} live under \srcf{model/parts/}). Each node
+stores its direct children together with a single relative-position vector. The storage is, at
+\src{model/parts/Part.h}{326},
+
+\begin{minted}{cpp}
+std::vector<std::tuple<std::shared_ptr<Part>, Vector3>> childParts;
+\end{minted}
+
+\noindent and the doc comment on that member states the contract precisely: the \cppinline|Vector3|
+is ``the relative position of the child part's center of mass with respect to the center of mass of
+this part.'' In other words, parts are linked \emph{center-of-mass to center-of-mass} (CM-to-CM).
+That single offset is the only spatial relationship the model records; everything downstream --- the
+composite mass properties consumed by the integrator and the geometry drawn by the viewer --- is
+derived from it.
+
+\classfig{class-current}{The current composite tree links children CM-to-CM: each edge carries a
+single \texttt{Vector3} measured from parent CM to child CM, and both the simulator and the
+visualizer reconstruct absolute position by accumulating those offsets.}{fig:class-current}{0.86}
+
+\subsection{Why a CM-to-CM link is fragile}
+
+The CM-to-CM link rests on a hidden assumption: that a part's center of mass is a stable, intuitive
+landmark an author can reason about. For a longitudinally symmetric part it happens to be ---
+the CM is at mid-length --- but \cref{fig:class-current} hides the fact that \emph{this is not true
+in general}. A solid right cone has its centroid one quarter of its length from the base; a thin
+conical shell has its centroid one third of its length from the base. QtRocket encodes exactly this
+in \src{model/parts/ConicalNoseCone.cpp}{49}:
+
+\begin{minted}{cpp}
+// With the cone in [-L/2, +L/2] (base at +L/2), the centroid is hbar forward of the base:
+// L/4 (solid), L/3 (shell) => z = +L/2 - hbar.
+Vector3 ConicalNoseCone::coneCmOffset(double L, bool solid)
+{
+   const double hbar = solid ? (L / 4.0) : (L / 3.0);
+   return Vector3{0.0, 0.0, L / 2.0 - hbar};
+}
+\end{minted}
+
+\noindent so the cone's CM is displaced from its geometric center (mid-length) by $L/2 - \bar{h} =
+L/4$ for a solid cone and $L/6$ for a shell. An author who wants a nose cone's base rim to meet a
+body tube's fore rim must therefore not state that physical intent directly; instead they must
+hand-compute the offset between two centers of mass that sit at different fractions of their
+respective lengths. The link records a derived quantity (a CM displacement) where the author
+actually knows a geometric fact (two rims touch). Every such offset is a manual calculation, and
+every manual calculation is a place to be wrong.
+
+\begin{keyinsight}
+A CM-to-CM link is only as trustworthy as the assumption that CM coincides with the geometric
+center. That assumption holds for every symmetric part and fails for exactly the part most rockets
+begin with --- the nose cone.
+\end{keyinsight}
+
+\subsection{The silent divergence between simulator and visualizer}
+
+The deeper failure is that the two consumers of the link do not even agree on what the offset
+\emph{means}. The simulation core treats it as documented: in \src{model/parts/Part.cpp}{169},
+\code{Part::computeCompositeAt} accumulates each child's contribution at \cppinline|pos + cc.cm| ---
+the stored offset \emph{plus} the child subtree's own CM --- and then shifts every tensor to the
+composite CM via the parallel-axis theorem. This is a strictly CM-to-CM computation.
+
+The visualizer makes a different assumption entirely. In \srcf{visualizer/RocketMesh.cpp}, the
+\code{RocketMesh::walk} recursion (the lambda at line~427) builds each primitive
+\emph{geometrically centered} --- \code{buildCone} and \code{buildTube} place their mesh symmetrically
+about the part's mid-length --- and then translates it by an accumulated \code{station}:
+
+\begin{minted}{cpp}
+const Vector3& offset = std::get<1>(childPair);   // the stored CM-to-CM Vector3
+if(child)
+{
+   self(self, *child, station + offset);          // accumulated as geometric-center-to-center
+}
+\end{minted}
+
+\noindent The walk's own comment names the discrepancy: ``\code{station} = accumulated CM-to-CM
+offsets from the root down to this part.'' The renderer takes a value \emph{defined} as a CM-to-CM
+displacement and \emph{applies} it as a geometric-center-to-geometric-center translation. For any
+symmetric part the two interpretations coincide and nothing is visibly wrong. For a nose cone they
+diverge by precisely the cone's $(\text{geometric center} - \text{CM})$ offset --- $L/4$ for a solid
+cone --- and so the simulator and the viewer silently reconstruct two different rockets from the same
+file.
+
+\begin{hardfail}
+This is not hypothetical. The fixture \src{tests/data/designs/xl75\_multi.qrd}{19} places a coupler
+at \mintinline{xml}{<offset x="0" y="0" z="0.48999999999999999"/>} relative to its body. Read as a
+CM-to-CM offset by the simulator and as a geometric translation by the viewer --- and with the
+nose's own CM-vs-center displacement folded in on top --- the link produces a coupler that
+interpenetrates the nose cone. The two consumers disagree, no check fires, and the design loads,
+simulates, and renders without complaint. \fail
+\end{hardfail}
+
+\subsection{The fix, in one paragraph}
+
+The remedy is to remove the divergence by construction. Inter-part relationships are stated as
+physical \emph{intent} --- ``this rim seats against that rim,'' ``this tube nests inside that bore''
+--- expressed as a pair of fractional axial stations plus a seat kind, never as an opaque offset. A
+\textbf{single resolver} walks the ownership tree and produces an absolute, purely \emph{geometric}
+placement for every part, and \emph{both} the simulator (\code{computeCompositeAt},
+\code{accumulateAeroAt}) and the visualizer (\code{RocketMesh::walk}) consume that one placement.
+Because there is now exactly one source of absolute position, the two consumers cannot disagree.
+Center of mass ceases to be an input and becomes a purely \emph{derived} consequence of geometry:
+the resolver places parts by their edges, and the existing two-pass mass-weighted CM and
+parallel-axis machinery is re-driven from those geometric stations rather than from author-supplied
+CM offsets. No force-path or integrator change is required, and a path to full six-degree-of-freedom
+placement is shaped in at zero schema cost.
+
+\subsection{Provenance of this specification}
+
+This specification is not a single author's first draft. It is the adjudicated synthesis of
+\textbf{five independent design sketches} --- feature-mating, datum-pair, declarative
+constraint-solver, local-frame scene graph, and joint-as-entity graph --- judged on three axes
+(correctness and robustness; simplicity and migration cost; extensibility and ergonomics) and then
+hardened against an adversarial critique. The judges converged on the datum/station-pair chassis,
+upgraded it with the extent-based overlap rigor of the constraint-solver sketch, the \code{Pose} and
+snap-operator mechanics of the scene-graph sketch, and the direction-constrained nesting of the joint
+sketch. The rejected alternatives, and \emph{why} each was rejected, are recorded throughout this
+document rather than discarded, because the rejections are themselves part of the argument for the
+chosen design.
+
+\subsection{Document roadmap}
+
+The remainder of this document develops the design in the order an implementer would build it.
+\Cref{sec:philosophy} states the three non-negotiable design rules and settles the longitudinal
+convention (\zfwd, toward the nose tip), including the one frame collision --- the cone's internal
+CM frame --- that must be reconciled explicitly. \Cref{sec:datamodel} gives the exact C++ value types
+(\code{StationLink}, \code{Station}, \code{SeatKind}) and the in-slot storage swap that replaces the
+\cppinline|(Part, Vector3)| tuple. \Cref{sec:resolver} specifies the single resolver, how CM becomes
+derived, and the caching split that keeps placement out of the per-step mass gate.
+\Cref{sec:authoring} covers the authoring API and the zero-config default; \cref{sec:diagnostics}
+the three-layer overlap diagnostics that turn the silent interpenetration above into a hard, located
+failure. \Cref{sec:serialization} updates the \code{.qrd} schema, \cref{sec:migration} lays out the
+physics-invariant phased migration, and \cref{sec:sixdof} shows the six-degree-of-freedom path the
+design is shaped for. \Cref{sec:worked} works the \code{xl75\_multi} fixture end to end;
+\cref{sec:deferred} records what was deliberately deferred or not adopted; and \cref{sec:files},
+\cref{sec:repro}, and \cref{sec:glossary} enumerate the touched files, the reproduction steps, and
+the glossary.

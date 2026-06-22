@@ -1,0 +1,42 @@
+% Component diagram: one resolver, two (three) consumers; layered on model + utils.
+% Consumed by section 04 (resolver). Bare tikzpicture; the section wraps it in a figure.
+\begin{tikzpicture}[node distance=7mm and 10mm]
+
+  % --- consumers (top) ---
+  \node[consumer,text width=38mm] (sim)  {\textbf{Simulator path}\\[1pt]\footnotesize\ttfamily Part::computeCompositeAt(t)\\\rmfamily derives composite CM \& I\\\footnotesize(\,sim/ Propagator\,)};
+  \node[consumer,text width=36mm,right=of sim] (viz) {\textbf{Visualizer}\\[1pt]\footnotesize\ttfamily RocketMesh::walk()\\\rmfamily places each mesh primitive\\\footnotesize(\,visualizer/\,)};
+  \node[consumer,text width=36mm,right=of viz] (ser) {\textbf{Serializer}\\[1pt]\footnotesize\ttfamily DesignSerializer\\\rmfamily reads/writes \texttt{<link>}\\\footnotesize(\,model/\,)};
+
+  % --- the single resolver (center) ---
+  \node[resolver,text width=86mm,below=12mm of viz] (res)
+    {resolvePlacements(root, rootPose) $\rightarrow$ vector\textless Placed\textgreater\\[2pt]
+     \normalfont\footnotesize sweepOverlaps(\dots) $\rightarrow$ SolveResult \quad\textbullet\quad pure geometry: no CM, no time};
+
+  % --- inputs (below resolver) ---
+  \node[comp,text width=52mm,below=11mm of res.south west,anchor=north west] (tree)
+    {\textbf{Part composite tree}\ \footnotesize(model/parts/)\\[1pt]
+     \footnotesize\ttfamily childParts:\\ vector<pair<Part, StationLink>>\\
+     \rmfamily\footnotesize stationAt / radius*At / cmStationLocal};
+  \node[comp,text width=46mm,below=11mm of res.south east,anchor=north east] (pod)
+    {\textbf{Placement.h value types}\\[1pt]\footnotesize Station \textbullet\ Pose \textbullet\ Placed\\ StationLink \textbullet\ SeatKind};
+
+  % --- foundation ---
+  \node[comp,text width=104mm,below=8mm of tree.south west,anchor=north west,fill=qrGray!8,draw=qrGray] (utils)
+    {\textbf{utils/} \footnotesize math typedefs over Eigen: \texttt{Vector3}, \texttt{Matrix3}, \texttt{Quaternion}};
+
+  % --- edges ---
+  \draw[uses] (sim.south) -- (res.north -| sim.south) node[flowlbl,midway]{consumes};
+  \draw[uses] (viz.south) -- (res.north);
+  \draw[uses] (ser.south) -- (res.north -| ser.south);
+  \draw[dep] (res.south -| tree.north) -- (tree.north) node[flowlbl,midway]{reads};
+  \draw[dep] (res.south -| pod.north) -- (pod.north) node[flowlbl,midway]{queries};
+  \draw[dep] (tree.south) -- (tree.south |- utils.north);
+  \draw[dep] (pod.south) -- (pod.south |- utils.north);
+
+  % --- the message ---
+  \node[draw=qrTeal,fill=qrTeal!7,rounded corners=2pt,line width=0.5pt,
+        text width=40mm,font=\footnotesize,right=10mm of res,anchor=west,xshift=2mm] (msg)
+    {\textbf{One resolver, one geometry.} Every consumer reads identical absolute placement; CM is a \emph{derived} consequence, never stored.};
+  \draw[->,qrTeal,line width=0.6pt,dashed] (msg.west) -- (res.east);
+
+\end{tikzpicture}

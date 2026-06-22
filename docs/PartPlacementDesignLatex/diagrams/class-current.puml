@@ -1,0 +1,99 @@
+@startuml class-current
+' Current ("as-is") Part composite hierarchy on branch PartPlacement (HEAD 4aa4cdd).
+' The child link is a CM-to-CM Vector3 -- the thing this design replaces.
+!include _style.iuml
+title Current model::part composite tree — CM-to-CM child offset (the link being replaced)
+
+abstract class "Part" as Part <<abstract>> {
+  +using Id = std::uint64_t
+  --
+  -id : Id
+  -name : std::string
+  -mass : double
+  -compositeMass : double
+  -cm : Vector3
+  -compositeCm : Vector3
+  -inertiaTensor : Matrix3
+  -compositeInertiaTensor : Matrix3
+  -needsRecomputing : bool
+  -<b>childParts : vector<tuple<shared_ptr<Part>, Vector3>></b>
+  --
+  +getId() : Id
+  +getCenterMassOffset() : Vector3
+  +addChildPart(child, <b>Vector3 position</b>)
+  +getChildParts() : const vector<tuple<..>>&
+  +removeChildById(Id) : shared_ptr<Part>
+  +{abstract} typeName() : std::string
+  +getReferenceArea() : double
+  +maxFrontalReferenceArea() : double
+  +getAero(refArea) : sim::AeroComponent
+  #computeCompositeAt(t)
+  #ensureCompositeCache(t)
+  #markAsNeedsRecomputing()
+}
+
+class ConicalNoseCone <<concrete>> {
+  +getBaseRadius() : double
+  +getLength() : double
+  +getWallThickness() : double
+  +isSolid() : bool
+  +getMaxRadius() : double
+  --
+  -{static} coneCmOffset(L, solid) : Vector3
+  -{static} coneTensor(..) : Matrix3
+}
+class BodyTube <<concrete>> {
+  +getInnerRadius() : double
+  +getOuterRadius() : double
+  +getLength() : double
+  +getMaxRadius() : double
+}
+class FinSet <<concrete>> {
+  +getFinCount() : unsigned
+  +getRootChord() : double
+  +getTipChord() : double
+  +getSpan() : double
+  +getSweep() : double
+  +getBodyRadius() : double
+  +getMaxRadius() : double  ' bodyRadius + span
+  --
+  -{static} finSetCmOffset(cr,ct,sweep) : Vector3
+}
+class HollowSphere <<concrete>> {
+  +getInnerRadius() : double
+  +getOuterRadius() : double
+  ' note: NO getLength()
+}
+class Motor <<concrete>> {
+  +thrust(t) / burningMass(t)
+}
+
+interface "sim::Propagatable" as Prop <<freefn>> {
+  +getForces(..) : Vector3
+  +getMass(t) : double
+  +getCompositeInertiaTensor(t) : Matrix3
+  +terminateCondition(t) : bool
+}
+note right of Prop
+  RocketModel (not Part) implements this
+  model<->sim bridge; shown for context.
+end note
+
+Part <|-- ConicalNoseCone
+Part <|-- BodyTube
+Part <|-- FinSet
+Part <|-- HollowSphere
+Part <|-- Motor
+
+Part "1" o-- "childParts *" Part : composite (by move)\nstores tuple<ptr, Vector3>
+
+note top of Part
+  <b>The link being replaced.</b> The Vector3 in each
+  childParts tuple is the child CM relative to the
+  PARENT CM (CM-to-CM). Because a cone's CM is not at
+  mid-length, the simulator (CM-to-CM) and visualizer
+  (geometric-center-to-center) disagree by exactly the
+  cone's (geom-center − CM) offset.
+  Source: model/parts/Part.h:324-326
+end note
+@enduml

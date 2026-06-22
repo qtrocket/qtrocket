@@ -1,0 +1,112 @@
+% =============================================================================
+%  Part Placement -- Station-Pair Backbone with Extent-Based Diagnostics
+%  A technical design whitepaper for QtRocket.
+%
+%  Build:  make            (renders PlantUML class diagrams, then compiles)
+%  or:     latexmk -pdf -shell-escape PartPlacement.tex   (after `make diagrams`)
+% =============================================================================
+\documentclass[11pt,letterpaper]{article}
+\input{preamble}
+
+\begin{document}
+
+% ----------------------------- Title page ------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[qrDeep] (current page.north west) rectangle ([yshift=-3.2cm]current page.north east);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large]
+    at ([xshift=1in,yshift=-1.05cm]current page.north west) {QtRocket};
+  \node[anchor=north west,text=qrRule,font=\sffamily\small]
+    at ([xshift=1in,yshift=-1.7cm]current page.north west)
+    {Open-source model-rocket simulator \textbullet\ simulation-core design series};
+  \fill[qrTeal] ([yshift=-3.2cm]current page.north west) rectangle ([yshift=-3.32cm]current page.north east);
+\end{tikzpicture}
+
+\vspace*{5.2cm}
+{\sffamily
+  {\color{qrGray}\large Technical Design Whitepaper}\\[0.3em]
+  {\color{qrDeep}\fontsize{30}{34}\selectfont\bfseries Part Placement}\\[0.35em]
+  {\color{qrBlue}\LARGE\bfseries Station-Pair Backbone with\\[0.15em] Extent-Based Diagnostics}\\[1.1em]
+  {\color{qrInk}\large Replacing the CM-to-CM child-offset link with an edge-defined,\\
+   geometry-driven placement model resolved once for simulator and visualizer.}\par
+}
+
+\vfill
+\noindent\begin{tikzpicture}\draw[qrRule,line width=0.6pt] (0,0)--(\linewidth,0);\end{tikzpicture}
+
+\vspace{0.7em}
+\noindent{\sffamily\small\color{qrGray}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+  \textbf{Status} & Design / ready to implement --- replaces the CM-to-CM child offset (\code{TODO})\\
+  \textbf{Scope}  & \code{model/parts}, \code{model/DesignSerializer}, \code{visualizer/RocketMesh} --- no force-path or integrator changes\\
+  \textbf{Target} & QtRocket simulation core (C++23); branch \code{PartPlacement}\\
+  \textbf{Audience} & Maintainers and future contributors of the simulation core\\
+\end{tabularx}}
+\end{titlepage}
+
+% ----------------------------- Abstract --------------------------------------
+\pagenumbering{roman}
+\setcounter{page}{2}
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+QtRocket currently links each child rocket component to its parent by a single vector: the child's
+\emph{center of mass relative to the parent's center of mass} (CM-to-CM). Because a part's CM is, in
+general, \emph{not} at its mid-length --- a solid cone's CM sits a quarter of the length from its base ---
+this couples placement to mass distribution, forces authors to hand-compute every offset, and makes the
+simulator and the 3D visualizer disagree by exactly the part's (geometric-center $-$ CM) offset. The
+divergence has already produced a silently interpenetrating coupler in a saved design.
+
+This whitepaper specifies the replacement: an \textbf{edge-defined, geometry-driven placement model}. Parent
+and child are related by \emph{physical intent} --- a fractional axial station on each part, an axial gap,
+and a seat kind (abut, nest-in-bore, on-surface) --- never an opaque offset. A \textbf{single resolver}
+turns that intent into absolute geometry, and \emph{both} the simulator's composite-inertia pass and the
+visualizer's mesh walk consume the identical result. The center of mass becomes a purely \emph{derived}
+quantity. Extent-based diagnostics (a radial seam check, an $O(N\log N)$ envelope sweep with a correct
+solid-host rule, and a degrees-of-freedom detector) turn the old silent interpenetration into a hard,
+located failure. A path to 6-DOF is shaped into the data model at zero schema cost but deliberately left
+unused.
+
+The design is the adjudicated synthesis of five independent sketches, hardened against an adversarial
+critique. This document renders that synthesis as a buildable specification: UML class diagrams (PlantUML),
+activity and component diagrams (Ti\emph{k}Z), worked numerics against a real test fixture, and citations
+pinned to the current working tree.
+
+\vspace{0.5em}
+\begin{designrule}[Three non-negotiable rules]
+\textbf{1. Placement is \emph{derived}}, recomputed by one resolver --- never store absolute coordinates or
+the resolved pose. \textbf{2. The stored link is physical \emph{intent}} (feature-to-feature), never an
+opaque offset; CM falls out as a consequence. \textbf{3. The common case costs \emph{zero} authored
+numbers} --- a child with no link abuts its parent.
+\end{designrule}
+
+\vfill
+\noindent{\small\color{qrGray}This document synthesizes \srcf{docs/part-placement-design.md}. Code citations
+are pinned to the current working tree (branch \code{PartPlacement}); where the source design spec's line
+numbers (pinned to an older commit) have drifted, the current locations are used and noted.}
+
+\clearpage
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ----------------------------- Body ------------------------------------------
+\input{sections/01-introduction}
+\input{sections/02-philosophy}
+\input{sections/03-datamodel}
+\input{sections/04-resolver}
+\input{sections/05-authoring}
+\input{sections/06-diagnostics}
+\input{sections/07-serialization}
+\input{sections/08-migration}
+\input{sections/09-sixdof}
+\input{sections/10-worked-example}
+\input{sections/11-deferred}
+\input{sections/12-files-touched}
+
+\appendix
+\input{sections/A1-reproducibility}
+\input{sections/A2-glossary}
+
+\end{document}

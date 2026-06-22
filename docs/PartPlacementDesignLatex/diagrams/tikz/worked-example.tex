@@ -1,0 +1,87 @@
+% Worked example: xl75_multi -- a seam-zoom of the coupler nested in the body
+% fore bore and poking through the tapering nose skin, with a small locator strip.
+% Verified vs tests/data/designs/xl75_multi.qrd. Consumed by section 10.
+% Zoom scales: axial 1 m -> 30 cm, radial 1 m -> 70 cm (radial exaggeration ~2.3x).
+\begin{tikzpicture}[x=1cm,y=1cm,>={Stealth[length=2mm]},font=\small]
+
+  % ============ LOCATOR STRIP (whole rocket, schematic) ============
+  \begin{scope}[shift={(0,5.0)}]
+    \def\az{2.6}  % locator axial cm per metre
+    \def\ar{7.0}  % locator radial cm per metre
+    % body z in [-0.90, 0]
+    \draw[part,fill=qrGray!12] ({-0.90*\az},{ 0.0395*\ar}) rectangle (0,{-0.0395*\ar});
+    % nose z in [0, 0.30]
+    \draw[part,fill=qrBlue!12] (0,{0.0395*\ar}) -- ({0.30*\az},0) -- (0,{-0.0395*\ar}) -- cycle;
+    % coupler tiny at seam
+    \draw[qrTeal,line width=0.6pt,fill=qrTeal!25] ({-0.04*\az},{0.0376*\ar}) rectangle ({0.04*\az},{-0.0376*\ar});
+    \node[font=\scriptsize,text=qrGray] at ({-0.62*\az},{0.0395*\ar+0.30}) {body (L 0.90)};
+    \node[font=\scriptsize,text=qrDeep] at ({0.20*\az},{0.0395*\ar+0.30}) {nose (L 0.30)};
+    % zoom window
+    \draw[qrRed,line width=0.6pt,dashed] ({-0.16*\az},{-0.0395*\ar-0.15}) rectangle ({0.14*\az},{0.0395*\ar+0.15});
+    \node[font=\scriptsize,text=qrRed,below] at ({-0.01*\az},{-0.0395*\ar-0.18}) {seam zoom};
+    \node[font=\scriptsize,text=qrGray,left] at ({-0.90*\az-0.1},0) {full stack:};
+  \end{scope}
+  % connector lines from zoom window to the main drawing
+  \draw[qrRed,line width=0.4pt,dashed] ({-0.16*2.6},{5.0-0.0395*7.0-0.15}) -- (-4.8,2.95);
+  \draw[qrRed,line width=0.4pt,dashed] ({ 0.14*2.6},{5.0-0.0395*7.0-0.15}) -- (4.2,2.95);
+
+  % ============ MAIN SEAM ZOOM ============
+  \def\az{30}  % axial cm per metre  (use via *\az on metre values)
+  \def\ar{70}  % radial cm per metre
+  \def\rOO{2.765} % 0.0395 * 70  body OD / nose base
+  \def\rID{2.632} % 0.0376 * 70  body ID / coupler OD
+  \def\rIC{2.520} % 0.0360 * 70  coupler ID
+  \def\xRim{0}        % z = 0
+  \def\xCFore{1.2}    % z = +0.04  (0.04*30)
+  \def\xCAft{-1.2}    % z = -0.04
+  \def\xL{-4.8}       % z = -0.16  (left view edge)
+  \def\xR{4.2}        % z = +0.14  (right view edge)
+
+  % --- nose region (cone skin tapering; tip off-screen) ---
+  % skin(x) = rOO*(1 - z/0.30); with x = z*30 => z = x/30; skin = rOO*(1 - x/9)
+  \pgfmathsetmacro\ySkinR{\rOO*(1-\xR/9)}    % cone skin at right edge
+  \fill[qrBlue!12] (\xRim,\rOO) -- (\xR,\ySkinR) -- (\xR,-\ySkinR) -- (\xRim,-\rOO) -- cycle;
+  \draw[part] (\xRim,\rOO) -- (\xR,\ySkinR);
+  \draw[part] (\xRim,-\rOO) -- (\xR,-\ySkinR);
+  \node[font=\scriptsize,text=qrDeep] at (2.7,0.9) {nose skin};
+  \node[font=\scriptsize,text=qrDeep,align=center] at (3.1,0.45) {$0.0395(1-\tfrac{z}{0.30})$};
+
+  % --- body tube fore end (wall between rID and rOO) ---
+  \fill[qrGray!18] (\xL,\rID) rectangle (\xRim,\rOO);
+  \fill[qrGray!18] (\xL,-\rOO) rectangle (\xRim,-\rID);
+  \draw[part] (\xL,\rOO) -- (\xRim,\rOO) -- (\xRim,\rID);
+  \draw[part] (\xL,-\rOO) -- (\xRim,-\rOO) -- (\xRim,-\rID);
+  \draw[part] (\xL,\rID) -- (\xRim,\rID);
+  \draw[part] (\xL,-\rID) -- (\xRim,-\rID);
+  \node[font=\scriptsize,text=qrGray,align=center] at (-3.4,1.5) {body wall\\ OD 0.0395 / ID 0.0376};
+  \node[font=\scriptsize,text=qrGray] at (-3.2,0) {body bore};
+
+  % --- coupler (nested), z in [-0.04, +0.04] ---
+  \fill[qrTeal!20] (\xCAft,\rIC) rectangle (\xCFore,\rID);
+  \fill[qrTeal!20] (\xCAft,-\rID) rectangle (\xCFore,-\rIC);
+  \draw[qrTeal,line width=0.8pt] (\xCAft,\rID) rectangle (\xCFore,\rIC);
+  \draw[qrTeal,line width=0.8pt] (\xCAft,-\rIC) rectangle (\xCFore,-\rID);
+  \node[font=\scriptsize,text=qrTeal,align=center] at (-0.05,0) {coupler\\ OD 0.0376\\ \seat{NestInBore}};
+
+  % --- poke-through wedges (coupler outer rID beyond cone skin) ---
+  % skin = rID at x: rOO*(1-x/9)=rID => x = 9*(1-rID/rOO)
+  \pgfmathsetmacro\xc{9*(1-\rID/\rOO)}            % ~0.432
+  \pgfmathsetmacro\ySkinF{\rOO*(1-\xCFore/9)}     % skin at coupler fore
+  \fill[qrRed!75] (\xc,\rID) -- (\xCFore,\rID) -- (\xCFore,\ySkinF) -- cycle;
+  \fill[qrRed!75] (\xc,-\rID) -- (\xCFore,-\rID) -- (\xCFore,-\ySkinF) -- cycle;
+
+  % --- station markers + gap dimension ---
+  \draw[station] (\xRim,-\rOO-0.35) -- (\xRim,\rOO+0.35);
+  \draw[station] (\xCFore,-\rOO-0.35) -- (\xCFore,\rOO+0.6);
+  \node[font=\scriptsize,below left,inner sep=1pt] at (\xRim,-\rOO-0.35) {$z=0$ (body fore rim)};
+  \node[font=\scriptsize,below right,inner sep=1pt] at (\xCFore,-\rOO-0.35) {$z=+0.04$ (coupler fore)};
+  \draw[dimline] (\xRim,\rOO+0.32) -- (\xCFore,\rOO+0.32)
+     node[midway,above,font=\scriptsize]{gap $=0.04$ (insertion projects forward)};
+
+  % --- the located failure callout ---
+  \node[failnode,text width=52mm,font=\scriptsize,anchor=north west] at (\xR+0.5,1.7)
+    {\textbf{Layer-2 poke-through.} At $z=0.04$ the nose skin is $0.0342$ but the coupler OD is
+     $0.0376$. $0.0376>0.0342 \Rightarrow$ penetration $0.0034\,$m, host $=$ nose. \texttt{solve.ok=false};
+     sim and viz both refuse.};
+
+\end{tikzpicture}

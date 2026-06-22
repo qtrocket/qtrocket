@@ -1,0 +1,32 @@
+% Activity diagram: resolvePlacements() -- placing one child of an already-placed
+% parent (3-DOF today, 6-DOF-shaped). Consumed by section 04 (resolver).
+\begin{tikzpicture}[node distance=6.5mm and 12mm]
+  \node[startstop] (start) {DFS visit: child of a placed parent, link \texttt{m}};
+  \node[act,below=of start] (p) {$p \leftarrow$ \texttt{parent.stationAt(m.parentStation01)}\\ \footnotesize $\{z, r_\text{outer}, r_\text{inner}\}$ in parent frame};
+  \node[act,below=of p] (c) {$c \leftarrow$ \texttt{child.stationAt(m.childStation01)}};
+  \node[decision,below=of c] (seat) {seat kind?};
+  \node[act,below left=9mm and -6mm of seat,text width=34mm] (abut) {\seat{Abut} / \seat{OnSurface}:\\ \texttt{signedGap} $= +$\,\texttt{m.gap}};
+  \node[act,below right=9mm and -6mm of seat,text width=34mm] (nest) {\seat{NestInBore}:\\ \texttt{signedGap} $= -$\,\texttt{m.gap}\\ \footnotesize(insertion depth, child seats aft)};
+  \node[act,below=22mm of seat,text width=58mm] (origin)
+    {\texttt{childOriginZ} $= p.z + $\,\texttt{signedGap}$\,- c.z$\\ \footnotesize coaxial: $x=y=0$ (radial $r$ is a \emph{check}, not a placement)};
+  \node[act,below=of origin,text width=58mm] (compose)
+    {\texttt{childInParent} $=$ Pose\{(0,0,childOriginZ),\ m.childRot\}\\
+     \texttt{childInRoot} $=$ \texttt{parentPose.compose(childInParent)}};
+  \node[act,below=of compose,text width=58mm] (record) {record \texttt{Placed\{child, childInRoot\}} into \texttt{resolvedCache}};
+  \node[decision,below=8mm of record] (seam) {Layer-1\\ radial seam ok?};
+  \node[failnode,right=16mm of seam,text width=34mm] (diag) {append \texttt{OverlapDiagnostic};\\ \texttt{SolveResult.ok=false}};
+  \node[startstop,below=8mm of seam] (recurse) {recurse into child's children, then return};
+
+  \draw[flow] (start) -- (p);
+  \draw[flow] (p) -- (c);
+  \draw[flow] (c) -- (seat);
+  \draw[flow] (seat) -| (abut);
+  \draw[flow] (seat) -| (nest);
+  \draw[flow] (abut) |- (origin);
+  \draw[flow] (nest) |- (origin);
+  \draw[flow] (origin) -- (compose);
+  \draw[flow] (compose) -- (record);
+  \draw[flow] (record) -- (seam);
+  \draw[flow] (seam) -- node[flowlbl]{no} (diag);
+  \draw[flow] (seam) -- node[flowlbl]{yes} (recurse);
+\end{tikzpicture}

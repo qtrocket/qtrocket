@@ -1,0 +1,174 @@
+\section{Glossary}\label{sec:glossary}
+
+This appendix defines the domain terms as they are used throughout this whitepaper.
+Terms appear in alphabetical order. Where a term names a concrete construct, the
+relevant source location is cited against the current working tree; where a term names
+a type or routine introduced by this design, it is identified as new and unimplemented.
+
+\begin{description}
+
+\item[Abut] A \seat{Abut} \code{SeatKind}: a rim-to-rim seat between two parts of
+  equal radius (a tube fore rim meeting a tube aft rim). The radial check requires the
+  two stations' outer radii to match within tolerance, and the gap is interpreted as a
+  forward standoff along \zfwd, flush when the gap is zero. It is the default seat, so
+  the trivial stack costs no authored numbers.
+
+\item[CM-to-CM legacy link] The current attachment representation: each child stores a
+  \code{Vector3} giving the child's center of mass relative to the parent's center of
+  mass, in \src{model/parts/Part.h}{326}. Because a part's CM is not in general at its
+  mid-length (a solid cone's CM sits $L/4$ from the base), this couples placement to a
+  derived quantity and forces authors to hand-compute offsets. This design replaces it
+  with a geometric \code{StationLink}.
+
+\item[Composite CM / composite inertia] The center of mass and inertia tensor of a part
+  together with all its descendants. They are cached on each part (\code{compositeCm} at
+  \src{model/parts/Part.h}{320}, \code{compositeInertiaTensor} at
+  \src{model/parts/Part.h}{300}) and recomputed by the
+  two-pass routine \code{computeCompositeAt} (\src{model/parts/Part.cpp}{169}): pass one
+  builds the mass-weighted composite CM, pass two shifts every child tensor to that CM via
+  the parallel-axis theorem. The composite tensor is full mass-weighted ($\unit{kg\cdot m^2}$),
+  whereas a part's own \code{inertiaTensor} is stored per unit mass ($\unit{m^2}$).
+
+\item[Cone CM-frame adapter] The single explicitly stated transform that reconciles the
+  cone's internal CM frame with the resolver's frame. \code{coneCmOffset}
+  (\src{model/parts/ConicalNoseCone.cpp}{49}) expresses the cone CM in a
+  mid-length-origin, base-at-$+z$ frame, whose $+z$ is the opposite of the chosen forward.
+  The resolver instead works aft-plane-origin, \zfwd, where the forward-frame CM coordinate
+  is $\mathit{cmZ}_{\mathrm{fwd}} = \bar h$ ($L/4$ solid, $L/3$ shell --- the CM sits near the
+  wide base). The cone is the only part whose \code{cmStationLocal} override bridges a frame flip.
+
+\item[\code{cmStationLocal}] A new per-type \code{Part} virtual returning a part's own CM
+  as a single scalar axial coordinate in its \zfwd\ local frame. Symmetric parts return
+  $L/2$; the cone overrides it with the adapter above. It is the sole consumer of
+  \code{getCenterMassOffset}, so no implicit cross-frame vector addition survives.
+
+\item[Envelope sweep] Layer~2 of the diagnostics (\code{sweepOverlaps}, new): after the
+  whole tree resolves, build world axial intervals for every part, sort by aft station
+  ($O(N\log N)$), then sample each offender at feature breakpoints and test its outer
+  radius against each candidate host's capacity using the solid-host rule. It runs once
+  per structural change, never per integration step.
+
+\item[\code{getCenterMassOffset}] The accessor returning a part's CM relative to the
+  component middle (\src{model/parts/Part.h}{96}), zero for symmetric parts and nonzero
+  for a cone. It is documented but unconsumed today; this design finally consumes it,
+  exclusively inside \code{cmStationLocal}.
+
+\item[\code{hostCapacity}] The radius a host occupies at a given station, defined by the
+  solid-host rule as $\code{radiusInnerAt}(z)$ for a bored part and
+  $\code{radiusOuterAt}(z)$ for a solid part. An offender of outer radius
+  $r_{\mathrm{off}}$ fits iff $r_{\mathrm{off}} \le \code{hostCapacity}(z) + \mathit{tol}$.
+
+\item[\code{innerCapacityAt}] The new non-virtual \code{Part} helper that evaluates
+  \code{hostCapacity} for a part at a local station: the bore for a tube, the outer skin
+  for a solid. One predicate, correct for both host kinds, used by the envelope sweep.
+
+\item[\code{NestInBore}] A \seat{NestInBore} \code{SeatKind}: the child's outer radius
+  seats inside the parent's bore. The radial check requires child OD within parent
+  ID, and the gap is an insertion depth $\ge 0$ that drives the child \emph{aft} ($-z$)
+  into the bore, so the signed gap is negated relative to \seat{Abut}.
+
+\item[\code{OnSurface}] An \seat{OnSurface} \code{SeatKind}: the child seats radially on
+  the parent's outer wall at a chosen station (a fin root on a body tube). The radial
+  check compares the child's radius against the parent's outer radius at the station, and
+  the gap is an axial standoff along the wall.
+
+\item[\code{OverlapDiagnostic}] A new POD recording one located interference: the offender
+  and host \code{Part::Id}s, the world station of the worst violation, the penetration
+  depth in metres, and a human-readable message. \code{Part::Id} is
+  \cppinline|std::uint64_t| (\src{model/parts/Part.h}{56}).
+
+\item[Parallel-axis theorem (\code{parallelAxisTerm})] The displacement tensor
+  $f(d) = (d\cdot d)\,I_3 - d\,d^{\mathsf T}$ that, scaled by a body's mass and added to
+  its centroidal tensor, shifts that tensor to a parallel axis offset by $d$
+  (\src{model/parts/Part.cpp}{17}). The composite inertia pass applies it to every child;
+  this design preserves the math and changes only the input $d$ from CM-to-CM offsets to
+  resolver-derived geometric stations.
+
+\item[\code{Part} composite tree] The ownership tree of rocket components rooted at
+  \code{Part} (\srcf{model/parts/Part.h}, namespace \code{model::part}). Each node is both
+  a single component and the composite of itself with its children; children are stored in
+  \code{childParts} (\src{model/parts/Part.h}{326}) and adopted by move via
+  \code{addChildPart} (\src{model/parts/Part.h}{239}). \code{clone()} deep-copies and
+  re-mints ids.
+
+\item[\code{placementDirty} vs.\ the mass-delta gate] Two distinct cache gates. The
+  existing mass-delta gate, \code{ensureCompositeCache} keyed on
+  \code{builtAtCompositeMass} (\src{model/parts/Part.h}{288}), fires on every integration
+  step during a burn because the composite mass changes each step. The new
+  \code{placementDirty} flag would instead gate the resolver cache on \emph{structural}
+  change only (a part added, removed, or geometrically edited). Today only the single
+  \code{needsRecomputing} flag (\src{model/parts/Part.h}{322}) exists, propagated upward by
+  \code{markAsNeedsRecomputing} (\src{model/parts/Part.h}{293}); the separate
+  \code{placementDirty} and \code{resolvedCache} are added by this design.
+
+\item[\code{Placed}] A new value pairing a resolved \code{Part} pointer with its
+  \code{Pose}. The resolver returns a \cppinline|std::vector<Placed>| in deterministic
+  depth-first attachment order.
+
+\item[\code{Pose}] A new value type carrying an origin (the part-local aft-plane origin in
+  the root frame) and an orientation quaternion (identity in 3-DOF). Its \code{compose}
+  operator chains a child pose through its parent, rotating the child translation, so the
+  same routine serves 6-DOF unchanged.
+
+\item[\code{Propagatable}] The model$\leftrightarrow$sim bridge interface implemented by
+  \code{RocketModel}, exposing \code{getForces}, \code{getTorques}, \code{getMass(t)}, and
+  \code{terminateCondition} to the propagator. It is unaffected by this design, which
+  changes only how composite quantities are derived, not how they are consumed by the
+  integrator.
+
+\item[Resolver (\code{resolvePlacements})] The new single authority for absolute
+  placement: a depth-first walk over the ownership tree from a root pose, producing a
+  \code{Placed} for every part by pure geometry (no CM, no time). Both the simulator
+  (\code{computeCompositeAt}, \code{accumulateAeroAt}) and the visualizer
+  (\code{RocketMesh::walk}) consume its output, so the two cannot disagree.
+
+\item[SeatKind] A new closed enum of three radial seat relationships --- \seat{Abut},
+  \seat{NestInBore}, \seat{OnSurface} --- that governs the radial compatibility check and
+  the sign of the gap. It is intentionally closed because a rigid axisymmetric stack
+  expresses only these three relationships.
+
+\item[\code{SolveResult}] A new aggregate holding an \code{ok} flag and the list of
+  \code{OverlapDiagnostic}s from a resolve. When \code{ok} is false, both the simulator and
+  the visualizer refuse the solve; it is produced once per structural resolve and cached,
+  so the gate costs nothing per integration step.
+
+\item[Solid-host rule] The diagnostic predicate that resolves the ambiguity of a solid
+  part, which has no bore and would otherwise flag everything. A host occupies
+  $[0, \code{hostCapacity}(z)]$, where capacity is the bore for a bored part and the outer
+  skin for a solid; an offender fits iff its outer radius does not exceed that capacity
+  within tolerance. This makes the coupler-versus-cone test the correct poke-through check.
+
+\item[Station landmark] The new \code{Station} value
+  $\{z, r_{\mathrm{outer}}, r_{\mathrm{inner}}\}$ returned by \code{stationAt} for a
+  fractional station: the live axial coordinate and radii in the part's \zfwd\ local frame,
+  derived from geometry and never stored.
+
+\item[Station / fractional station (\code{station01})] A position along a part's
+  longitudinal axis expressed as a fraction in $[0,1]$, where $0$ is the aft plane and $1$
+  the fore plane. The absolute axial coordinate is
+  $\code{station01}\times\code{getLength()}$, recomputed on each read so that editing a
+  length moves the seam. \code{getLength()} is promoted to a base \code{Part} virtual by
+  this design; today it exists only on \code{ConicalNoseCone} and \code{BodyTube}.
+
+\item[StationLink] The new stored attachment value replacing the CM-to-CM \code{Vector3}:
+  a parent fractional station, a child fractional station, an axial gap, a \code{SeatKind},
+  and a per-seam child rotation (identity in 3-DOF). It encodes physical intent --- which
+  feature meets which --- rather than a derived coordinate, so the storage type becomes
+  \cppinline|std::vector<std::pair<std::shared_ptr<Part>, StationLink>>|.
+
+\item[3-DOF vs.\ 6-DOF] The simulator currently integrates only the three translational
+  degrees of freedom; orientation is carried in \code{StateData} but not yet integrated.
+  \code{Part} documents the rigid no-relative-rotation assumption
+  (\src{model/parts/Part.h}{43}). This design shapes in the 6-DOF path at zero schema cost
+  --- \code{Pose} carries an orientation, \code{StationLink} carries a per-seam rotation,
+  and one composition line would rotate each child tensor --- while remaining bit-identical
+  to today in 3-DOF.
+
+\item[$+z = $ forward convention (\zfwd)] The settled longitudinal convention: $+z$ points
+  toward the nose tip, every part's local origin sits on the axis at its aft plane, and a
+  part occupies $z \in [0, +\code{length}]$. It matches the visualizer and the existing
+  \code{.qrd} files, so the renderer change is a consumer swap and the file migration a
+  re-expression, both with no axial sign flip. \zaft\ was rejected for requiring exactly
+  those inversions.
+
+\end{description}

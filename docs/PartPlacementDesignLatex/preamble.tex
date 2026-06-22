@@ -1,0 +1,211 @@
+% =============================================================================
+%  preamble.tex  --  shared style contract for the Part Placement whitepaper
+%  Engine: pdflatex  (latexmk -pdf -shell-escape, minted needs shell-escape)
+% =============================================================================
+
+% ---- Page geometry ----------------------------------------------------------
+\usepackage[letterpaper,margin=1in,headheight=14pt]{geometry}
+
+% ---- Fonts: XCharter text + matching newtx math + Inconsolata mono ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{XCharter}
+\usepackage[charter]{newtxmath}
+\usepackage[scaled=0.96,varqu,varl]{inconsolata}  % straight quotes for code
+\usepackage[final]{microtype}
+% Typographic relief: let TeX stretch spacing as a last resort instead of
+% pushing the occasional long identifier/citation into the margin.
+\tolerance=1500
+\emergencystretch=3em
+\hbadness=2000
+
+% ---- Colour palette ---------------------------------------------------------
+\usepackage{xcolor}
+\definecolor{qrInk}{HTML}{1A2733}      % near-black body ink
+\definecolor{qrBlue}{HTML}{1F5C99}     % primary accent (links, rules)
+\definecolor{qrDeep}{HTML}{123A63}     % darker accent (headings)
+\definecolor{qrTeal}{HTML}{0E7C7B}     % secondary accent
+\definecolor{qrAmber}{HTML}{B5651D}    % warnings / rejected
+\definecolor{qrRed}{HTML}{A4232B}      % errors / hard failures
+\definecolor{qrGreen}{HTML}{2E7D32}    % ok / accepted
+\definecolor{qrGray}{HTML}{5B6770}     % secondary text
+\definecolor{qrRule}{HTML}{C7D0D8}     % hairlines
+\definecolor{qrCodeBg}{HTML}{F6F8FA}   % code background
+\definecolor{qrBoxBg}{HTML}{F4F8FB}    % callout background
+
+% ---- Math / tables / lists --------------------------------------------------
+\usepackage{amsmath,mathtools}  % amssymb intentionally omitted: newtxmath supplies AMS symbols
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\setlist{itemsep=2pt,topsep=3pt,parsep=0pt}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{font=small,labelfont={bf,color=qrDeep},labelsep=period}
+\usepackage{pdflscape}
+
+% ---- Graphics + diagram inclusion -------------------------------------------
+\usepackage{graphicx}
+\graphicspath{{diagrams/out/}{diagrams/}}
+
+% ---- TikZ (activity + component diagrams) -----------------------------------
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.misc,
+                fit,backgrounds,calc,chains,scopes,decorations.pathreplacing,
+                decorations.markings,patterns,shadows.blur}
+\input{diagrams/tikzstyles}
+
+% ---- Code listings via minted (C++23, XML) ----------------------------------
+\usepackage[newfloat]{minted}
+\usepackage{fvextra}
+\setminted{
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true,
+  tabsize=2,
+  numbersep=6pt,
+  frame=leftline,
+  framesep=8pt,
+  rulecolor=qrRule,
+  bgcolor=qrCodeBg,
+  style=friendly,
+}
+\setminted[cpp]{linenos=false}
+\setminted[xml]{linenos=false}
+% Inline code: \cppinline|...| and the \code{} shorthand
+\newmintinline[cppinline]{cpp}{fontsize=\normalsize}
+\newcommand{\code}[1]{\texttt{\textcolor{qrDeep}{#1}}}
+
+% Make minted code floats use the figure-ish naming "Listing"
+\usepackage{caption}
+\SetupFloatingEnvironment{listing}{name=Listing}
+
+% ---- Callout boxes via tcolorbox --------------------------------------------
+\usepackage[most]{tcolorbox}
+
+% Generic titled callout
+\newtcolorbox{qrcallout}[2][]{
+  enhanced, breakable, sharp corners, boxrule=0.4pt,
+  colframe=qrBlue, colback=qrBoxBg, coltitle=white,
+  colbacktitle=qrBlue, fonttitle=\bfseries\sffamily\small,
+  attach boxed title to top left={xshift=6pt,yshift=-2pt},
+  boxed title style={sharp corners,boxrule=0pt},
+  left=8pt,right=8pt,top=8pt,bottom=8pt,
+  title={#2}, #1}
+
+% Semantic specializations
+\newtcolorbox{designrule}[1][Design rule]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrBlue},
+  colback=qrBoxBg,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  fontupper=\normalsize,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrBlue] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+\newtcolorbox{rejected}[1][Rejected alternative]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrAmber},
+  colback=qrAmber!6,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrAmber] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+\newtcolorbox{keyinsight}[1][Key correctness detail]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrTeal},
+  colback=qrTeal!7,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrTeal] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+\newtcolorbox{hardfail}[1][Hard, located failure]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrRed},
+  colback=qrRed!6,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrRed] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+% ---- Section styling --------------------------------------------------------
+\usepackage{titlesec}
+\titleformat{\section}{\Large\bfseries\sffamily\color{qrDeep}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{qrDeep}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\sffamily\color{qrBlue}}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.6em}{0.7em}
+
+% ---- Headers / footers ------------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{qrRule}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\sffamily\small\color{qrGray}Part Placement --- Station-Pair Backbone}
+\fancyhead[R]{\sffamily\small\color{qrGray}\leftmark}
+\fancyfoot[C]{\sffamily\small\color{qrGray}\thepage}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\sffamily\small\color{qrGray}\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+% ---- Hyperlinks + smart cross-references ------------------------------------
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  colorlinks=true, linkcolor=qrBlue, citecolor=qrTeal, urlcolor=qrBlue,
+  pdftitle={Part Placement: Station-Pair Backbone with Extent-Based Diagnostics},
+  pdfauthor={QtRocket},
+  pdfsubject={Technical design whitepaper},
+  bookmarksnumbered=true}
+\usepackage[nameinlink,capitalise]{cleveref}
+\crefname{listing}{Listing}{Listings}
+\Crefname{listing}{Listing}{Listings}
+
+% =============================================================================
+%  Domain macros
+% =============================================================================
+\usepackage{xstring}  % for breakable code-path citations
+
+% Source citation:  \src{model/parts/Part.h}{326}  ->  model/parts/Part.h:326
+% Paths break at '/' so long citations near a line end do not run into the margin.
+\newcommand{\src}[2]{\textcolor{qrDeep}{\texttt{\small\StrSubstitute{#1}{/}{/\allowbreak}\textcolor{qrGray}{:}#2}}}
+% Source citation without line:  \srcf{model/parts/Placement.h}
+\newcommand{\srcf}[1]{\textcolor{qrDeep}{\texttt{\small\StrSubstitute{#1}{/}{/\allowbreak}}}}
+% Caption-safe, non-breaking variants (xstring's \StrSubstitute is fragile in moving args):
+\newcommand{\srccap}[2]{\textcolor{qrDeep}{\texttt{\small #1\textcolor{qrGray}{:}#2}}}
+\newcommand{\srcfcap}[1]{\textcolor{qrDeep}{\texttt{\small #1}}}
+
+% Fit content to \linewidth but never enlarge it beyond natural size.
+\newcommand{\fitwidth}[1]{\resizebox{\ifdim\width>\linewidth\linewidth\else\width\fi}{!}{#1}}
+
+% Include a rendered PlantUML class diagram (diagrams/out/<name>.pdf)
+%   \classfig{name}{caption}{label}{widthfraction}
+\newcommand{\classfig}[4]{%
+  \begin{figure}[htbp]\centering
+    \includegraphics[width=#4\linewidth]{#1.pdf}
+    \caption{#2}\label{#3}
+  \end{figure}}
+
+% Include a hand-built TikZ figure (diagrams/tikz/<file>.tex), fit to the column.
+%   \tikzfig{file}{caption}{label}
+\newcommand{\tikzfig}[3]{%
+  \begin{figure}[htbp]\centering
+    \fitwidth{\input{diagrams/tikz/#1.tex}}%
+    \caption{#2}\label{#3}
+  \end{figure}}
+
+% Same, on its own landscape page (for the widest class/flow diagrams).
+%   \tikzfiglandscape / \classfiglandscape via the `landscape` env in the section.
+
+% z-forward axis convention shorthand
+\newcommand{\zfwd}{\ensuremath{+z}\,$=$\,forward}
+\newcommand{\zaft}{\ensuremath{+z}\,$=$\,aft}
+
+% Seat-kind name styling
+\newcommand{\seat}[1]{\textsf{\textbf{#1}}}
+
+% Units
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+\newcommand{\m}{\unit{m}}
+
+% A compact "verdict" marker
+\newcommand{\ok}{\textcolor{qrGreen}{\textbf{OK}}}
+\newcommand{\fail}{\textcolor{qrRed}{\textbf{FAIL}}}

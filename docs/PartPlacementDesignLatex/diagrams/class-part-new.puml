@@ -1,0 +1,102 @@
+@startuml class-part-new
+' Target ("to-be") Part after the Station-Pair refactor.
+' New placement virtuals + StationLink storage; CM becomes derived.
+!include _style.iuml
+title Target model::part::Part — station landmarks, StationLink storage, derived CM
+
+abstract class "Part" as Part <<abstract>> {
+  .. existing (unchanged) ..
+  -id : Id
+  -cm : Vector3
+  -needsRecomputing : bool   ' mass-delta gate
+  --
+  .. <b>new storage</b> ..
+  -<b>childParts : vector<pair<shared_ptr<Part>, StationLink>></b>
+  -<b>resolvedCache : vector<Placed></b>
+  -<b>placementDirty : bool</b>   ' structural-only gate
+  --
+  .. <b>new placement virtuals</b> ..
+  +<b>{abstract} getLength() : double</b>   ' NEW base virtual (today per-type, non-virtual)
+  +<b>stationAt(station01) : Station</b>     ' base impl uses getLength()+radius virtuals
+  +radiusOuterAt(zLocal) : double = 0
+  +radiusInnerAt(zLocal) : double = 0
+  +axialLength() : double = getLength()
+  +isSolid() : bool = (radiusInnerAt(0)<=0)
+  +cmStationLocal() : double = L/2
+  +innerCapacityAt(zLocal) : double  ' non-virtual: bore OR outer skin
+  --
+  .. new / changed API ..
+  +addChildPart(child, StationLink = {})
+  +[[deprecated]] addChildPart(child, Vector3)
+  #ensurePlacementCache()   ' rebuilt only when placementDirty
+  #computeCompositeAt(t)     ' now CONSUMES the resolver; CM derived
+}
+
+class ConicalNoseCone <<concrete>> {
+  +getLength() : double
+  +radiusOuterAt(z) : double  ' baseR*(1 - z/L)
+  +<b>cmStationLocal() : double</b>  ' §2e adapter: hbar (=L/4 solid)
+  +isSolid() : bool
+}
+note right of ConicalNoseCone
+  <b>The frame-flip cmStationLocal() override.</b>
+  Reconciles the cone's internal CM frame
+  (mid-length origin, base-at-+z) with the
+  resolver's aft-plane / +z-forward frame:
+  cmZ_fwd = hbar = L/4 (solid). The single
+  most correctness-critical detail.
+end note
+
+class BodyTube <<concrete>> {
+  +getLength() : double
+  +radiusOuterAt(z) : double  ' const outerR
+  +radiusInnerAt(z) : double  ' const innerR (bore)
+  +isSolid() : bool  ' false
+}
+class FinSet <<concrete>> {
+  +getLength() : double  ' rootChord
+  +radiusOuterAt(z) : double  ' body disc only (axisym occupancy)
+  ' sectored fin interference scoped out of v1
+}
+class HollowSphere <<concrete>> {
+  +getLength() : double  ' 2*outerR (NEW; none today)
+  +radiusOuterAt(z) : double  ' bulge profile
+  +radiusInnerAt(z) : double
+}
+
+' --- the new value types live in Placement.h ---
+class StationLink <<newtype>> {
+  +parentStation01 : double
+  +childStation01 : double
+  +gap : double
+  +seat : SeatKind
+  +childRot : Quaternion
+}
+class Station <<newtype>> {
+  +z : double
+  +rOuter : double
+  +rInner : double
+}
+class Placed <<newtype>> {
+  +part : const Part*
+  +pose : Pose
+}
+
+Part <|-- ConicalNoseCone
+Part <|-- BodyTube
+Part <|-- FinSet
+Part <|-- HollowSphere
+
+Part "1" o-- "childParts *" Part : composite (by move)
+(Part, Part) .. StationLink : each edge carries
+Part ..> Station : stationAt() returns
+Part *-- "resolvedCache *" Placed : cached on placementDirty
+
+note bottom of Part
+  Placement is geometric (station-to-station); CM is
+  its DERIVED consequence. getCenterMassOffset() is
+  consumed ONLY inside the cone's cmStationLocal().
+  Resolver cache is gated by placementDirty (structural),
+  NOT by the mass-delta gate that fires every burn step.
+end note
+@enduml

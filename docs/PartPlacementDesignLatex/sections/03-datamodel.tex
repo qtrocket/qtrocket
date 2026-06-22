@@ -1,0 +1,350 @@
+\section{Core data model: the exact C++ types}\label{sec:datamodel}
+
+The placement design lives or dies on the precision of a handful of value types and virtual
+functions. This section fixes them exactly: the stored \emph{intent}, the derived
+\emph{landmarks}, the geometric profile that powers diagnostics, the one cross-frame adapter that
+keeps the cone honest, and the single in-slot storage change that carries it all. The guiding
+principle established in \cref{sec:philosophy} is enforced here at the type level: the only thing a
+part stores about its children is physical intent; every absolute coordinate, every center of mass,
+and every overlap verdict is \emph{derived} by the resolver of \cref{sec:resolver} from these
+types.
+
+A note on the starting point, because it governs how the rest of this section reads. The working
+tree is entirely pre-refactor. The new types named below --- \code{StationLink}, \code{SeatKind},
+\code{Station}, \code{Pose}, and the resolver --- do not yet exist, and the file
+\srcf{model/parts/Placement.h} that will house the free types is new. The virtuals
+\code{stationAt}, \code{radiusOuterAt}, \code{radiusInnerAt}, \code{axialLength}, \code{isSolid},
+and \code{cmStationLocal} are \emph{not} on \code{Part} today; the only geometry-adjacent virtual
+the base class currently exposes is \src{model/parts/Part.h}{176} (\cppinline|getReferenceArea()|,
+default \cppinline|0.0|). The discussion below therefore describes the target types and, where it
+matters for correctness, flags precisely what must be added versus what already exists.
+
+\classfig{class-placement-types}{New \texttt{Placement.h} value types and the resolver.}{fig:placement-types}{1.0}
+
+\Cref{fig:placement-types} shows the new value types of \srcf{model/parts/Placement.h} and how the
+free-function resolver consumes them; the companion \cref{fig:part-new} (landscape, below) shows the
+target \code{Part} after the geometry virtuals are added.
+
+\subsection{The station-pair link}\label{sec:datamodel-link}
+
+A parent--child relationship in a rigid axisymmetric stack reduces to remarkably little
+information: a fractional axial station on the parent, a fractional axial station on the child, an
+axial gap, and a seat kind that selects the radial compatibility check and fixes the sign of the
+gap. That is the whole of \code{StationLink}. Stations are stored as fractions of \emph{live}
+length and resolved against the part's length on every read, so editing a part's length moves the
+seam automatically rather than silently invalidating a cached number --- the staleness class this
+design exists to eliminate.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+namespace model::part {
+
+// How a child seats against its parent. Governs (a) the radial compatibility CHECK
+// and (b) the SIGN of the gap (insertion direction).
+enum class SeatKind : std::uint8_t {
+   Abut,        // rim-to-rim, same radius; gap is a forward standoff (signed +z)
+   NestInBore,  // child OD seats inside parent ID; gap is insertion DEPTH
+                //   (child moves AFT, -z, into the bore)
+   OnSurface    // child seats radially on parent's outer wall at the station;
+                //   gap is an axial standoff
+};
+
+} // namespace model::part
+\end{minted}
+\caption{The \code{SeatKind} enum: three radial relationships, governing the radial check and the
+gap sign.}\label{lst:seatkind}
+\end{listing}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// Physical intent for one parent->child attachment. Stations are FRACTIONS of live
+// length, resolved against getLength() every read, so editing a length moves the seam.
+struct StationLink {
+   double   parentStation01{0.0};   // 0 = aft plane, 1 = fore plane, on the PARENT
+   double   childStation01 {1.0};   // 0 = aft plane, 1 = fore plane, on the CHILD (default: fore)
+   double   gap{0.0};               // metres; meaning per SeatKind (standoff or depth)
+   SeatKind seat{SeatKind::Abut};
+   Quaternion childRot{Quaternion::Identity()}; // 6-DOF seam; identity today
+};
+\end{minted}
+\caption{The \code{StationLink} struct: two fractional stations, an axial gap, a \code{SeatKind},
+and a (currently identity) seam rotation.}\label{lst:stationlink}
+\end{listing}
+
+The two members \code{parentStation01} and \code{childStation01} are dimensionless fractions in
+$[0,1]$, with $0$ the aft plane and $1$ the fore plane in the \zfwd{} convention. The \code{gap} is
+in meters and its meaning is selected by \code{seat}. The \code{childRot} member is the per-seam
+orientation reserved for 6-DOF (\cref{sec:sixdof}); it is \code{Quaternion::Identity()} today, so
+the present behavior is bit-identical to a pure-translation tree, and it costs no schema reshape to
+activate later.
+
+\begin{rejected}[A rich named-datum enum]
+An alternative design enumerated named attachment data --- \code{FORE}, \code{MID}, \code{AFT}, and
+so on --- with a parametric escape hatch for everything in between. It was rejected as paying both
+costs at once: it is \emph{too rigid} (a rail button partway up a tube has no named datum and forces
+the escape hatch immediately) and \emph{too rich} (the named edges \code{FORE}/\code{MID}/\code{AFT}
+are nothing more than the fractions $1$, $0.5$, and $0$). Two fractional stations in $[0,1]$ subsume
+the named edges, the arbitrary mid-body station, and the escape hatch in a single uniform
+representation, with nothing left to extend.
+\end{rejected}
+
+\code{SeatKind}, by contrast, stays deliberately closed. A rigid axisymmetric stack genuinely
+expresses only three radial relationships: rim-to-rim of equal radius (\seat{Abut}), one part's
+outer diameter seated inside another's inner diameter (\seat{NestInBore}), and a part seated
+radially on another's outer wall (\seat{OnSurface}). The enum's two jobs are (a) to choose the
+radial compatibility check applied at the seam --- equal radii for \seat{Abut}, offender outer
+radius against host capacity for \seat{NestInBore}, wall match for \seat{OnSurface} --- and (b) to
+fix the sign of the gap. In the \zfwd{} frame, \seat{Abut} and \seat{OnSurface} treat the gap as a
+forward standoff ($+z$), whereas \seat{NestInBore} treats it as a non-negative insertion depth that
+moves the child \emph{aft} ($-z$) into the bore. There is no fourth radial relationship to add for
+the parts QtRocket models, so leaving room to extend would only invite half-defined cases.
+
+\subsection{The resolved landmark}\label{sec:datamodel-station}
+
+Given a fractional station, a part must report a concrete geometric landmark in its own
+\zfwd{} local frame: the axial coordinate and the outer and inner radii at that station. That is the
+\code{Station} struct, the geometry-derived value that is computed on demand and \emph{never}
+stored.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+struct Station {
+   double z{0.0};      // axial station, part-local +z-forward (m) = station01 * getLength()
+   double rOuter{0.0}; // outer radius at z (m)
+   double rInner{0.0}; // inner radius at z (m); 0 for solids
+};
+
+// On Part. Base implementation uses getLength() + the radius virtuals below, so
+// symmetric parts need NO override. Clamps station01 to [0,1] (see degenerate guards).
+virtual Station stationAt(double station01) const;
+\end{minted}
+\caption{The derived \code{Station} landmark and the base \code{stationAt} virtual.}\label{lst:station}
+\end{listing}
+
+The base implementation of \code{stationAt} is written once on \code{Part} in terms of the part's
+length and the radius-profile virtuals of \cref{sec:datamodel-profile}: it maps the fraction to an
+axial coordinate, \cppinline|z = station01 * getLength()|, and queries the outer and inner radius at
+that coordinate. Because the entire computation is expressed through those virtuals, every
+symmetric part inherits a correct \code{stationAt} with no override at all. A part overrides it only
+if its station-to-radius mapping is not captured by the default profile.
+
+This is where the design must add machinery the base class does not yet have.
+
+\begin{designrule}[\code{getLength()} is promoted to a base virtual]
+There is currently \emph{no} \cppinline|getLength()| on \code{Part}. Each concrete part carries its
+own non-virtual accessor --- \code{BodyTube} at \src{model/parts/BodyTube.h}{51} and
+\code{ConicalNoseCone} at \src{model/parts/ConicalNoseCone.h}{53} --- and \code{HollowSphere}
+(\srcf{model/parts/HollowSphere.h}) has none at all, because a sphere has no length member. The
+design \emph{promotes} \cppinline|getLength()| to a base virtual so the shared \code{stationAt} can
+call it polymorphically. \code{HollowSphere} must then supply a definition (its axial extent is the
+diameter, $2\,r_\text{outer}$), and the existing per-part accessors become overrides. This is added
+work, not a pre-existing facility.
+\end{designrule}
+
+\subsection{The extent profile and the solid-host rule}\label{sec:datamodel-profile}
+
+Diagnostics need more than a single landmark; they need the part's radial profile along its whole
+axial span. Three closed-form virtuals supply it, each defaulting to a geometrically inert part on
+the base class so a part with no real cross-section needs no override.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// On Part. Closed-form per part type. Base returns 0 (geometrically inert).
+virtual double radiusOuterAt(double zLocal) const { return 0.0; } // cone tapers; tube const
+virtual double radiusInnerAt(double zLocal) const { return 0.0; } // BodyTube bore; 0 solids
+virtual double axialLength()  const { return getLength(); }       // span is [0, axialLength()]
+\end{minted}
+\caption{The extent-profile virtuals: outer radius, inner radius, and axial span, in the
+\zfwd{} local frame.}\label{lst:profile}
+\end{listing}
+
+The reason these are distinct from \code{stationAt} is that overlap detection samples the profile at
+many stations across a span (\cref{sec:diagnostics}), so the per-$z$ radius functions must be
+callable independently. \code{radiusOuterAt} returns the tapering skin for a cone, the constant
+outer wall for a tube, and the bulging silhouette for a sphere; \code{radiusInnerAt} returns the
+bore radius for a hollow part and zero for a solid. \code{axialLength} defaults to the promoted
+\cppinline|getLength()|, which is correct for the longitudinal parts and is the natural override
+point for \code{HollowSphere} (whose span is its diameter).
+
+The subtle correctness problem is deciding, for a given host part and station, the radial budget an
+intruding part is allowed to occupy. A naive ``offender outer radius versus host \emph{inner}
+radius'' test is wrong for a solid cone: a solid cone has no bore, so \code{radiusInnerAt} returns
+zero everywhere, and the naive test would flag \emph{every} intruder as poking through. The fix is a
+single predicate that selects the right boundary by whether the host is bored or solid.
+
+\begin{designrule}[The solid-host rule]
+A host \emph{occupies} radius $[0,\ \mathrm{hostCapacity}(z)]$, where
+\[
+\mathrm{hostCapacity}(z) \;=\;
+\begin{cases}
+\code{radiusInnerAt}(z) & \text{for a bored part (the bore),}\\[2pt]
+\code{radiusOuterAt}(z) & \text{for a solid part (the outer skin).}
+\end{cases}
+\]
+An offender at station $z$ with outer radius $r_\text{off}$ \emph{fits} if and only if
+$r_\text{off} \le \mathrm{hostCapacity}(z) + \mathrm{tol}$.
+\end{designrule}
+
+This one predicate is correct for both cases. For a bored tube the offender must fit inside the bore
+(\code{radiusInnerAt}); for a solid cone it must fit inside the outer skin (\code{radiusOuterAt})
+--- which is exactly the poke-through test, the geometric question of whether the intruder breaks
+the cone's outer surface. The rule is exposed as a single non-virtual helper,
+\cppinline|double Part::innerCapacityAt(double zLocal) const|, so call sites in the overlap sweep
+never branch on solidity themselves.
+
+The branch is driven by one more virtual:
+
+\begin{minted}{cpp}
+virtual bool isSolid() const { return radiusInnerAt(0.0) <= 0.0; }
+\end{minted}
+
+\noindent The base default
+infers solidity from the absence of a bore, which is correct for a solid cone. Parts with a wall ---
+\code{BodyTube} (whose annular wall makes the bore explicit, members at
+\src{model/parts/BodyTube.h}{67}) and \code{HollowSphere} (a shell, members at
+\src{model/parts/HollowSphere.h}{89}) --- override \code{isSolid} to report their wall honestly, so
+\code{innerCapacityAt} routes through the bore for them.
+
+\subsection{Degenerate-geometry guards}\label{sec:datamodel-degenerate}
+
+The profile functions must be total: a malformed or zero-extent part is a load-time diagnostic, not
+undefined behavior or a divide-by-zero. Three guards make that so.
+
+\begin{itemize}
+  \item \code{stationAt} clamps \code{station01} to $[0,1]$. A link whose fraction falls outside the
+        range is reported as a load-time warning rather than producing an out-of-range station.
+  \item \code{radiusOuterAt} for the cone guards the taper divide: when
+        $\code{length} \le 10^{-9}$ it returns \code{baseRadius} (a degenerate zero-length disc or
+        ring) instead of evaluating $1 - z/\text{length}$ as $0/0$.
+  \item A zero-length part (a ring or transition) has $\code{axialLength}() = 0$, so
+        $\code{stationAt}(\text{any}) \to z = 0$. Its overlap span collapses to a single station,
+        which the envelope sweep of \cref{sec:diagnostics} handles as a point sample. The case is
+        documented behavior, not a crash.
+\end{itemize}
+
+\subsection{The explicit cone CM-frame adapter}\label{sec:datamodel-cmadapter}
+
+The single most correctness-critical detail in the data model is reconciling the cone's internal
+center-of-mass frame with the resolver's frame. The cone computes its centroidal inertia and its
+CM offset in a \emph{mid-length-origin, base-at-$+z$} frame whose $+z$ points opposite to the chosen
+forward direction. That math is correct and unit-tested, so the design does not flip it; instead it
+applies one explicitly specified adapter at exactly one place.
+
+The accessor that exposes the cone's CM offset is \src{model/parts/Part.h}{96}
+(\cppinline|Vector3 getCenterMassOffset() const { return cm; }|, returning the part's private
+\code{cm} member). For the cone, \code{cm} is set at construction from \code{coneCmOffset}
+(\src{model/parts/ConicalNoseCone.cpp}{49}), which returns \cppinline|{0, 0, L/2 - hbar}| with
+$\bar{h} = L/4$ for a solid cone and $\bar{h} = L/3$ for a shell, measured in that mid-length-origin
+frame where the base sits at $+L/2$.
+
+The resolver, by contrast, works in the aft-plane-origin, \zfwd{} frame, where the cone base is at
+$z=0$ and the tip at $z=L$. The transform between the two frames is fixed and stated once:
+
+\begin{keyinsight}[The cone CM in the forward frame]
+For the cone, the CM's forward-frame axial coordinate is
+\[
+\code{cmZ\_fwd} \;=\; \bar{h},
+\]
+i.e.\ $L/4$ forward of the base for a solid cone ($\bar{h} = L/4$) and $L/3$ forward of the base
+for a shell ($\bar{h} = L/3$). Equivalently, the CM sits $L - \bar{h}$ aft of the tip ($3L/4$ aft of
+the tip for a solid cone). This follows from the internal datum: \code{getCenterMassOffset()} reports
+$z_{\text{int}} = L/2 - \bar{h}$ in the cone's mid-length, base-at-$+z$ frame, and the forward-frame
+coordinate (base at $z=0$) is $L/2 - z_{\text{int}} = \bar{h}$. The \emph{wide base} carries the mass,
+so the CM sits near the base, not the tip --- a sign the adapter must get right. For a part whose CM is
+at mid-length, $\code{cmZ\_fwd} = L/2$. The resolver obtains each child's own-frame CM as a single
+scalar through a small per-type adapter \code{Part::cmStationLocal()}; the cone is the only part that
+overrides it for a \emph{frame flip}, and \code{getCenterMassOffset()} is consumed \emph{only} inside
+\code{cmStationLocal()} --- never as a link, never anywhere else.
+\end{keyinsight}
+
+This is what finally puts \code{getCenterMassOffset()} to its documented purpose. The base
+\code{cmStationLocal()} returns $L/2$ from the promoted \code{getLength()}; \code{ConicalNoseCone}
+overrides it to return $\bar{h}$, translating the cone's internal CM datum into the forward
+frame. \code{BodyTube} (\src{model/parts/BodyTube.cpp}{15}) and \code{HollowSphere}
+(\src{model/parts/HollowSphere.cpp}{15}) hand the \code{Part} base a centroidal tensor about a
+geometric-center CM with no offset, so for them $\code{cmZ\_fwd} = L/2$ is exact and the default
+suffices. \code{FinSet} (\src{model/parts/FinSet.cpp}{52}) is the subtler case: its axial CM sits at
+the fin-set mass centroid (a \emph{non-zero} \code{getCenterMassOffset()}), not at mid-length, so it
+too must report that offset through \code{cmStationLocal()} --- though, unlike the cone, with no frame
+flip. With
+the adapter localized to one method, no implicit cross-frame vector addition survives anywhere in
+the composition path --- the historical source of the simulator/visualizer divergence described in
+\cref{sec:philosophy}.
+
+\subsection{The storage swap}\label{sec:datamodel-storage}
+
+With the link type defined, the storage change on \code{Part} is a single in-slot struct swap.
+Children are stored today at \src{model/parts/Part.h}{326} as
+\cppinline|std::vector<std::tuple<std::shared_ptr<Part>, Vector3>>|, the \code{Vector3} being the
+child's center of mass relative to the parent's center of mass --- the CM-to-CM coupling this design
+replaces. It becomes:
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+std::vector<std::pair<std::shared_ptr<Part>, StationLink>> childParts;
+\end{minted}
+\caption{The storage swap: the per-child \code{Vector3} offset becomes a \code{StationLink} of
+physical intent, kept in a single vector.}\label{lst:storage}
+\end{listing}
+
+Keeping a \emph{single} vector is a deliberate choice.
+
+\begin{rejected}[Parallel \code{childParts} and \code{childLinks} arrays]
+Splitting the pointers and the links into two parallel vectors was rejected as a desynchronization
+hazard. Every operation that reshapes the child list --- \code{clone()},
+\code{removeChildById()}, and \code{addChildPart()} --- would have to keep two arrays index-aligned,
+and any future edit that touches one but not the other silently corrupts the mapping. A single
+vector of \cppinline|pair<ptr, StationLink>| makes the pointer and its intent inseparable by
+construction; there is no index to keep aligned.
+\end{rejected}
+
+The swap is in-slot: the storage stays one vector of pairs, the same accessor pattern reads it, and
+the composition routines that destructure it (\cref{sec:resolver}) change only their second binding.
+Because the second element of the pair is no longer consumed as a coordinate but as intent fed to
+the resolver, the \cppinline|<tuple>| dependency the current header carries solely for this member
+can be dropped once the swap lands.
+
+\subsection{What lives on \code{Part} versus in \texttt{Placement.h}}\label{sec:datamodel-where}
+
+The design draws a clean line between behavior that must be polymorphic on a part --- the geometry
+virtuals --- and the plain value types and free functions that operate over a resolved tree.
+\Cref{tab:datamodel-where} states the split.
+
+\begin{table}[htbp]
+\centering
+\caption{Where each new construct lives: behavior on \code{Part}; values and resolver in the new
+\srcfcap{model/parts/Placement.h}.}\label{tab:datamodel-where}
+\begin{tabularx}{\linewidth}{@{}XX@{}}
+\toprule
+\textbf{Lives on \code{Part}} & \textbf{Lives in \texttt{Placement.h} (free / POD)} \\
+\midrule
+\code{stationAt}, \code{radiusOuterAt}/\code{radiusInnerAt},
+\code{axialLength}, \code{isSolid}, \code{cmStationLocal} (virtuals);
+promoted \code{getLength()} virtual &
+\code{Station}, \code{StationLink}, \code{SeatKind}, \code{Pose} \\
+\addlinespace
+\code{childParts} (now \code{pair<ptr, StationLink>});
+non-virtual helper \code{innerCapacityAt} &
+\code{resolvePlacements(...)}, \code{sweepOverlaps(...)} \\
+\addlinespace
+\code{addChildPart(child, StationLink)} plus a transitional \code{Vector3} overload &
+\code{OverlapDiagnostic}, \code{SolveResult} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The rationale for the division is that the virtuals encode \emph{per-part geometry} and must
+dispatch on dynamic type, so they belong on \code{Part}; the value types are pure data with no
+behavior, and the resolver and sweep are pure functions over a whole tree, so they belong in a free
+header that both the model and the visualizer can include without dragging in the part hierarchy.
+The transitional \code{Vector3} overload of \code{addChildPart} (detailed in \cref{sec:authoring}
+and \cref{sec:migration}) coexists with the \code{StationLink} primary during migration so the
+existing call sites and \code{.qrd} fixtures keep compiling; the present tree has exactly one
+overload, the legacy \cppinline|addChildPart(std::shared_ptr<Part>, Vector3)| at
+\src{model/parts/Part.h}{239}.
+
+\begin{landscape}\classfig{class-part-new}{Target \texttt{Part} after the refactor.}{fig:part-new}{1.0}\end{landscape}
+
+\Cref{fig:part-new} shows the target \code{Part} once these virtuals, the storage swap, and the
+authoring overload are in place. The composition routines that consume the resolved placement, and
+the resolver itself, are the subject of \cref{sec:resolver}.

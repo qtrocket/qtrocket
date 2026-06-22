@@ -1,0 +1,162 @@
+\section{Authoring API \& the zero-config default}\label{sec:authoring}
+
+The data model of \cref{sec:datamodel} and the resolver of \cref{sec:resolver} are only
+as good as the surface authors actually touch. This section specifies that surface: the
+single primary call that attaches a child, the defaults that make the overwhelmingly
+common case cost nothing, and the optional verbs that name an intent without ever fixing
+a coordinate. The governing principle is the third non-negotiable rule of
+\cref{sec:philosophy} --- \emph{the common case costs zero authored numbers} --- and the
+API is shaped backwards from it.
+
+\subsection{The primary call and the transitional shim}
+
+Today the base \code{Part} exposes exactly one attachment entry point, at
+\src{model/parts/Part.h}{239}:
+
+\begin{minted}{cpp}
+virtual void addChildPart(std::shared_ptr<Part> child, Vector3 position);
+\end{minted}
+
+\noindent whose \code{Vector3} is the child's center of mass measured
+relative to the parent's center of mass --- the CM-to-CM coupling this design exists to
+remove (\cref{sec:datamodel}). The refactor replaces that signature with a link-valued
+one and keeps the old one alive, deprecated, only long enough for the phased migration of
+\cref{sec:migration} to complete.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// Primary API -- replaces the legacy addChildPart(child, Vector3).
+// A default-constructed StationLink means "abut aft" (see below), so the
+// trivial stack call carries no authored geometry at all.
+virtual void addChildPart(std::shared_ptr<Part> child, StationLink link = {});
+
+// Transitional shim, retained only through the migration window so existing
+// tuple call sites and every legacy *.qrd fixture still compile. It synthesizes
+// a StationLink reproducing the legacy CM-to-CM station and logs a deprecation
+// note; it is removed once the corpus is cut over (see migration plan).
+[[deprecated]] void addChildPart(std::shared_ptr<Part> child, Vector3 position);
+\end{minted}
+\caption{The link-valued primary \code{addChildPart} and the \code{[[deprecated]]}
+\code{Vector3} shim that bridges the migration.}\label{lst:api}
+\end{listing}
+
+Two properties of \cref{lst:api} are deliberate. First, the new overload is a strict
+superset of the old one: a default-constructed \code{StationLink} encodes the most common
+relationship, so the migration is additive rather than a forced rewrite of every call
+site at once. Second, the shim is marked \cppinline|[[deprecated]]| rather than deleted.
+A hard deletion would break the build the instant the type changes, before any fixture or
+test could be ported; the attribute instead lets the tree stay green while emitting a
+compile-time warning at each unported call site, turning the migration into a punch list
+the compiler maintains. The shim's body is not a behavioral synonym for the new call --- it
+reconstructs the equivalent \code{StationLink} from the legacy CM-to-CM offset using the
+explicit cone frame adapter, the sign-correct derivation of which is the subject of
+\cref{sec:migration}. Once the fixture corpus is re-saved in the new schema, the shim
+(and with it the last consumer of the CM-to-CM convention) is retired.
+
+\subsection{The zero-config default}
+
+A \code{StationLink} is four numbers and a seat kind (\cref{sec:datamodel}); the value of
+the design hinges on what those fields default to. A default-constructed
+\code{StationLink\{\}} carries \cppinline|parentStation01 = 0| (the parent's aft plane),
+\cppinline|childStation01 = 1| (the child's fore plane), \cppinline|gap = 0|, and
+\cppinline|seat = SeatKind::Abut|. Read in the settled \zfwd{} convention, that means
+\emph{the child's fore plane meets the parent's aft plane}: a newly attached child stacks
+\zaft{} of its parent.
+
+\begin{designrule}[The default is the build order]
+A bare \cppinline|parent->addChildPart(child)| abuts the child's fore plane to the
+parent's aft plane. This is exactly the natural nose~$\rightarrow$~body~$\rightarrow$~$\dots$
+assembly order: each part is attached behind the one before it, and the resulting stack
+grows aft from the nose tip without the author writing a single coordinate.
+\end{designrule}
+
+This is correct precisely because the convention was settled once. With \zfwd{} fixed and
+stations expressed as explicit fractions of live length, \cppinline|parentStation01 = 0|
+is \emph{always} the aft plane, for every part type, with no per-type special case and no
+ambiguity about which end ``0'' denotes. The default is therefore not a heuristic to be
+remembered but a direct reading of the data model. Contrast this with the CM-to-CM scheme
+it replaces, where the ``natural'' offset for a nose-to-body abutment was a hand-computed
+function of both parts' center-of-mass positions --- a number that an author could only get
+right by reproducing the resolver's arithmetic in their head.
+
+\begin{keyinsight}
+The default link is the only one of QtRocket's three measured relationships
+(\cref{sec:datamodel}) that needs no parameters, and it is the one that occurs most often
+--- every plain axial stack edge. Making it the zero-argument case means the API charges
+authored numbers only where a real geometric choice is being made (an inset fin station,
+an insertion depth), never for the trivial mating that dominates a typical design.
+\end{keyinsight}
+
+\cref{lst:examples} renders the three relationships of the \code{xl75\_multi} fixture as
+authoring calls. The first is the zero-config default; the other two name a genuine
+geometric intent and pay only for the numbers that intent actually contains.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// (1) Body fore plane abuts nose aft plane -- ZERO authored numbers.
+nose->addChildPart(body);
+
+// (2) Fin root seats on the body's outer wall near the aft end.
+body->addChildPart(fins, {.parentStation01 = 0.06,   // wall station near body aft
+                          .childStation01  = 0.0,    // fin root aft
+                          .seat = SeatKind::OnSurface});
+
+// (3) Coupler nests into the body's fore bore (insertion depth 40 mm).
+body->addChildPart(coupler, {.parentStation01 = 1.0, // body fore plane (bore mouth)
+                             .childStation01  = 1.0, // coupler fore plane
+                             .gap  = 0.04,           // insertion depth
+                             .seat = SeatKind::NestInBore});
+\end{minted}
+\caption{The three \code{xl75\_multi} relationships as \code{addChildPart} calls: the
+defaulted abut, an \seat{OnSurface} fin seat, and a \seat{NestInBore} coupler.}\label{lst:examples}
+\end{listing}
+
+Designated initializers carry their own documentation: each call reads as the sentence the
+author means, and an omitted field falls back to its zero-config value, so the
+\seat{OnSurface} fin call need not restate \code{gap = 0} and the abut call states nothing
+at all. The fully worked numeric resolution of these three edges --- where each plane lands
+in the root frame, why the body extends aft into $-z$, and how the coupler's forward
+projection is caught --- is given in \cref{sec:worked}; here the point is only that the
+authored input is minimal and intent-shaped.
+
+\subsection{Snap-operator verbs}
+
+For authors who prefer a named operation to a brace-initialized aggregate, the design adds
+a small set of free \emph{snap-operator} verbs. \cref{lst:snap} lists them. Their defining
+property is in the return type: each verb \emph{produces} a \code{StationLink} and returns
+it by value. None of them stores a pose, mutates a part, or fixes an absolute coordinate.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// Snap-operator verbs: each RETURNS a StationLink describing an intent.
+// They never resolve a pose and never store absolute coordinates.
+StationLink abut       (double gap = 0.0);        // {0, 1, gap, Abut}  child fore -> parent aft
+StationLink nestInBore (double depth);            // {1, 1, depth, NestInBore}
+StationLink seatOnWall (double parentStation01);  // {parentStation01, 0, 0, OnSurface}
+
+// Usage is identical in effect to the brace form of the worked examples:
+body->addChildPart(coupler, nestInBore(0.04));
+\end{minted}
+\caption{The snap-operator verbs. Each is a pure factory for a \code{StationLink}; the
+resolver alone turns intent into geometry.}\label{lst:snap}
+\end{listing}
+
+\begin{designrule}[Verbs name intent; they do not resolve it]
+A snap verb is a pure factory for a \code{StationLink} value. It performs no geometry: it
+neither reads a part's length nor computes a station's $z$, and it returns the same kind of
+stored \emph{intent} that a hand-written brace initializer would. All resolution from
+intent to absolute placement happens in the one resolver of \cref{sec:resolver}, never in
+the authoring layer.
+\end{designrule}
+
+This separation is what keeps the verbs safe. Because \code{abut}, \code{nestInBore}, and
+\code{seatOnWall} return data and touch no part, calling one before its operands are sized,
+or reusing its result across designs, cannot bake in a stale coordinate --- the failure mode
+that storing a resolved transform would reintroduce (\cref{sec:philosophy}). They are
+sugar over the same closed three-relationship vocabulary the brace form exposes:
+\code{abut} maps to the zero-config default's $\{0, 1, gap, \seat{Abut}\}$, \code{nestInBore}
+to a fore-to-fore $\{1, 1, depth, \seat{NestInBore}\}$ insertion, and \code{seatOnWall} to
+a wall station with the child's aft plane on the surface. They add no expressive power over
+\cref{lst:examples}; they exist solely so that an author may write the relationship as a
+verb when that reads more clearly than an aggregate, while the type system guarantees that
+either spelling produces the identical, pose-free \code{StationLink}.
