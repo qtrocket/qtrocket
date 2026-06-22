@@ -232,6 +232,10 @@ add_library(cli STATIC
 qtrocket_enable_coverage(cli)
 target_link_libraries(cli PUBLIC qtrocket_core)
 
+# Standalone OpenGL viewer for .qrd design files (greenfield utility app; links qtrocket_core for
+# the shared design loader). Self-contained under visualizer/, including its Qt OpenGL find_package.
+add_subdirectory(visualizer)
+
 add_subdirectory(tests)
 
 if(QTROCKET_ENABLE_COVERAGE)
