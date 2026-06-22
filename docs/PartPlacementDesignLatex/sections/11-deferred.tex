@@ -122,7 +122,12 @@ all require a part to relate to more than its single tree parent --- relationshi
 ownership tree cannot express. It is nonetheless deferred, for two reasons. First, for a
 rigid inline stack it is over-engineering: every relationship QtRocket authors today is a
 single parent-to-child seam, which the inline \cppinline|std::pair<std::shared_ptr<Part>, StationLink>|
-captures exactly. Second, a sibling joints block keyed by name is an active hazard given
+captures exactly. Here ``single'' qualifies the \emph{incoming} edge, not the fan-out:
+\code{childParts} is a \emph{vector}, so a parent may own many children --- branching is fully
+supported today --- but each child has exactly one parent and one mate, which is the defining
+property of a \emph{tree}. What the deferred cases need is therefore not more \emph{children} but a
+second \emph{incoming} edge --- a part bound to more than one host --- which closes a loop no tree can
+hold; that is the qualitative jump from a tree to a graph. Second, a sibling joints block keyed by name is an active hazard given
 that part names need not be unique (\src{model/parts/Part.h}{193}); keeping the link
 \emph{inline} with its part sidesteps that ambiguity entirely (\cref{sec:serialization}).
 The inline pair is forward-compatible with the graph: when real multi-host designs appear,

@@ -31,7 +31,7 @@ the parent orientation rather than merely adding it:
 \begin{listing}[htbp]
 \begin{minted}{cpp}
 struct Pose {
-   Vector3    origin {Vector3::Zero()};        // aft-plane origin, in ROOT frame
+   Vector3    origin {Vector3::Zero()};        // fore-plane origin, in ROOT frame
    Quaternion orient {Quaternion::Identity()}; // (x,y,z,w); identity in 3-DOF
 
    Pose compose(const Pose& childInThis) const {
@@ -118,10 +118,11 @@ The second ingredient is the latent purpose of \code{getCenterMassOffset()}
 (\src{model/parts/Part.h}{96}). That accessor returns the part's \code{cm} member, which is
 documented as not currently consumed by the composition math but kept as ``the natural home for that
 offset once asymmetric parts or 6-DOF force application \ldots\ need it'' (\src{model/parts/Part.h}{310}--316).
-In the 3-DOF cut its sole consumer is the cone CM-frame adapter \code{cmStationLocal}
-(\cref{sec:datamodel}). Under 6-DOF it gains its second documented use: the radial components of the
-body-frame CM offset, rotated by \code{childPose.orient} alongside the axial \code{cmStationLocal}
-term, place a genuinely off-axis part's mass correctly in the root frame.
+In the 3-DOF cut only its \emph{axial} component is consumed --- through the uniform local-CM
+derivation $-L/2 + \code{getCenterMassOffset()}.z()$ (\cref{sec:datamodel}), the same for every part.
+Under 6-DOF the accessor gains its second documented use: the \emph{radial} components of the
+body-frame CM offset, rotated by \code{childPose.orient} alongside that axial term, place a genuinely
+off-axis part's mass correctly in the root frame.
 
 \begin{designrule}[Do not store a half-correct off-axis placement]
 Seating a part at \(x = r\) in 3-DOF --- with no orientation and no body-frame CM offset --- would
@@ -138,8 +139,8 @@ The final piece of the 6-DOF path requires no change to the placement subsystem 
 body-frame integrator --- one that integrates the rocket's attitude as well as its translation ---
 supplies the rocket's world orientation by multiplying the \code{rootPose} passed to
 \cppinline|resolvePlacements(root, rootPose)| by the integrated attitude quaternion. Today
-\code{rootPose} is conventionally the identity (the rocket's aft datum at the world origin,
-\zfwd); a body-frame integrator passes the live attitude instead.
+\code{rootPose} is conventionally the identity (the root's fore plane --- the nose tip --- at the
+world origin, \zfwd); a body-frame integrator passes the live attitude instead.
 
 Because \code{compose} (\cref{lst:pose-compose}) already propagates that root orientation down the
 entire tree, the very same resolver then yields every part's full world pose --- position and

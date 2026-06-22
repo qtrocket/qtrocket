@@ -36,7 +36,8 @@ LATEXMK      := latexmk -pdf -shell-escape -interaction=nonstopmode -halt-on-err
 
 PUML_SRC     := $(wildcard $(DIAGDIR)/*.puml)
 PUML_PDF     := $(patsubst $(DIAGDIR)/%.puml,$(OUTDIR)/%.pdf,$(PUML_SRC))
-TEX_SRC      := $(MAIN).tex preamble.tex $(wildcard sections/*.tex) $(DIAGDIR)/tikzstyles.tex
+TEX_SRC      := $(MAIN).tex preamble.tex $(wildcard sections/*.tex) \
+                $(DIAGDIR)/tikzstyles.tex $(wildcard $(DIAGDIR)/tikz/*.tex)
 
 .PHONY: all diagrams tools clean veryclean
 .SECONDARY: $(patsubst $(DIAGDIR)/%.puml,$(OUTDIR)/%.svg,$(PUML_SRC))

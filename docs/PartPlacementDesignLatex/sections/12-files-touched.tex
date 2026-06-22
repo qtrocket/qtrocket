@@ -31,8 +31,8 @@ all other entries amend existing code.}\label{tab:files}
     \code{std::vector<std::tuple<\allowbreak std::shared\_ptr<Part>,\allowbreak Vector3>>} to
     \code{std::vector<std::pair<\allowbreak std::shared\_ptr<Part>,\allowbreak StationLink>>} --- a single
     in-slot swap (\cref{sec:datamodel}). Adds the geometry virtuals \code{stationAt},
-    \code{radiusOuterAt}, \code{radiusInnerAt}, \code{axialLength}, \code{isSolid}, and
-    \code{cmStationLocal} to the base class (none exist today; the only base geometry virtual
+    \code{radiusOuterAt}, \code{radiusInnerAt}, \code{axialLength}, \code{isSolid}, and the
+    promoted \code{getLength()} to the base class (none exist today; the only base geometry virtual
     is \code{getReferenceArea}, \src{model/parts/Part.h}{176}). Promotes the new
     \code{StationLink} \code{addChildPart} overload (\src{model/parts/Part.h}{239}) and
     updates the \code{getChildParts} return type (\src{model/parts/Part.h}{212}). Adds a
@@ -46,19 +46,19 @@ all other entries amend existing code.}\label{tab:files}
 \addlinespace
 \srcf{model/parts/Part.cpp}
   & \code{computeCompositeAt} (\src{model/parts/Part.cpp}{169}) is rewritten to consume the
-    resolver's \code{Pose} and derive CM through \code{cmStationLocal}, preserving the
-    two-pass mass-weighted CM and parallel-axis structure (\cref{sec:resolver}).
+    resolver's \code{Pose} and derive CM through the uniform $-L/2 + \code{getCenterMassOffset()}.z()$
+    rule, preserving the two-pass mass-weighted CM and parallel-axis structure (\cref{sec:resolver}).
     \code{accumulateAeroAt} (\src{model/parts/Part.cpp}{214}) threads each child's resolved
     \code{Pose.origin.z()} instead of \code{axialStation + pos.z()}
     (\src{model/parts/Part.cpp}{224}). Adds \code{ensurePlacementCache}. Every structured
     binding over \code{childParts} is updated from the tuple to the pair (see below). \\
 \addlinespace
 \srcf{model/parts/ConicalNoseCone.cpp}
-  & Adds \code{radiusOuterAt} (the linear taper $\text{baseRadius}\cdot(1-z/L)$), the
-    \code{cmStationLocal} frame adapter of \cref{sec:datamodel} (the cone is the only part
-    that overrides it), and \code{isSolid}. The internal cone CM math in \code{coneCmOffset}
-    (\src{model/parts/ConicalNoseCone.cpp}{49}) is \emph{not} touched; only the adapter that
-    reconciles its frame is added. \\
+  & Adds \code{radiusOuterAt} (the linear taper $\text{baseRadius}\cdot(1-z/L)$) and
+    \code{isSolid}. \emph{Corrects} the reversed-frame defect in \code{coneCmOffset}
+    (\src{model/parts/ConicalNoseCone.cpp}{49}) so the CM is reported in the shared \zfwd{} frame
+    ($L/2 - \bar h \rightarrow \bar h - L/2$); the centroidal tensor is unchanged
+    (\cref{sec:philosophy-oneframe}). \\
 \addlinespace
 \srcf{model/parts/BodyTube.h}, \srcf{model/parts/BodyTube.cpp},
 \srcf{model/parts/FinSet.h}, \srcf{model/parts/FinSet.cpp},
@@ -67,7 +67,10 @@ all other entries amend existing code.}\label{tab:files}
     existing wall radii (\code{BodyTube}: \src{model/parts/BodyTube.h}{49};
     \code{HollowSphere}: \src{model/parts/HollowSphere.h}{52}). \code{FinSet} reports its
     \emph{body-disc} radius only (\code{getBodyRadius}, \src{model/parts/FinSet.h}{67}) for
-    axial occupancy; sectored fin interference is scoped out (\cref{sec:diagnostics}). \\
+    axial occupancy; sectored fin interference is scoped out (\cref{sec:diagnostics}).
+    \code{FinSet::finSetCmOffset} (\src{model/parts/FinSet.cpp}{52}) is also \emph{corrected} to
+    report its CM relative to mid-length ($x_c \rightarrow x_c - L/2$), so the uniform CM rule
+    applies (\cref{sec:datamodel}). \\
 \addlinespace
 \srcf{visualizer/RocketMesh.cpp}
   & \code{walk} (\src{visualizer/RocketMesh.cpp}{427}) consumes the resolver's \code{Pose}
@@ -84,6 +87,15 @@ all other entries amend existing code.}\label{tab:files}
     string bumps from \texttt{0.1} (\src{model/DesignSerializer.cpp}{156}) to \texttt{0.2};
     the loader's \code{major == "0"} tolerance (\src{model/DesignSerializer.cpp}{186})
     already accepts it, so no gate change is needed (\cref{sec:serialization}). \\
+\addlinespace
+\srcf{model/tests/NoseConeTests.cpp}, \srcf{model/tests/FinSetTests.cpp},
+\srcf{model/tests/AeroTests.cpp}
+  & Updated to the corrected CM references: the cone CM-offset assertions flip sign
+    ($L/2 - \bar h \rightarrow \bar h - L/2$, e.g.\ solid $+L/4 \rightarrow -L/4$); the FinSet CM
+    assertion (\code{off.z() == $x_c$}) becomes \code{off.z() == $x_c - L/2$}; and the aero $x_{cp}$
+    expectations that read \code{getCenterMassOffset} are adjusted to match. These tests were written
+    around the old references; correcting the defects requires correcting them
+    (\cref{sec:philosophy-oneframe}). \\
 \bottomrule
 \end{tabularx}
 \end{table}

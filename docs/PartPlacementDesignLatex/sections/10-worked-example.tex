@@ -16,33 +16,34 @@ station-pair resolver of \cref{sec:resolver} would produce after migration.
 
 The root is a solid \code{ConicalNoseCone} named \texttt{MultiNose} with $L = 0.30\,\text{m}$
 and $\text{baseRadius} = 0.0395\,\text{m}$. In the settled longitudinal convention
-($\zfwd$, see \cref{sec:philosophy}) the root is visited at the identity pose, so its aft
-plane---the base rim---sits at world $z = 0$ and the tip is at world $z = +0.30$. Two
-geometry-derived landmarks anchor everything downstream:
+($\zfwd$, fore-plane origin, see \cref{sec:philosophy}) the root is visited at the identity
+pose, so its fore plane---the tip---sits at world $z = 0$ and its aft plane (the base rim) is at
+world $z = -0.30$. The whole rocket extends aft into $-z$ from there. Two geometry-derived
+landmarks anchor everything downstream:
 
 \begin{itemize}
-  \item the aft station, $\{z = 0,\ r_{\text{outer}} = 0.0395\}$, and the tip station,
-        $\{z = 0.30,\ r_{\text{outer}} \approx 0\}$;
-  \item the closed-form outer skin, $\text{radiusOuterAt}(z) = 0.0395\,(1 - z/0.30)$, which
+  \item the tip station, $\{z = 0,\ r_{\text{outer}} \approx 0\}$, and the aft station,
+        $\{z = -0.30,\ r_{\text{outer}} = 0.0395\}$;
+  \item the closed-form outer skin, $\text{radiusOuterAt}(z) = 0.0395\,(-z/0.30)$, which
         the solid-host rule of \cref{sec:datamodel} treats as the host capacity because a
         solid cone has no bore ($\text{innerCapacityAt}(z) = \text{radiusOuterAt}(z)$).
 \end{itemize}
 
-The cone is also the design's single frame collision. Its centroidal tensor is computed in a
-mid-length-origin, base-at-$+z$ frame by \src{model/parts/ConicalNoseCone.cpp}{49}, whose
-\code{coneCmOffset} returns $z = L/2 - \bar h$ with $\bar h = L/4$ for a solid cone. That
-internal $+z$ is the \emph{opposite} of the chosen forward direction. The resolver does not
-flip the (correct, tested) tensor math; it applies the explicit forward-frame adapter of
-\cref{sec:datamodel}, under which the solid cone's CM lies $\bar h$ forward of the base---that is,
-$L/4 = 0.075\,\text{m}$ forward of the base (equivalently $3L/4$ aft of the tip), at world
-$z = 0.075$. This single scalar, $\code{cmStationLocal} = 0.075$, is the only consumer of \src{model/parts/Part.h}{96}
-(\code{getCenterMassOffset}) in the whole design, and it is the reason CM can fall out as a
-derived quantity rather than being authored.
+The cone lives in the same local frame as every other part (\cref{sec:philosophy-oneframe}):
+tip at $z=0$, base at $z=-L$. Its centroidal tensor (axisymmetric, unchanged) is paired with a CM
+reported in that same frame, once the cone's formerly reversed \code{coneCmOffset}
+(\src{model/parts/ConicalNoseCone.cpp}{49}) is corrected. The solid cone's CM lies $\bar h = L/4$
+forward of the wide base, i.e.\ at $\code{cmLocalZ} = \bar h - L = -0.225$ (world $z = -0.225$, or
+$3L/4$ aft of the tip), where the mass actually concentrates. It is derived by the same uniform rule
+as every part, $-L/2 + \code{getCenterMassOffset()}.z()$ (\cref{sec:datamodel}), with no per-part
+adapter; this is why CM falls out as a derived quantity rather than being authored, and why it comes
+back relative to the recognizable nose tip rather than to the cone's own CM.
 
-\tikzfig{worked-example}{The resolved \texttt{xl75\_multi} stack in the $\zfwd$ root frame.
-The nose occupies $z\in[0,0.30]$; the body hangs aft over $z\in[-0.90,0]$; the fin set seats
-on the body wall near the aft end; the coupler nests into the body fore bore and projects
-$0.04\,$m forward of the bore mouth, where its outer radius exceeds the tapering nose skin.}{fig:worked}
+\tikzfig{worked-example}{The resolved \texttt{xl75\_multi} stack in the $\zfwd$ root frame (nose tip
+at the origin). The nose occupies $z\in[-0.30,0]$; the body hangs aft over $z\in[-1.20,-0.30]$; the
+fin set seats on the body wall near the aft end; the coupler nests into the body fore bore and
+projects $0.04\,$m forward of the bore mouth, where its outer radius exceeds the tapering nose
+skin.}{fig:worked}
 
 \subsection*{The four relationships}
 
@@ -50,18 +51,18 @@ $0.04\,$m forward of the bore mouth, where its outer radius exceeds the tapering
 The body is a \code{BodyTube} (inner $0.0376$, outer $0.0395$, length $0.90$). It is attached
 with the defaulted link, \seat{Abut}, $\text{parentStation01}=0$, $\text{childStation01}=1$,
 $\text{gap}=0$: the child's fore plane meets the parent's aft plane. The resolver reads
-$p = \text{nose}.\text{stationAt}(0) = \{z=0,\ r_{\text{outer}}=0.0395\}$ and
-$c = \text{body}.\text{stationAt}(1) = \{z=0.90,\ r_{\text{outer}}=0.0395\}$, giving a child
-aft-plane origin of $z = 0 + 0 - 0.90 = -0.90$. The body therefore spans world
-$z \in [-0.90, 0]$, extending \emph{aft} ($-z$)---physically correct, the airframe hangs
-below the nose. The Layer-1 seam check is clean: $|0.0395 - 0.0395| = 0$.
+$p = \text{nose}.\text{stationAt}(0) = \{z=-0.30,\ r_{\text{outer}}=0.0395\}$ (nose aft) and
+$c = \text{body}.\text{stationAt}(1) = \{z=0,\ r_{\text{outer}}=0.0395\}$ (body fore), giving a child
+fore-plane origin of $z = -0.30 + 0 - 0 = -0.30$. The body therefore spans world
+$z \in [-1.20, -0.30]$, extending \emph{aft} ($-z$) from the nose base---physically correct, the
+airframe hangs below the nose. The Layer-1 seam check is clean: $|0.0395 - 0.0395| = 0$.
 
 \paragraph{(2) Fin set seats on the body wall.}
 The \code{FinSet} (root chord $0.10$, $\text{bodyRadius}=0.0395$, six fins) is attached
 \seat{OnSurface} at $\text{parentStation01}=0.06$, $\text{childStation01}=0$,
-$\text{gap}=0$. The resolver reads $p = \text{body}.\text{stationAt}(0.06)$, i.e. local
-$z = 0.054$, world $z \approx -0.846$, with $r_{\text{outer}}=0.0395$, and seats the fin
-root's aft end there. Layer~1 confirms radial compatibility: the fin's $\text{bodyRadius}$
+$\text{gap}=0$. The resolver reads $p = \text{body}.\text{stationAt}(0.06)$, i.e. body-local
+$z = (0.06-1)\cdot 0.90 = -0.846$, world $z \approx -1.146$, with $r_{\text{outer}}=0.0395$, and
+seats the fin root's aft end near the body aft (world $\approx -1.20$). Layer~1 confirms radial compatibility: the fin's $\text{bodyRadius}$
 of $0.0395$ equals the tube outer radius within tolerance. The true off-axis radial seat
 is deferred to the 6-DOF work (\cref{sec:resolver,sec:sixdof}); because the fin set is
 axisymmetric its mass sits on the longitudinal axis, so its 3-DOF placement is already exact.
@@ -72,38 +73,39 @@ physical intent is ``insert its aft end $40\,$mm into the body's fore bore'', ex
 \seat{NestInBore}, $\text{parentStation01}=1.0$, $\text{childStation01}=0.0$,
 $\text{gap}=0.04$: the coupler's \emph{aft} plane is the inserted reference. The seat kind makes
 the gap an insertion depth, so $\text{signedGap} = -0.04$ (the child moves aft, $-z$, into the
-bore). The resolver reads $p = \text{body}.\text{stationAt}(1.0)$ at body-local $z = 0.90$ (the
-fore bore mouth, world $z=0$) and $c = \text{coupler}.\text{stationAt}(0)$ at local $z = 0$,
-giving a child aft-plane origin of $0.90 + (-0.04) - 0 = 0.86$ in the body frame, which composes
-with the body's world origin $-0.90$ to world $z = -0.04$. The coupler thus spans world
-$z \in [-0.04, +0.04]$: $0.04\,$m of it is correctly buried in the bore, but its fore $0.04\,$m
-projects \emph{forward, past the body fore rim, into the nose region}, because the $0.08\,$m
-coupler is longer than its $0.04\,$m insertion depth. Layer~1 passes---coupler outer radius
-$0.0376 \le$ body inner radius $0.0376$, so it fits the bore radially---which is precisely why a
-radial seam check alone is insufficient and the envelope sweep of \cref{sec:diagnostics} is
-required.
+bore). The resolver reads $p = \text{body}.\text{stationAt}(1.0)$ at body-local $z = 0$ (the
+fore bore mouth, world $z=-0.30$) and $c = \text{coupler}.\text{stationAt}(0)$ at coupler-local
+$z = -0.08$ (its aft plane), giving a child fore-plane origin of $0 + (-0.04) - (-0.08) = +0.04$ in
+the body frame, which composes with the body's world fore origin $-0.30$ to world $z = -0.26$. The
+coupler thus spans world $z \in [-0.34, -0.26]$: its aft $0.04\,$m (down to $-0.34$) is correctly
+buried in the bore (mouth at $-0.30$), but its fore $0.04\,$m (up to $-0.26$) projects \emph{forward,
+past the body fore rim, into the nose region}, because the $0.08\,$m coupler is longer than its
+$0.04\,$m insertion depth. Layer~1 passes---coupler outer radius $0.0376 \le$ body inner radius
+$0.0376$, so it fits the bore radially---which is precisely why a radial seam check alone is
+insufficient and the envelope sweep of \cref{sec:diagnostics} is required.
 
 \paragraph{(4) The forward poke-through, prevented.}
-The coupler's forward $0.04\,$m occupies world $z \in [0, +0.04]$, beyond the body and inside
-the nose's axial span. The Layer-2 envelope sweep resolves the host by the sorted-interval
-query at each feature breakpoint:
+The coupler's forward $0.04\,$m occupies world $z \in [-0.30, -0.26]$, forward of the body fore
+rim and inside the nose's axial span. The Layer-2 envelope sweep resolves the host by the
+sorted-interval query at each feature breakpoint:
 
 \begin{itemize}
-  \item Over $z \in [-0.04, 0]$ the host is the body bore, with capacity
+  \item Over $z \in [-0.34, -0.30]$ the host is the body bore, with capacity
         $r_{\text{inner}} = 0.0376$; the coupler's $0.0376 \le 0.0376$ holds, so this span is
         clean.
-  \item Over $z \in [0, +0.04]$ the body is gone and the only covering envelope is the solid
+  \item Over $z \in [-0.30, -0.26]$ the body is gone and the only covering envelope is the solid
         nose cone. The solid-host rule compares the coupler outer radius against the cone
-        \emph{skin}: at the worst station $z = 0.04$,
-        $\text{radiusOuterAt}(0.04) = 0.0395\,(1 - 0.04/0.30) = 0.0342$, while the coupler
+        \emph{skin}: at the rim $\text{radiusOuterAt}(-0.30) = 0.0395\,(0.30/0.30) = 0.0395$
+        (the coupler fits), but at the coupler fore, the worst station $z = -0.26$,
+        $\text{radiusOuterAt}(-0.26) = 0.0395\,(0.26/0.30) = 0.0342$, while the coupler
         outer radius is $0.0376$. Since $0.0376 > 0.0342$, the coupler penetrates the cone
         skin by $0.0034\,$m.
 \end{itemize}
 
 \begin{hardfail}[Located poke-through: coupler through nose skin]
-The sweep emits \cppinline|OverlapDiagnostic{offender = coupler, host = nose, zWorld = 0.04,|
+The sweep emits \cppinline|OverlapDiagnostic{offender = coupler, host = nose, zWorld = -0.26,|
 \cppinline|penetration = 0.0034}| with the message ``coupler OD $0.0376$ exceeds nose skin
-radius $0.0342$ at $z=0.04$ forward of the body rim (poke-through $0.0034\,$m)'', and sets
+radius $0.0342$ at $z=-0.26$, $0.04\,$m forward of the body rim (poke-through $0.0034\,$m)'', and sets
 \cppinline|SolveResult.ok = false|. Per the gate in \cref{sec:diagnostics}, \emph{both}
 consumers refuse the solve: \code{computeCompositeAt} throws/logs rather than integrate a
 self-intersecting body, and \code{RocketMesh} renders the offender in the error colour and
@@ -121,19 +123,19 @@ resolved result in the $\zfwd$ root frame.}\label{tab:worked}
 \midrule
 Body $\to$ nose &
 \seat{Abut}; $0 \!\to\! 1$; gap $0$ &
-Body origin $z=-0.90$; spans $[-0.90,0]$; seam $|0.0395-0.0395|=0$ \quad\ok \\
+Body origin $z=-0.30$; spans $[-1.20,-0.30]$; seam $|0.0395-0.0395|=0$ \quad\ok \\
 \addlinespace
 Fins $\to$ body wall &
 \seat{OnSurface}; $0.06 \!\to\! 0$; gap $0$ &
-Root seats at world $z\approx-0.846$; $0.0395=0.0395$ \quad\ok \\
+Root seats at world $z\approx-1.146$; $0.0395=0.0395$ \quad\ok \\
 \addlinespace
 Coupler $\to$ body bore &
 \seat{NestInBore}; $1 \!\to\! 0$; gap $0.04$ &
-Origin $z=-0.04$; spans $[-0.04,+0.04]$; OD $0.0376\le$ ID $0.0376$ \quad\ok (Layer~1) \\
+Origin $z=-0.26$; spans $[-0.34,-0.26]$; OD $0.0376\le$ ID $0.0376$ \quad\ok (Layer~1) \\
 \addlinespace
 Coupler vs.\ nose skin &
-(Layer-2 sweep over $[0,+0.04]$) &
-At $z=0.04$, OD $0.0376 > $ skin $0.0342$; penetration $0.0034$ \quad\fail \\
+(Layer-2 sweep over $[-0.30,-0.26]$) &
+At $z=-0.26$, OD $0.0376 > $ skin $0.0342$; penetration $0.0034$ \quad\fail \\
 \bottomrule
 \end{tabularx}
 \end{table}

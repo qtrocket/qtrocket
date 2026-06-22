@@ -4,26 +4,27 @@
 % Zoom scales: axial 1 m -> 30 cm, radial 1 m -> 70 cm (radial exaggeration ~2.3x).
 \begin{tikzpicture}[x=1cm,y=1cm,>={Stealth[length=2mm]},font=\small]
 
-  % ============ LOCATOR STRIP (whole rocket, schematic) ============
+  % ====== LOCATOR STRIP (whole rocket, schematic; nose tip = datum at z=0, rocket in -z) ======
   \begin{scope}[shift={(0,5.0)}]
     \def\az{2.6}  % locator axial cm per metre
     \def\ar{7.0}  % locator radial cm per metre
-    % body z in [-0.90, 0]
-    \draw[part,fill=qrGray!12] ({-0.90*\az},{ 0.0395*\ar}) rectangle (0,{-0.0395*\ar});
-    % nose z in [0, 0.30]
-    \draw[part,fill=qrBlue!12] (0,{0.0395*\ar}) -- ({0.30*\az},0) -- (0,{-0.0395*\ar}) -- cycle;
-    % coupler tiny at seam
-    \draw[qrTeal,line width=0.6pt,fill=qrTeal!25] ({-0.04*\az},{0.0376*\ar}) rectangle ({0.04*\az},{-0.0376*\ar});
-    \node[font=\scriptsize,text=qrGray] at ({-0.62*\az},{0.0395*\ar+0.30}) {body (L 0.90)};
-    \node[font=\scriptsize,text=qrDeep] at ({0.20*\az},{0.0395*\ar+0.30}) {nose (L 0.30)};
-    % zoom window
-    \draw[qrRed,line width=0.6pt,dashed] ({-0.16*\az},{-0.0395*\ar-0.15}) rectangle ({0.14*\az},{0.0395*\ar+0.15});
-    \node[font=\scriptsize,text=qrRed,below] at ({-0.01*\az},{-0.0395*\ar-0.18}) {seam zoom};
-    \node[font=\scriptsize,text=qrGray,left] at ({-0.90*\az-0.1},0) {full stack:};
+    % body z in [-1.20, -0.30]
+    \draw[part,fill=qrGray!12] ({-1.20*\az},{ 0.0395*\ar}) rectangle ({-0.30*\az},{-0.0395*\ar});
+    % nose z in [-0.30, 0]: tip apex at the origin (right), base at z=-0.30 (left)
+    \draw[part,fill=qrBlue!12] (0,0) -- ({-0.30*\az},{0.0395*\ar}) -- ({-0.30*\az},{-0.0395*\ar}) -- cycle;
+    % coupler tiny at the seam, z in [-0.34, -0.26]
+    \draw[qrTeal,line width=0.6pt,fill=qrTeal!25] ({-0.34*\az},{0.0376*\ar}) rectangle ({-0.26*\az},{-0.0376*\ar});
+    \node[font=\scriptsize,text=qrGray] at ({-0.78*\az},{0.0395*\ar+0.30}) {body (L 0.90)};
+    \node[font=\scriptsize,text=qrDeep] at ({-0.12*\az},{0.0395*\ar+0.30}) {nose (L 0.30)};
+    \node[font=\scriptsize,text=qrDeep,right] at (0.12,0) {tip, $z=0$};
+    % zoom window around the seam (z=-0.30)
+    \draw[qrRed,line width=0.6pt,dashed] ({-0.40*\az},{-0.0395*\ar-0.15}) rectangle ({-0.20*\az},{0.0395*\ar+0.15});
+    \node[font=\scriptsize,text=qrRed,below] at ({-0.30*\az},{-0.0395*\ar-0.18}) {seam zoom};
+    \node[font=\scriptsize,text=qrGray,left] at ({-1.20*\az-0.1},0) {full stack:};
   \end{scope}
-  % connector lines from zoom window to the main drawing
-  \draw[qrRed,line width=0.4pt,dashed] ({-0.16*2.6},{5.0-0.0395*7.0-0.15}) -- (-4.8,2.95);
-  \draw[qrRed,line width=0.4pt,dashed] ({ 0.14*2.6},{5.0-0.0395*7.0-0.15}) -- (4.2,2.95);
+  % connector lines from zoom window to the main drawing (body side -> left, nose side -> right)
+  \draw[qrRed,line width=0.4pt,dashed] ({-0.40*2.6},{5.0-0.0395*7.0-0.15}) -- (-4.8,2.95);
+  \draw[qrRed,line width=0.4pt,dashed] ({-0.20*2.6},{5.0-0.0395*7.0-0.15}) -- (4.2,2.95);
 
   % ============ MAIN SEAM ZOOM ============
   \def\az{30}  % axial cm per metre  (use via *\az on metre values)
@@ -44,7 +45,7 @@
   \draw[part] (\xRim,\rOO) -- (\xR,\ySkinR);
   \draw[part] (\xRim,-\rOO) -- (\xR,-\ySkinR);
   \node[font=\scriptsize,text=qrDeep] at (2.7,0.9) {nose skin};
-  \node[font=\scriptsize,text=qrDeep,align=center] at (3.1,0.45) {$0.0395(1-\tfrac{z}{0.30})$};
+  \node[font=\scriptsize,text=qrDeep,align=center] at (3.1,0.45) {$0.0395(-z/0.30)$};
 
   % --- body tube fore end (wall between rID and rOO) ---
   \fill[qrGray!18] (\xL,\rID) rectangle (\xRim,\rOO);
@@ -73,14 +74,14 @@
   % --- station markers + gap dimension ---
   \draw[station] (\xRim,-\rOO-0.35) -- (\xRim,\rOO+0.35);
   \draw[station] (\xCFore,-\rOO-0.35) -- (\xCFore,\rOO+0.6);
-  \node[font=\scriptsize,below left,inner sep=1pt] at (\xRim,-\rOO-0.35) {$z=0$ (body fore rim)};
-  \node[font=\scriptsize,below right,inner sep=1pt] at (\xCFore,-\rOO-0.35) {$z=+0.04$ (coupler fore)};
+  \node[font=\scriptsize,below left,inner sep=1pt] at (\xRim,-\rOO-0.35) {$z=-0.30$ (body fore rim)};
+  \node[font=\scriptsize,below right,inner sep=1pt] at (\xCFore,-\rOO-0.35) {$z=-0.26$ (coupler fore)};
   \draw[dimline] (\xRim,\rOO+0.32) -- (\xCFore,\rOO+0.32)
      node[midway,above,font=\scriptsize]{gap $=0.04$ (insertion projects forward)};
 
   % --- the located failure callout ---
   \node[failnode,text width=52mm,font=\scriptsize,anchor=north west] at (\xR+0.5,1.7)
-    {\textbf{Layer-2 poke-through.} At $z=0.04$ the nose skin is $0.0342$ but the coupler OD is
+    {\textbf{Layer-2 poke-through.} At $z=-0.26$ the nose skin is $0.0342$ but the coupler OD is
      $0.0376$. $0.0376>0.0342 \Rightarrow$ penetration $0.0034\,$m, host $=$ nose. \texttt{solve.ok=false};
      sim and viz both refuse.};
 

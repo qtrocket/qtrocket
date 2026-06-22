@@ -132,8 +132,9 @@ chosen design.
 
 The remainder of this document develops the design in the order an implementer would build it.
 \Cref{sec:philosophy} states the three non-negotiable design rules and settles the longitudinal
-convention (\zfwd, toward the nose tip), including the one frame collision --- the cone's internal
-CM frame --- that must be reconciled explicitly. \Cref{sec:datamodel} gives the exact C++ value types
+convention (\zfwd, toward the nose tip), under which every part --- the cone included --- shares one
+local frame, correcting a reversed-frame defect in the current cone rather than adapting around it.
+\Cref{sec:datamodel} gives the exact C++ value types
 (\code{StationLink}, \code{Station}, \code{SeatKind}) and the in-slot storage swap that replaces the
 \cppinline|(Part, Vector3)| tuple. \Cref{sec:resolver} specifies the single resolver, how CM becomes
 derived, and the caching split that keeps placement out of the per-step mass gate.

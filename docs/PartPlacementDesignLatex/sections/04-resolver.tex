@@ -23,7 +23,7 @@ output.}{fig:component}
 \subsection{Pose and Placed}
 
 The resolver works in terms of a \code{Pose}: the rigid transform that carries a part's local frame
-(origin on the longitudinal axis at the part's aft plane, \zfwd) into the shared root frame. A
+(origin on the longitudinal axis at the part's fore plane, \zfwd) into the shared root frame. A
 \code{Pose} is an origin translation plus an orientation quaternion, and the only operation it needs
 is composition --- placing a child whose pose is known \emph{relative to its parent} into the root
 frame by left-multiplying the parent's pose (\cref{lst:pose}).
@@ -31,7 +31,7 @@ frame by left-multiplying the parent's pose (\cref{lst:pose}).
 \begin{listing}[htbp]
 \begin{minted}{cpp}
 struct Pose {
-   Vector3    origin {Vector3::Zero()};        // aft-plane origin, on axis, in ROOT frame
+   Vector3    origin {Vector3::Zero()};        // fore-plane origin, on axis, in ROOT frame
    Quaternion orient {Quaternion::Identity()}; // (x,y,z,w); identity in 3-DOF
 
    Pose compose(const Pose& childInThis) const {
@@ -71,8 +71,9 @@ std::vector<Placed>
 resolvePlacements(const part::Part& root, const Pose& rootPose);
 \end{minted}
 \caption{The single resolver entry point (new, in \srcfcap{model/parts/Placement.h}). It takes the tree
-root and the pose at which to plant it (conventionally identity --- the rocket's aft datum at the
-world origin, \zfwd) and returns one \code{Placed} per part.}\label{lst:resolver}
+root and the pose at which to plant it (conventionally identity --- the root's fore plane, the
+nose tip, at the world origin, \zfwd, the rocket extending into $-z$) and returns one \code{Placed}
+per part.}\label{lst:resolver}
 \end{listing}
 
 The resolver visits the root at \code{rootPose} and then descends. For each child of an
@@ -94,7 +95,7 @@ const Station c = child .stationAt(m.childStation01);   // child frame
 //   NestInBore => -m.gap   (m.gap = insertion depth >= 0; child seats AFT, -z, into bore)
 const double signedGap = (m.seat == SeatKind::NestInBore) ? -m.gap : +m.gap;
 
-// Child's aft-plane origin along the parent axis: line the two stations up,
+// Child's fore-plane origin along the parent axis: line the two stations up,
 // then displace by the signed gap.
 const double childOriginZ = p.z + signedGap - c.z;
 
@@ -103,7 +104,7 @@ const Pose childInParent{ Vector3(0.0, 0.0, childOriginZ),
                           m.childRot /* Identity in 3-DOF */ };
 const Pose childInRoot = parentPose.compose(childInParent);
 \end{minted}
-\caption{The per-child placement step, in \zfwd. Pure geometry: the child's aft-plane origin is
+\caption{The per-child placement step, in \zfwd. Pure geometry: the child's fore-plane origin is
 placed so the chosen child station lands on the chosen parent station, offset by the seat-signed
 gap; the result is composed into the root frame.}\label{lst:perchild}
 \end{listing}
@@ -111,7 +112,8 @@ gap; the result is composed into the root frame.}\label{lst:perchild}
 The expression \cppinline|childOriginZ = p.z + signedGap - c.z| reads directly as physical intent.
 The parent station sits at axial coordinate \cppinline|p.z| in the parent frame; the child must be
 positioned so that its own chosen station \cppinline|c.z| lands there (hence the \cppinline|- c.z|,
-because the pose locates the child's \emph{aft plane}, not its station); and the seat-signed gap
+because the pose locates the child's \emph{fore plane} --- its local origin --- not the chosen
+station, which sits \cppinline|c.z| from it); and the seat-signed gap
 then separates or inserts the two. The seat kind is what makes the sign correct without authored
 negatives: \seat{Abut} and \seat{OnSurface} treat the gap as a forward standoff, so a positive gap
 moves the child forward (\zfwd); \seat{NestInBore} treats the gap as an insertion \emph{depth}, so a
@@ -169,10 +171,13 @@ the root frame is derived from its resolved pose and its own-frame CM station (\
 
 \begin{listing}[htbp]
 \begin{minted}{cpp}
-// For each child, from its resolved Pose and its OWN-frame CM station:
+// For each child, from its resolved Pose and its OWN-frame CM. Every part lives in the
+// same fore-origin, +z-forward frame, so the local CM is one uniform expression:
+const double  cmLocalZ     = -child.getLength() / 2.0
+                           + child.getCenterMassOffset().z();   // mid-plane (-L/2) + mid-referenced offset
 const Vector3 childCmInRoot =
      childPose.origin
-   + childPose.orient * Vector3(0.0, 0.0, child.cmStationLocal());
+   + childPose.orient * Vector3(0.0, 0.0, cmLocalZ);
    // (+ child.getCenterMassOffset() radial parts, zero for every current part)
 
 // Pass 1 (mass-weighted CM):  weighted += childMass(t) * childCmInRoot
@@ -180,19 +185,24 @@ const Vector3 childCmInRoot =
 //                             I += childI + childMass * parallelAxisTerm(d)
 //                             AND (6-DOF) I' = R * I * R^T, R = childPose.orient
 \end{minted}
-\caption{The CM derivation. \code{cmStationLocal()} returns the child's CM as a scalar axial station
-in its own \zfwd{} frame; it is the only place \code{getCenterMassOffset()}
-(\srccap{model/parts/Part.h}{96}) is consumed. The cone overrides it to apply the explicit frame
-adapter of \cref{sec:datamodel}; all symmetric parts return $L/2$.}\label{lst:cm-derive}
+\caption{The CM derivation. The local CM station is $-L/2 + \code{getCenterMassOffset()}.z()$,
+evaluated identically for every part in the one shared \zfwd{} frame (fore-plane origin)
+(\srccap{model/parts/Part.h}{96}). There is no per-type adapter and no cone special
+case.}\label{lst:cm-derive}
 \end{listing}
 
-The single scalar \code{cmStationLocal()} is what makes this safe across the cone's frame collision.
-The cone's internal CM helper \code{coneCmOffset} at \src{model/parts/ConicalNoseCone.cpp}{49}
-expresses the CM in a mid-length-origin, base-at-$+z$ frame whose forward sense is the
-\emph{opposite} of the resolver's. Rather than risk an implicit cross-frame vector addition --- the
-original sin this design corrects --- the cone is the one part that overrides \code{cmStationLocal()}
-to return its CM as a single, unit-tested scalar in the \zfwd{} frame, and every symmetric part
-returns $L/2$. No vector arithmetic crosses a frame boundary unwatched.
+This is uniform precisely because the design admits no special parts (\cref{sec:philosophy-oneframe}).
+The cone once reported its CM in a reversed internal frame (\code{coneCmOffset} at
+\src{model/parts/ConicalNoseCone.cpp}{49}, base at $+z$); that reversal is a defect this design
+\emph{removes}, correcting the helper so the cone reports in the same frame as every other part. With
+no reversed frame left, no vector arithmetic crosses a frame boundary unwatched --- the same single
+expression derives the CM of the cone, the tubes, the sphere, and the fin set alike.
+
+Because the resolver plants the root at its fore origin --- the nose tip --- at the world origin, every
+resolved station, and therefore \code{getCompositeCm()}, is expressed relative to the \textbf{nose tip}:
+a fixed, recognizable geometric datum, not the root's own center of mass. For a conventional nose-led
+rocket the whole-body CG comes back as $(0, 0, -d)$ with $d > 0$ --- the CG sits $d$ metres aft of the
+tip. (The migration's invariance gate accounts for this deliberate datum change; see \cref{sec:migration}.)
 
 The aero path is updated in the same spirit. \code{accumulateAeroAt} previously threaded the axial
 station as \cppinline|axialStation + pos.z()| in the recursive descent at

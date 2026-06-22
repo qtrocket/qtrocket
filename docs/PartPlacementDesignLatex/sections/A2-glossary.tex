@@ -29,18 +29,13 @@ a type or routine introduced by this design, it is identified as new and unimple
   the parallel-axis theorem. The composite tensor is full mass-weighted ($\unit{kg\cdot m^2}$),
   whereas a part's own \code{inertiaTensor} is stored per unit mass ($\unit{m^2}$).
 
-\item[Cone CM-frame adapter] The single explicitly stated transform that reconciles the
-  cone's internal CM frame with the resolver's frame. \code{coneCmOffset}
-  (\src{model/parts/ConicalNoseCone.cpp}{49}) expresses the cone CM in a
-  mid-length-origin, base-at-$+z$ frame, whose $+z$ is the opposite of the chosen forward.
-  The resolver instead works aft-plane-origin, \zfwd, where the forward-frame CM coordinate
-  is $\mathit{cmZ}_{\mathrm{fwd}} = \bar h$ ($L/4$ solid, $L/3$ shell --- the CM sits near the
-  wide base). The cone is the only part whose \code{cmStationLocal} override bridges a frame flip.
-
-\item[\code{cmStationLocal}] A new per-type \code{Part} virtual returning a part's own CM
-  as a single scalar axial coordinate in its \zfwd\ local frame. Symmetric parts return
-  $L/2$; the cone overrides it with the adapter above. It is the sole consumer of
-  \code{getCenterMassOffset}, so no implicit cross-frame vector addition survives.
+\item[Cone reversed-frame defect] A pre-existing implementation mistake in
+  \code{coneCmOffset} (\src{model/parts/ConicalNoseCone.cpp}{49}): it reports the cone CM in a
+  mid-length-origin, base-at-$+z$ frame, whose $+z$ is the \emph{opposite} of the chosen forward
+  direction. This design \emph{corrects} it so the cone, like every part, reports its CM in the
+  shared fore-plane-origin, \zfwd\ frame ($L/2 - \bar h \rightarrow \bar h - L/2$). The centroidal
+  tensor is unchanged (axisymmetric, $z$-flip invariant); only the CM sign was wrong. With this,
+  there is no frame adapter and no per-part CM override anywhere in the design.
 
 \item[Envelope sweep] Layer~2 of the diagnostics (\code{sweepOverlaps}, new): after the
   whole tree resolves, build world axial intervals for every part, sort by aft station
@@ -50,8 +45,9 @@ a type or routine introduced by this design, it is identified as new and unimple
 
 \item[\code{getCenterMassOffset}] The accessor returning a part's CM relative to the
   component middle (\src{model/parts/Part.h}{96}), zero for symmetric parts and nonzero
-  for a cone. It is documented but unconsumed today; this design finally consumes it,
-  exclusively inside \code{cmStationLocal}.
+  for a cone or fin set. It is documented but unconsumed today; this design consumes it
+  through the uniform local-CM rule $-L/2 + \code{getCenterMassOffset}().z()$, the same for
+  every part.
 
 \item[\code{hostCapacity}] The radius a host occupies at a given station, defined by the
   solid-host rule as $\code{radiusInnerAt}(z)$ for a bored part and
@@ -105,7 +101,7 @@ a type or routine introduced by this design, it is identified as new and unimple
   \code{Pose}. The resolver returns a \cppinline|std::vector<Placed>| in deterministic
   depth-first attachment order.
 
-\item[\code{Pose}] A new value type carrying an origin (the part-local aft-plane origin in
+\item[\code{Pose}] A new value type carrying an origin (the part-local fore-plane origin in
   the root frame) and an orientation quaternion (identity in 3-DOF). Its \code{compose}
   operator chains a child pose through its parent, rotating the child translation, so the
   same routine serves 6-DOF unchanged.
@@ -146,7 +142,8 @@ a type or routine introduced by this design, it is identified as new and unimple
 \item[Station / fractional station (\code{station01})] A position along a part's
   longitudinal axis expressed as a fraction in $[0,1]$, where $0$ is the aft plane and $1$
   the fore plane. The absolute axial coordinate is
-  $\code{station01}\times\code{getLength()}$, recomputed on each read so that editing a
+  $(\code{station01}-1)\times\code{getLength()}$ (so $z \in [-L,0]$, with the aft plane at $-L$
+  and the fore plane at the origin), recomputed on each read so that editing a
   length moves the seam. \code{getLength()} is promoted to a base \code{Part} virtual by
   this design; today it exists only on \code{ConicalNoseCone} and \code{BodyTube}.
 
@@ -165,10 +162,11 @@ a type or routine introduced by this design, it is identified as new and unimple
   to today in 3-DOF.
 
 \item[$+z = $ forward convention (\zfwd)] The settled longitudinal convention: $+z$ points
-  toward the nose tip, every part's local origin sits on the axis at its aft plane, and a
-  part occupies $z \in [0, +\code{length}]$. It matches the visualizer and the existing
-  \code{.qrd} files, so the renderer change is a consumer swap and the file migration a
-  re-expression, both with no axial sign flip. \zaft\ was rejected for requiring exactly
-  those inversions.
+  toward the nose tip, every part's local origin sits on the axis at its \emph{fore} plane, and a
+  part occupies $z \in [-\code{length}, 0]$. The fore origin makes the root's origin --- the
+  nose tip --- the whole-assembly datum, so the derived CM is reported relative to the tip. The
+  $+z$ \emph{direction} matches the visualizer and the existing \code{.qrd} files, so the renderer
+  change is a consumer swap and the file migration a re-expression, both with no axial sign flip.
+  \zaft\ was rejected for requiring exactly those inversions.
 
 \end{description}

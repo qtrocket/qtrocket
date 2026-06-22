@@ -2,8 +2,8 @@
 
 The placement design lives or dies on the precision of a handful of value types and virtual
 functions. This section fixes them exactly: the stored \emph{intent}, the derived
-\emph{landmarks}, the geometric profile that powers diagnostics, the one cross-frame adapter that
-keeps the cone honest, and the single in-slot storage change that carries it all. The guiding
+\emph{landmarks}, the geometric profile that powers diagnostics, the uniform way center of mass is
+read in the one shared frame, and the single in-slot storage change that carries it all. The guiding
 principle established in \cref{sec:philosophy} is enforced here at the type level: the only thing a
 part stores about its children is physical intent; every absolute coordinate, every center of mass,
 and every overlap verdict is \emph{derived} by the resolver of \cref{sec:resolver} from these
@@ -13,8 +13,8 @@ A note on the starting point, because it governs how the rest of this section re
 tree is entirely pre-refactor. The new types named below --- \code{StationLink}, \code{SeatKind},
 \code{Station}, \code{Pose}, and the resolver --- do not yet exist, and the file
 \srcf{model/parts/Placement.h} that will house the free types is new. The virtuals
-\code{stationAt}, \code{radiusOuterAt}, \code{radiusInnerAt}, \code{axialLength}, \code{isSolid},
-and \code{cmStationLocal} are \emph{not} on \code{Part} today; the only geometry-adjacent virtual
+\code{stationAt}, \code{radiusOuterAt}, \code{radiusInnerAt}, \code{axialLength}, and
+\code{isSolid} are \emph{not} on \code{Part} today; the only geometry-adjacent virtual
 the base class currently exposes is \src{model/parts/Part.h}{176} (\cppinline|getReferenceArea()|,
 default \cppinline|0.0|). The discussion below therefore describes the target types and, where it
 matters for correctness, flags precisely what must be added versus what already exists.
@@ -78,6 +78,32 @@ orientation reserved for 6-DOF (\cref{sec:sixdof}); it is \code{Quaternion::Iden
 the present behavior is bit-identical to a pure-translation tree, and it costs no schema reshape to
 activate later.
 
+\Cref{fig:gap-seatkinds} makes the \code{gap} convention concrete: for each \code{SeatKind} it shows
+what a zero, positive, and negative \code{gap} means physically. The resolver of \cref{sec:resolver}
+places a child by \cppinline|childOriginZ = p.z + signedGap - c.z|, with \code{signedGap} equal to
+\cppinline|+gap| for \seat{Abut} and \seat{OnSurface} and \cppinline|-gap| for \seat{NestInBore}. The
+sign of \code{gap} is thus a displacement of the child along \zfwd, and its admissible range is part
+of the seat's contract. A positive \seat{Abut} or \seat{OnSurface} gap stands the child off forward
+of its flush seat, and \seat{OnSurface} alone accepts either sign --- a fore or aft standoff along
+the wall. \seat{NestInBore}'s gap is a non-negative insertion \emph{depth} that drives the child aft
+into the bore; a negative depth would withdraw it back out of the mouth, and a negative \seat{Abut}
+gap would symmetrically drive the child into the part it mates --- a self-intersecting placement
+rather than a standoff. Those degenerate signs are out-of-contract inputs the authoring helpers
+(\cref{sec:authoring}) are built not to produce, distinct from the radial and envelope violations the
+diagnostics of \cref{sec:diagnostics} detect between legitimately-seated parts.
+
+\tikzfig{gap-seatkinds}{Meaning of \code{StationLink::gap} for each \code{SeatKind}, with forward
+(\zfwd) to the right; gray is the parent, colour the child. \textbf{\seat{Abut}} (top): the gap is a
+signed forward standoff --- flush at \mbox{gap $=0$}, an open seam for \mbox{gap $>0$}, and a
+self-intersecting placement (the child driven into the part it mates) for \mbox{gap $<0$}; the child
+is drawn seated forward of its parent so a positive gap reads as separation. \textbf{\seat{NestInBore}} (middle): the gap is a
+non-negative insertion depth driving the child aft into the parent bore (\code{signedGap}
+$=-\,$gap) --- depth $0$ rests the child at the mouth, a positive depth nests it, and a negative
+value withdraws it from the bore (not seated). \textbf{\seat{OnSurface}} (bottom): the gap is an
+axial standoff along the parent wall, valid in either direction (aft for \mbox{gap $<0$}, forward for
+\mbox{gap $>0$}). In every case the resolver computes \mbox{\code{childOriginZ} $=$ \code{p.z} $+$
+\code{signedGap} $-$ \code{c.z}}.}{fig:gap-seatkinds}
+
 \begin{rejected}[A rich named-datum enum]
 An alternative design enumerated named attachment data --- \code{FORE}, \code{MID}, \code{AFT}, and
 so on --- with a parametric escape hatch for everything in between. It was rejected as paying both
@@ -109,7 +135,8 @@ stored.
 \begin{listing}[htbp]
 \begin{minted}{cpp}
 struct Station {
-   double z{0.0};      // axial station, part-local +z-forward (m) = station01 * getLength()
+   double z{0.0};      // axial station, +z-forward (m) = (station01 - 1) * getLength()
+                       //   station01: 0 = aft (z = -length), 1 = fore (z = 0, origin)
    double rOuter{0.0}; // outer radius at z (m)
    double rInner{0.0}; // inner radius at z (m); 0 for solids
 };
@@ -123,7 +150,8 @@ virtual Station stationAt(double station01) const;
 
 The base implementation of \code{stationAt} is written once on \code{Part} in terms of the part's
 length and the radius-profile virtuals of \cref{sec:datamodel-profile}: it maps the fraction to an
-axial coordinate, \cppinline|z = station01 * getLength()|, and queries the outer and inner radius at
+axial coordinate, \cppinline|z = (station01 - 1) * getLength()| (so $z \in [-L, 0]$, with station 1 at the
+fore origin and station 0 at the aft plane), and queries the outer and inner radius at
 that coordinate. Because the entire computation is expressed through those virtuals, every
 symmetric part inherits a correct \code{stationAt} with no override at all. A part overrides it only
 if its station-to-radius mapping is not captured by the default profile.
@@ -152,7 +180,7 @@ the base class so a part with no real cross-section needs no override.
 // On Part. Closed-form per part type. Base returns 0 (geometrically inert).
 virtual double radiusOuterAt(double zLocal) const { return 0.0; } // cone tapers; tube const
 virtual double radiusInnerAt(double zLocal) const { return 0.0; } // BodyTube bore; 0 solids
-virtual double axialLength()  const { return getLength(); }       // span is [0, axialLength()]
+virtual double axialLength()  const { return getLength(); }       // span is [-axialLength(), 0]
 \end{minted}
 \caption{The extent-profile virtuals: outer radius, inner radius, and axial span, in the
 \zfwd{} local frame.}\label{lst:profile}
@@ -222,54 +250,46 @@ undefined behavior or a divide-by-zero. Three guards make that so.
         documented behavior, not a crash.
 \end{itemize}
 
-\subsection{The explicit cone CM-frame adapter}\label{sec:datamodel-cmadapter}
+\subsection{Center of mass in the local frame}\label{sec:datamodel-cm}
 
-The single most correctness-critical detail in the data model is reconciling the cone's internal
-center-of-mass frame with the resolver's frame. The cone computes its centroidal inertia and its
-CM offset in a \emph{mid-length-origin, base-at-$+z$} frame whose $+z$ points opposite to the chosen
-forward direction. That math is correct and unit-tested, so the design does not flip it; instead it
-applies one explicitly specified adapter at exactly one place.
-
-The accessor that exposes the cone's CM offset is \src{model/parts/Part.h}{96}
-(\cppinline|Vector3 getCenterMassOffset() const { return cm; }|, returning the part's private
-\code{cm} member). For the cone, \code{cm} is set at construction from \code{coneCmOffset}
-(\src{model/parts/ConicalNoseCone.cpp}{49}), which returns \cppinline|{0, 0, L/2 - hbar}| with
-$\bar{h} = L/4$ for a solid cone and $\bar{h} = L/3$ for a shell, measured in that mid-length-origin
-frame where the base sits at $+L/2$.
-
-The resolver, by contrast, works in the aft-plane-origin, \zfwd{} frame, where the cone base is at
-$z=0$ and the tip at $z=L$. The transform between the two frames is fixed and stated once:
-
-\begin{keyinsight}[The cone CM in the forward frame]
-For the cone, the CM's forward-frame axial coordinate is
+Because every part lives in the one fore-plane-origin, \zfwd{} frame (\cref{sec:philosophy-oneframe}),
+center of mass is read the same way for all of them, with no per-part adapter. A part's mid-plane sits
+at $z = -L/2$ (half a length aft of the fore origin), and \code{getCenterMassOffset()}
+(\src{model/parts/Part.h}{96}, returning the private \code{cm} member) reports the CM relative to that
+mid-plane, in the same frame. The CM's local axial station is therefore one uniform expression,
 \[
-\code{cmZ\_fwd} \;=\; \bar{h},
+\code{cmLocalZ} \;=\; -\tfrac{L}{2} \;+\; \code{getCenterMassOffset()}.z(),
 \]
-i.e.\ $L/4$ forward of the base for a solid cone ($\bar{h} = L/4$) and $L/3$ forward of the base
-for a shell ($\bar{h} = L/3$). Equivalently, the CM sits $L - \bar{h}$ aft of the tip ($3L/4$ aft of
-the tip for a solid cone). This follows from the internal datum: \code{getCenterMassOffset()} reports
-$z_{\text{int}} = L/2 - \bar{h}$ in the cone's mid-length, base-at-$+z$ frame, and the forward-frame
-coordinate (base at $z=0$) is $L/2 - z_{\text{int}} = \bar{h}$. The \emph{wide base} carries the mass,
-so the CM sits near the base, not the tip --- a sign the adapter must get right. For a part whose CM is
-at mid-length, $\code{cmZ\_fwd} = L/2$. The resolver obtains each child's own-frame CM as a single
-scalar through a small per-type adapter \code{Part::cmStationLocal()}; the cone is the only part that
-overrides it for a \emph{frame flip}, and \code{getCenterMassOffset()} is consumed \emph{only} inside
-\code{cmStationLocal()} --- never as a link, never anywhere else.
-\end{keyinsight}
+evaluated identically for every part type. Because \code{getCenterMassOffset()} is \emph{relative to
+mid-length}, it is independent of the origin choice --- only the mid-plane term ($-L/2$) reflects the
+fore origin. There is no \code{cmStationLocal} virtual and no cone special case. The values fall out
+directly:
 
-This is what finally puts \code{getCenterMassOffset()} to its documented purpose. The base
-\code{cmStationLocal()} returns $L/2$ from the promoted \code{getLength()}; \code{ConicalNoseCone}
-overrides it to return $\bar{h}$, translating the cone's internal CM datum into the forward
-frame. \code{BodyTube} (\src{model/parts/BodyTube.cpp}{15}) and \code{HollowSphere}
-(\src{model/parts/HollowSphere.cpp}{15}) hand the \code{Part} base a centroidal tensor about a
-geometric-center CM with no offset, so for them $\code{cmZ\_fwd} = L/2$ is exact and the default
-suffices. \code{FinSet} (\src{model/parts/FinSet.cpp}{52}) is the subtler case: its axial CM sits at
-the fin-set mass centroid (a \emph{non-zero} \code{getCenterMassOffset()}), not at mid-length, so it
-too must report that offset through \code{cmStationLocal()} --- though, unlike the cone, with no frame
-flip. With
-the adapter localized to one method, no implicit cross-frame vector addition survives anywhere in
-the composition path --- the historical source of the simulator/visualizer divergence described in
-\cref{sec:philosophy}.
+\begin{itemize}
+  \item \code{BodyTube} (\src{model/parts/BodyTube.cpp}{15}) and \code{HollowSphere}
+        (\src{model/parts/HollowSphere.cpp}{15}) build a centroidal tensor about a geometric-center
+        CM with zero offset, so $\code{cmLocalZ} = -L/2$.
+  \item \code{ConicalNoseCone}, once its reversed-frame defect is corrected
+        (\cref{sec:philosophy-oneframe}), reports $\code{getCenterMassOffset()}.z() = \bar{h} - L/2$
+        ($-L/4$ for a solid cone, $-L/6$ for a shell), so $\code{cmLocalZ} = \bar{h} - L$ --- i.e.\
+        $-3L/4$ for a solid cone: the CM sits $3L/4$ aft of the tip, equivalently $\bar{h}=L/4$ forward
+        of the wide base, where the mass actually is.
+  \item \code{FinSet} (\src{model/parts/FinSet.cpp}{52}) has its axial CM at the fin-set mass centroid
+        $x_c$, but its current \code{finSetCmOffset} reports $x_c$ measured from one end (the root
+        leading edge), not from mid-length --- a second latent reference defect, of the same kind as
+        the cone's. It is corrected the same way: report $x_c - L/2$, so
+        $\code{cmLocalZ} = -L/2 + (x_c - L/2) = x_c - L$ falls out of the uniform rule with no override
+        (\code{FinSetTests} updated in lock-step, \cref{sec:migration}).
+\end{itemize}
+
+\begin{keyinsight}[CM is uniform, not special-cased]
+Every part's CM is derived from $-L/2 + \code{getCenterMassOffset()}.z()$ in one shared frame. The
+remedy for both the cone and the fin set is the \emph{same}: report the CM relative to mid-length, in
+the shared \zfwd{} frame, so the codebase carries \emph{no} reversed frame and \emph{no} non-mid
+reference. No cross-frame vector addition survives anywhere in the composition path --- closing the
+historical source of the simulator/visualizer divergence (\cref{sec:philosophy}) at its root rather
+than papering over it with a per-part adapter.
+\end{keyinsight}
 
 \subsection{The storage swap}\label{sec:datamodel-storage}
 
@@ -319,7 +339,7 @@ virtuals --- and the plain value types and free functions that operate over a re
 \textbf{Lives on \code{Part}} & \textbf{Lives in \texttt{Placement.h} (free / POD)} \\
 \midrule
 \code{stationAt}, \code{radiusOuterAt}/\code{radiusInnerAt},
-\code{axialLength}, \code{isSolid}, \code{cmStationLocal} (virtuals);
+\code{axialLength}, \code{isSolid} (virtuals);
 promoted \code{getLength()} virtual &
 \code{Station}, \code{StationLink}, \code{SeatKind}, \code{Pose} \\
 \addlinespace

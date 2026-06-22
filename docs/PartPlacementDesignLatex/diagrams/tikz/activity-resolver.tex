@@ -2,12 +2,25 @@
 % parent (3-DOF today, 6-DOF-shaped). Consumed by section 04 (resolver).
 \begin{tikzpicture}[node distance=6.5mm and 12mm]
   \node[startstop] (start) {DFS visit: child of a placed parent, link \texttt{m}};
-  \node[act,below=of start] (p) {$p \leftarrow$ \texttt{parent.stationAt(m.parentStation01)}\\ \footnotesize $\{z, r_\text{outer}, r_\text{inner}\}$ in parent frame};
-  \node[act,below=of p] (c) {$c \leftarrow$ \texttt{child.stationAt(m.childStation01)}};
+
+  % p and c hold unbreakable typewriter calls (~51mm) -- give them room and put each
+  % call on its own line so it never spills past the box edge.
+  \node[act,below=of start,text width=60mm] (p)
+    {$p \leftarrow$\\ \texttt{parent.stationAt(m.parentStation01)}\\
+     \footnotesize $\{z, r_\text{outer}, r_\text{inner}\}$ in parent frame};
+  \node[act,below=of p,text width=60mm] (c)
+    {$c \leftarrow$\\ \texttt{child.stationAt(m.childStation01)}};
+
   \node[decision,below=of c] (seat) {seat kind?};
-  \node[act,below left=9mm and -6mm of seat,text width=34mm] (abut) {\seat{Abut} / \seat{OnSurface}:\\ \texttt{signedGap} $= +$\,\texttt{m.gap}};
-  \node[act,below right=9mm and -6mm of seat,text width=34mm] (nest) {\seat{NestInBore}:\\ \texttt{signedGap} $= -$\,\texttt{m.gap}\\ \footnotesize(insertion depth, child seats aft)};
-  \node[act,below=22mm of seat,text width=58mm] (origin)
+
+  % --- two seat branches, symmetric under the decision (10mm centre gap) ---
+  \node[act,text width=36mm,anchor=north east] (abut) at ([xshift=-5mm,yshift=-9mm]seat.south)
+    {\seat{Abut} / \seat{OnSurface}:\\ \texttt{signedGap} $= +$\,\texttt{m.gap}};
+  \node[act,text width=36mm,anchor=north west] (nest) at ([xshift=5mm,yshift=-9mm]seat.south)
+    {\seat{NestInBore}:\\ \texttt{signedGap} $= -$\,\texttt{m.gap}\\ \footnotesize(insertion depth, child seats aft)};
+
+  % --- merge target: centred under the decision, 10mm below the TALLER branch (nest) ---
+  \node[act,text width=58mm,anchor=north] (origin) at ($(seat.south |- nest.south) + (0,-10mm)$)
     {\texttt{childOriginZ} $= p.z + $\,\texttt{signedGap}$\,- c.z$\\ \footnotesize coaxial: $x=y=0$ (radial $r$ is a \emph{check}, not a placement)};
   \node[act,below=of origin,text width=58mm] (compose)
     {\texttt{childInParent} $=$ Pose\{(0,0,childOriginZ),\ m.childRot\}\\
@@ -22,8 +35,13 @@
   \draw[flow] (c) -- (seat);
   \draw[flow] (seat) -| (abut);
   \draw[flow] (seat) -| (nest);
-  \draw[flow] (abut) |- (origin);
-  \draw[flow] (nest) |- (origin);
+
+  % both branches drop to a junction 4mm ABOVE origin, then one arrow enters its top edge
+  \coordinate (mrg) at ([yshift=4mm]origin.north);
+  \draw[flow,-] (abut.south) |- (mrg);
+  \draw[flow,-] (nest.south) |- (mrg);
+  \draw[flow] (mrg) -- (origin.north);
+
   \draw[flow] (origin) -- (compose);
   \draw[flow] (compose) -- (record);
   \draw[flow] (record) -- (seam);

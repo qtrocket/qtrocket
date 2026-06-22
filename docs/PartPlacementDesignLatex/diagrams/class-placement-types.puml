@@ -19,7 +19,7 @@ end note
 
 class StationLink <<pod>> {
   +parentStation01 : double = 0.0
-  +childStation01 : double = 0.0
+  +childStation01 : double = 1.0
   +gap : double = 0.0
   +seat : SeatKind = Abut
   +childRot : Quaternion = Identity  ' 6-DOF seam; identity today
@@ -34,13 +34,13 @@ note right of StationLink
 end note
 
 class Station <<pod>> {
-  +z : double        ' = station01 * getLength()
+  +z : double        ' = (station01 - 1) * getLength()  [-L..0]
   +rOuter : double
   +rInner : double   ' 0 for solids
 }
 
 class Pose <<pod>> {
-  +origin : Vector3 = Zero   ' aft-plane origin, in ROOT frame
+  +origin : Vector3 = Zero   ' fore-plane origin, in ROOT frame
   +orient : Quaternion = Identity
   --
   +compose(childInThis : Pose) : Pose

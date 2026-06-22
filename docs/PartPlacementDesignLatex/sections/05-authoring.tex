@@ -48,8 +48,8 @@ A hard deletion would break the build the instant the type changes, before any f
 test could be ported; the attribute instead lets the tree stay green while emitting a
 compile-time warning at each unported call site, turning the migration into a punch list
 the compiler maintains. The shim's body is not a behavioral synonym for the new call --- it
-reconstructs the equivalent \code{StationLink} from the legacy CM-to-CM offset using the
-explicit cone frame adapter, the sign-correct derivation of which is the subject of
+reconstructs the equivalent \code{StationLink} from the legacy CM-to-CM offset using the same
+uniform local-CM derivation as the resolver, the sign-correct details of which are the subject of
 \cref{sec:migration}. Once the fixture corpus is re-saved in the new schema, the shim
 (and with it the last consumer of the CM-to-CM convention) is retired.
 
@@ -103,7 +103,7 @@ body->addChildPart(fins, {.parentStation01 = 0.06,   // wall station near body a
 
 // (3) Coupler nests into the body's fore bore (insertion depth 40 mm).
 body->addChildPart(coupler, {.parentStation01 = 1.0, // body fore plane (bore mouth)
-                             .childStation01  = 1.0, // coupler fore plane
+                             .childStation01  = 0.0, // coupler AFT plane (inserted reference)
                              .gap  = 0.04,           // insertion depth
                              .seat = SeatKind::NestInBore});
 \end{minted}
@@ -131,7 +131,7 @@ it by value. None of them stores a pose, mutates a part, or fixes an absolute co
 // Snap-operator verbs: each RETURNS a StationLink describing an intent.
 // They never resolve a pose and never store absolute coordinates.
 StationLink abut       (double gap = 0.0);        // {0, 1, gap, Abut}  child fore -> parent aft
-StationLink nestInBore (double depth);            // {1, 1, depth, NestInBore}
+StationLink nestInBore (double depth);            // {1, 0, depth, NestInBore}  child aft inserted
 StationLink seatOnWall (double parentStation01);  // {parentStation01, 0, 0, OnSurface}
 
 // Usage is identical in effect to the brace form of the worked examples:
@@ -155,8 +155,9 @@ or reusing its result across designs, cannot bake in a stale coordinate --- the 
 that storing a resolved transform would reintroduce (\cref{sec:philosophy}). They are
 sugar over the same closed three-relationship vocabulary the brace form exposes:
 \code{abut} maps to the zero-config default's $\{0, 1, gap, \seat{Abut}\}$, \code{nestInBore}
-to a fore-to-fore $\{1, 1, depth, \seat{NestInBore}\}$ insertion, and \code{seatOnWall} to
-a wall station with the child's aft plane on the surface. They add no expressive power over
+to a $\{1, 0, depth, \seat{NestInBore}\}$ insertion (parent fore bore mouth, child aft plane
+inserted to \code{depth}), and \code{seatOnWall} to a wall station with the child's aft plane on
+the surface. They add no expressive power over
 \cref{lst:examples}; they exist solely so that an author may write the relationship as a
 verb when that reads more clearly than an aggregate, while the type system guarantees that
 either spelling produces the identical, pose-free \code{StationLink}.

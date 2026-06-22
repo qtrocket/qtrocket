@@ -1,0 +1,140 @@
+% Gap semantics per SeatKind: how the SIGN of StationLink::gap maps to a physical
+% displacement of the child, for each of the three SeatKinds. Forward (+z) is RIGHT.
+% Columns: gap < 0 | gap = 0 | gap > 0.   Rows: Abut | NestInBore | OnSurface.
+% Resolver law: childOriginZ = p.z + signedGap - c.z, with signedGap = +gap for
+% Abut/OnSurface and -gap for NestInBore (gap = insertion depth >= 0).
+% Consumed by section 3 (datamodel). Gray = parent, colour = child.
+\begin{tikzpicture}[x=1cm,y=1cm,>={Stealth[length=2.2mm]},font=\sffamily\small]
+
+  % ---- shared dimensions ----
+  \def\rT{0.45}   % tube outer half-height
+  \def\rI{0.30}   % parent bore inner half-height (NestInBore)
+  \def\rC{0.25}   % child coupler half-height (NestInBore)
+
+  % ---- grid placement ----
+  \def\cA{0}    \def\cB{5.8}   \def\cC{11.6}    % column centres: gap<0 | =0 | >0
+  \def\rAb{0}   \def\rNe{-3.8} \def\rSu{-7.6}   % row centres: Abut | NestInBore | OnSurface
+
+  % =========================== top legend + headers ===========================
+  \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.5pt] (-2.5,2.05) rectangle (-2.1,2.45);
+  \node[anchor=west,font=\scriptsize] at (-2.0,2.25) {parent};
+  \filldraw[fill=qrBlue!12,draw=qrDeep,line width=0.5pt] (0.1,2.05) rectangle (0.5,2.45);
+  \node[anchor=west,font=\scriptsize] at (0.6,2.25) {child};
+  \draw[axis] (3.4,2.25) -- (4.9,2.25) node[right,font=\scriptsize]{$+z$ (forward)};
+
+  \node[font=\bfseries\small,text=qrDeep] at (\cA,1.6) {gap $<0$};
+  \node[font=\bfseries\small,text=qrDeep] at (\cB,1.6) {gap $=0$};
+  \node[font=\bfseries\small,text=qrDeep] at (\cC,1.6) {gap $>0$};
+
+  % ---- row labels (rotated, far left) ----
+  \node[rotate=90,align=center,font=\bfseries,text=qrDeep] at (-3.7,\rAb)
+    {Abut\\[1pt]\scriptsize\mdseries signedGap $=+$gap};
+  \node[rotate=90,align=center,font=\bfseries,text=qrDeep] at (-3.7,\rNe)
+    {NestInBore\\[1pt]\scriptsize\mdseries signedGap $=-$gap\\\scriptsize\mdseries (depth $\ge 0$)};
+  \node[rotate=90,align=center,font=\bfseries,text=qrDeep] at (-3.7,\rSu)
+    {OnSurface\\[1pt]\scriptsize\mdseries signedGap $=+$gap};
+
+  % =========================================================================
+  %  ROW 1 -- ABUT  (equal-radius rim-to-rim; child seated FORWARD of parent)
+  %    seam reference = parent fore rim at local x = 0; child aft rim lands at +gap
+  % =========================================================================
+  % --- gap < 0 : child driven back into host -> rim interpenetration (fault) ---
+  \begin{scope}[shift={(\cA,\rAb)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,-\rT) rectangle (0,\rT);
+    \filldraw[fill=qrBlue!12,draw=qrDeep,line width=0.6pt] (-0.55,-\rT) rectangle (0.95,\rT);
+    \fill[pattern=north east lines,pattern color=qrRed] (-0.55,-\rT) rectangle (0,\rT);
+    \draw[qrRed,line width=0.6pt] (-0.55,-\rT) rectangle (0,\rT);
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.28);
+    \node[font=\scriptsize,text=qrRed,align=center] at (0,-1.5) {overlap (rims cross)\\\itshape self-intersecting};
+  \end{scope}
+  % --- gap = 0 : flush rim-to-rim ---
+  \begin{scope}[shift={(\cB,\rAb)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,-\rT) rectangle (0,\rT);
+    \filldraw[fill=qrBlue!12,draw=qrDeep,line width=0.6pt] (0,-\rT) rectangle (1.5,\rT);
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.28);
+    \node[font=\scriptsize,text=qrGray,align=center] at (0,-1.5) {flush (rim-to-rim)};
+  \end{scope}
+  % --- gap > 0 : forward standoff (open seam) ---
+  \begin{scope}[shift={(\cC,\rAb)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,-\rT) rectangle (0,\rT);
+    \filldraw[fill=qrBlue!12,draw=qrDeep,line width=0.6pt] (0.6,-\rT) rectangle (2.1,\rT);
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.28);
+    \draw[dimline] (0,\rT+0.32) -- (0.6,\rT+0.32) node[midway,above,font=\scriptsize,text=qrGray]{gap};
+    \node[font=\scriptsize,text=qrGray,align=center] at (0.3,-1.5) {forward standoff};
+  \end{scope}
+
+  % =========================================================================
+  %  ROW 2 -- NESTINBORE  (child coupler inside parent bore; mouth faces fore)
+  %    parent fore mouth at local x = 0; child aft plane lands at -gap (aft = into bore)
+  % =========================================================================
+  % --- gap < 0 : child withdrawn forward of the mouth -> not seated (invalid) ---
+  \begin{scope}[shift={(\cA,\rNe)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,\rI) rectangle (0,\rT);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,-\rT) rectangle (0,-\rI);
+    \node[font=\scriptsize,text=qrGray] at (-1.35,0) {bore};
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.28);
+    \filldraw[fill=qrTeal!10,draw=qrRed,line width=0.7pt,dashed] (0.5,-\rC) rectangle (1.9,\rC);
+    \draw[dimline] (0,-\rT-0.5) -- (0.5,-\rT-0.5);
+    \node[font=\scriptsize,text=qrRed,align=center] at (0.35,-1.5) {withdrawn -- not seated\\\itshape (depth $\ge 0$)};
+  \end{scope}
+  % --- gap = 0 : child rests at the mouth, depth 0 ---
+  \begin{scope}[shift={(\cB,\rNe)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,\rI) rectangle (0,\rT);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,-\rT) rectangle (0,-\rI);
+    \node[font=\scriptsize,text=qrGray] at (-1.35,0) {bore};
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.28);
+    \filldraw[fill=qrTeal!18,draw=qrTeal,line width=0.7pt] (0,-\rC) rectangle (1.4,\rC);
+    \node[font=\scriptsize,text=qrGray,align=center] at (0.3,-1.5) {depth $0$ (at mouth)};
+  \end{scope}
+  % --- gap > 0 : nested by insertion depth (the normal case) ---
+  \begin{scope}[shift={(\cC,\rNe)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrTeal!18,draw=qrTeal,line width=0.7pt] (-0.65,-\rC) rectangle (0.75,\rC);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,\rI) rectangle (0,\rT);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.0,-\rT) rectangle (0,-\rI);
+    \node[font=\scriptsize,text=qrGray] at (-1.35,0) {bore};
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.28);
+    \draw[dimline] (-0.65,-\rT-0.5) -- (0,-\rT-0.5) node[midway,below,font=\scriptsize,text=qrGray]{depth};
+    \node[font=\scriptsize,text=qrGray,align=center] at (0,-1.5) {nested (depth $=$ gap)};
+  \end{scope}
+
+  % =========================================================================
+  %  ROW 3 -- ONSURFACE  (child lug seated on parent outer wall at a station)
+  %    parent station at local x = 0; child reference plane lands at +gap along wall
+  % =========================================================================
+  % --- gap < 0 : aft standoff along the wall (valid) ---
+  \begin{scope}[shift={(\cA,\rSu)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.2,-\rT) rectangle (2.2,\rT);
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.6);
+    \filldraw[fill=qrTeal!22,draw=qrDeep,line width=0.6pt] (-1.1,\rT) rectangle (-0.3,\rT+0.35);
+    \draw[qrTeal,line width=0.5pt] (-0.7,\rT+0.35) -- (-0.7,\rT);
+    \draw[dimline] (-0.7,\rT+0.52) -- (0,\rT+0.52) node[midway,above,font=\scriptsize,text=qrGray]{gap};
+    \node[font=\scriptsize,text=qrGray,align=center] at (-0.35,-1.5) {aft standoff (valid)};
+  \end{scope}
+  % --- gap = 0 : seated at the chosen station ---
+  \begin{scope}[shift={(\cB,\rSu)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.2,-\rT) rectangle (2.2,\rT);
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.6) node[above,font=\scriptsize,text=qrTeal]{station};
+    \filldraw[fill=qrTeal!22,draw=qrDeep,line width=0.6pt] (-0.4,\rT) rectangle (0.4,\rT+0.35);
+    \draw[qrTeal,line width=0.5pt] (0,\rT+0.35) -- (0,\rT);
+    \node[font=\scriptsize,text=qrGray,align=center] at (0,-1.5) {at station};
+  \end{scope}
+  % --- gap > 0 : forward standoff along the wall (valid) ---
+  \begin{scope}[shift={(\cC,\rSu)}]
+    \draw[qrRule,line width=0.4pt,rounded corners=2pt] (-2.55,-1.2) rectangle (2.45,1.2);
+    \filldraw[fill=qrGray!18,draw=qrDeep,line width=0.6pt] (-2.2,-\rT) rectangle (2.2,\rT);
+    \draw[station] (0,-\rT-0.28) -- (0,\rT+0.6);
+    \filldraw[fill=qrTeal!22,draw=qrDeep,line width=0.6pt] (0.3,\rT) rectangle (1.1,\rT+0.35);
+    \draw[qrTeal,line width=0.5pt] (0.7,\rT+0.35) -- (0.7,\rT);
+    \draw[dimline] (0,\rT+0.52) -- (0.7,\rT+0.52) node[midway,above,font=\scriptsize,text=qrGray]{gap};
+    \node[font=\scriptsize,text=qrGray,align=center] at (0.35,-1.5) {forward standoff (valid)};
+  \end{scope}
+
+\end{tikzpicture}

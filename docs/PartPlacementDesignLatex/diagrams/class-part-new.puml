@@ -22,8 +22,8 @@ abstract class "Part" as Part <<abstract>> {
   +radiusInnerAt(zLocal) : double = 0
   +axialLength() : double = getLength()
   +isSolid() : bool = (radiusInnerAt(0)<=0)
-  +cmStationLocal() : double = L/2
   +innerCapacityAt(zLocal) : double  ' non-virtual: bore OR outer skin
+  +getCenterMassOffset() : Vector3   ' CM vs mid-length, shared +z=fwd frame
   --
   .. new / changed API ..
   +addChildPart(child, StationLink = {})
@@ -35,16 +35,17 @@ abstract class "Part" as Part <<abstract>> {
 class ConicalNoseCone <<concrete>> {
   +getLength() : double
   +radiusOuterAt(z) : double  ' baseR*(1 - z/L)
-  +<b>cmStationLocal() : double</b>  ' §2e adapter: hbar (=L/4 solid)
+  +<b>coneCmOffset() : Vector3</b>  ' CORRECTED: hbar - L/2 (was L/2 - hbar)
   +isSolid() : bool
 }
 note right of ConicalNoseCone
-  <b>The frame-flip cmStationLocal() override.</b>
-  Reconciles the cone's internal CM frame
-  (mid-length origin, base-at-+z) with the
-  resolver's aft-plane / +z-forward frame:
-  cmZ_fwd = hbar = L/4 (solid). The single
-  most correctness-critical detail.
+  <b>Reversed-frame defect, corrected.</b>
+  coneCmOffset reported the CM in a
+  reversed (base-at-+z) frame. It is fixed
+  to the shared fore-origin/+z-forward frame
+  (CM at hbar = L/4 from the base, solid).
+  No adapter; the centroidal tensor is
+  unchanged.
 end note
 
 class BodyTube <<concrete>> {
@@ -94,8 +95,8 @@ Part *-- "resolvedCache *" Placed : cached on placementDirty
 
 note bottom of Part
   Placement is geometric (station-to-station); CM is
-  its DERIVED consequence. getCenterMassOffset() is
-  consumed ONLY inside the cone's cmStationLocal().
+  its DERIVED consequence, read uniformly as
+  -L/2 + getCenterMassOffset().z() for every part.
   Resolver cache is gated by placementDirty (structural),
   NOT by the mass-delta gate that fires every burn step.
 end note

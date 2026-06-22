@@ -5,8 +5,8 @@ makes everywhere else: it stops recording resolved geometry and starts recording
 \emph{intent}. Today a child's spatial relationship to its parent is persisted as an
 opaque \code{<offset x y z/>} triple --- the serialized form of the CM-to-CM
 \cppinline|Vector3| stored in \code{childParts}. That triple inherits every pathology
-discussed in \cref{sec:datamodel}: it is a resolved coordinate, it conflates the cone's
-internal CM frame with the assembly frame, and it bakes a particular set of part lengths
+discussed in \cref{sec:datamodel}: it is a resolved coordinate, it conflates a part's center
+of mass with its placement, and it bakes a particular set of part lengths
 into the file so that a later geometry edit silently invalidates it. Replacing the
 storage type (\cref{sec:datamodel}) without replacing its serialized projection would
 merely move the bug onto disk. This section defines the replacement element, the
@@ -51,7 +51,7 @@ with each of its three non-root attachments expressed as a \code{<link>}.
           <part type="BodyTube" name="MultiCoupler">
             <params innerRadius="0.036" outerRadius="0.0376" length="0.08"
                     density="1700"/>
-            <link seat="NestInBore" parentStation="1.0" childStation="1.0"
+            <link seat="NestInBore" parentStation="1.0" childStation="0.0"
                   gap="0.04"/>
           </part>
           <part type="FinSet" name="MultiFins">

@@ -31,6 +31,19 @@ design's intended geometry. A re-derivation could silently share whatever bug th
 legacy path contains; the legacy reader's literal output cannot. These frozen values
 become the ground truth the migration is held against.
 
+One datum detail is controlled so the comparison is genuinely apples-to-apples.
+\code{getCompositeMass} and the composite inertia \emph{about the CM} are datum-independent and are
+compared bit-for-bit directly. \code{getCompositeCm}, however, is datum-relative, and this design
+\emph{deliberately changes its datum}: the incumbent reports the CG relative to the root part's
+\emph{own} CM (\src{model/parts/Part.cpp}{169}), whereas the new model reports it relative to the
+root's \emph{fore plane} --- the nose tip (\cref{sec:philosophy,sec:resolver}). That is the intended
+improvement (a recognizable geometric datum), so the gate does \emph{not} expect a bit-identical
+\code{getCompositeCm}; it compares the CG after re-expressing the legacy snapshot into the tip datum by
+the one fixed, known offset between the two --- the root's own CM station,
+$\code{cmLocalZ}_{\text{root}} = -L/2 + \code{getCenterMassOffset()}.z()$ (e.g.\ $-0.225$ for a solid
+$L=0.30$ nose). The shim guarantees the per-part CM-to-CM \emph{differences} match (\cref{lst:shim}),
+so once that single datum shift is applied the CG matches as well.
+
 \begin{designrule}[Invariance is defined by the incumbent, not the spec]
 The Phase-0 snapshot is whatever the current CM-to-CM code computes today, including
 quantities the new model would consider mis-placed. The migration's job is to reproduce
@@ -47,8 +60,16 @@ build depends on. The new header \srcf{model/parts/Placement.h}
 \code{StationLink}, \code{Station}, and \code{Pose} value types, and the free-function
 resolver and overlap sweep (\cref{sec:resolver}, \cref{sec:diagnostics}). The geometry
 virtuals---\code{stationAt}, \code{radiusOuterAt}/\code{radiusInnerAt},
-\code{axialLength}, \code{isSolid}, \code{cmStationLocal}---are added to the base
-\code{Part} and overridden on the four concrete part types. The single child-storage
+\code{axialLength}, \code{isSolid}---are added to the base \code{Part} and overridden on
+the four concrete part types, and the promoted \code{getLength()} virtual joins them. The
+same phase corrects the \emph{two} latent CM-reference defects so the uniform CM rule
+(\cref{sec:datamodel}) holds with no special parts: \code{ConicalNoseCone::coneCmOffset}
+(\src{model/parts/ConicalNoseCone.cpp}{49}) is fixed to report the CM in the shared \zfwd{} frame
+($L/2 - \bar h \rightarrow \bar h - L/2$), and \code{FinSet::finSetCmOffset}
+(\src{model/parts/FinSet.cpp}{52}) is fixed to report relative to mid-length ($x_c \rightarrow
+x_c - L/2$). Both centroidal tensors are unchanged. The tests written around the old references
+---\srcf{model/tests/NoseConeTests.cpp}, \srcf{model/tests/FinSetTests.cpp}, and the aero $x_{cp}$
+checks in \srcf{model/tests/AeroTests.cpp}---are updated in lock-step. The single child-storage
 slot at \src{model/parts/Part.h}{326} is swapped in place from
 \cppinline|std::tuple<std::shared_ptr<Part>, Vector3>| to
 \cppinline|std::pair<std::shared_ptr<Part>, StationLink>|, and
@@ -66,7 +87,7 @@ exactly.
 \subsubsection{The CM-to-CM recovery formula}
 
 The legacy \code{Vector3} is the child's CM expressed relative to the parent's CM. The
-resolver, by contrast, places a child by its \emph{aft-plane origin} in the parent
+resolver, by contrast, places a child by its \emph{fore-plane origin} in the parent
 frame (\cref{sec:resolver}). The shim bridges the two by inverting the CM-to-station
 relationship, working entirely in the \zfwd{} frame so that no axis is mirrored.
 \Cref{lst:shim} gives the recovery.
@@ -76,10 +97,11 @@ relationship, working entirely in the \zfwd{} frame so that no axis is mirrored.
 // All quantities in +z = forward. legacyOffset.z is the child CM minus the
 // parent CM (the legacy CM-to-CM coupling).
 //
-// 1. Recover the child's aft-plane origin in the parent frame. *CmStationLocal
-//    is cmStationLocal() evaluated in the +z-forward local frame; the cone is
-//    the only part whose adapter differs (see the cone frame adapter).
-childOriginZ_fwd = parentCmStationLocal - childCmStationLocal + legacyOffset.z;
+// 1. Recover the child's fore-plane origin in the parent frame. *CmLocalZ is the
+//    uniform local CM station, -L/2 + getCenterMassOffset().z(), in the shared
+//    +z-forward frame -- the same expression the forward derivation uses, so it
+//    inverts cleanly with no per-part special case.
+childOriginZ_fwd = parentCmLocalZ - childCmLocalZ + legacyOffset.z;
 
 // 2. Choose a station pair, then back the gap out of the resolved geometry.
 //    childStation / parentStation are the picked Station landmarks.
@@ -96,9 +118,9 @@ seat = inferSeat(parent, child);
 gap = (seat == SeatKind::NestInBore) ? -gap_unsigned : +gap_unsigned;
 \end{minted}
 \caption{The \code{[[deprecated]]} shim's analytic recovery of a
-\code{StationLink} from a legacy CM-to-CM \code{Vector3}. The \code{cmStationLocal}
-adapter is consumed here (its first production use); the cone supplies the only
-non-trivial override.}\label{lst:shim}
+\code{StationLink} from a legacy CM-to-CM \code{Vector3}. It uses the same uniform local-CM
+expression as the forward derivation (\cref{sec:datamodel}), so the recovery inverts it exactly
+for every part, the cone included.}\label{lst:shim}
 \end{listing}
 
 Two details in \cref{lst:shim} carry the correctness of the entire migration, and both
@@ -111,10 +133,11 @@ sides of the recovery, that \cppinline|+0.49| is read directly as \emph{forward}
 the nose tip---with no sign flip and no whole-rocket inversion. The migration is a pure
 re-expression of the same axis, which is precisely why \zfwd{} was chosen over \zaft{}
 (\cref{sec:philosophy}): \zaft{} would have forced a sign-negating rewrite of every
-fixture here. The cone is the sole part whose \emph{internal} CM frame
-(\code{coneCmOffset}, \src{model/parts/ConicalNoseCone.cpp}{49}) opposes the forward
-convention, and that single discrepancy is absorbed by the
-\code{cmStationLocal} adapter (\cref{sec:datamodel}), never by mirroring the link.
+fixture here. The cone's formerly reversed \emph{internal} CM frame
+(\code{coneCmOffset}, \src{model/parts/ConicalNoseCone.cpp}{49}) is corrected in this same
+phase so that it, too, reports in the shared forward frame
+(\cref{sec:philosophy-oneframe}); there is no adapter to absorb a discrepancy and no link to
+mirror.
 \end{keyinsight}
 
 \begin{keyinsight}[Seat is inferred before the gap sign]
@@ -134,29 +157,28 @@ reproduces legacy behavior analytically.
 
 Phase 2 loads every fixture through the now \code{0.2}-capable reader---legacy
 \cppinline|<offset>| elements flow through the shim of \cref{lst:shim} into
-\code{StationLink}s---and asserts \emph{bit-identical} \cppinline|getCompositeCm(0)|,
-\cppinline|getCompositeI(0)|, and resolved axial stations against the Phase-0
-snapshots. Equality is exact, not within a tolerance: the migration is a re-expression
-of the same arithmetic over the same geometry, so any deviation is a defect, and a
-tolerance would merely hide it.
+\code{StationLink}s---and asserts \emph{bit-identical} \cppinline|getCompositeMass(0)| and
+\cppinline|getCompositeI(0)| (both datum-independent) against the Phase-0 snapshots, plus
+\cppinline|getCompositeCm(0)| and the resolved stations after applying the single known
+datum shift (the root's own CM station; see the Phase-0 datum note). Equality is exact, not
+within a tolerance: the migration is a re-expression of the same arithmetic over the same
+geometry, so any deviation is a defect, and a tolerance would merely hide it.
 
 A dedicated sub-test pins the nose CM to a hand-computed value as the specific guard
-that the cone frame adapter is correct. For the \code{xl75\_multi} nose---a solid cone
-of length \cppinline|L = 0.30| (\src{tests/data/designs/xl75\_multi.qrd}{5})---the
-centroid sits at $L/4$ forward of the base, i.e. \cppinline|cmStationLocal = 0.075|.
-This is the forward-frame image of \code{coneCmOffset}'s internal $z = L/2 - \bar{h}$
-with $\bar{h} = L/4$ (\src{model/parts/ConicalNoseCone.cpp}{49}); the adapter maps it to
-$L/2 - (L/2 - \bar{h}) = \bar{h} = L/4$ (\cref{sec:datamodel}). Pinning this one scalar to a value computed
-by hand---independently of both the legacy and migrated code paths---is the test that
-catches a sign or frame error in the single most correctness-critical conversion in the
-design.
+that the cone-frame correction (\cref{sec:philosophy-oneframe}) landed correctly. For the
+\code{xl75\_multi} nose---a solid cone of length \cppinline|L = 0.30|
+(\src{tests/data/designs/xl75\_multi.qrd}{5})---the centroid sits at $\bar{h} = L/4$ forward of
+the base, so its local CM station is $-L/2 + \code{getCenterMassOffset()}.z() = -L/2 + (\bar{h} -
+L/2) = \bar{h} - L = -0.225$ (\cref{sec:datamodel}): $3L/4$ aft of the tip. Pinning this one scalar
+to a value computed by hand---independently of both the legacy and migrated code paths---is the test
+that catches a sign error in the corrected cone CM before it can propagate.
 
 \begin{keyinsight}[Why the cone gets its own hand-checked sub-test]
-A symmetric part has its CM at mid-length, so \code{cmStationLocal} is $L/2$ and any
-frame error cancels by symmetry. The cone is the only current part whose CM is
-off-center, so it is the only part for which a forward-vs-internal frame mistake would
-survive the bit-identical aggregate check yet still be wrong. The hand-computed
-\cppinline|0.075| isolates exactly that risk.
+A symmetric part has its CM at mid-length, so its local CM station is exactly $-L/2$ and a sign
+slip cannot hide there. The cone is the only current part whose CM is off-center \emph{and} whose
+helper formerly carried a reversed sign, so it is the one part for which a stale-sign mistake
+could survive the aggregate check yet still be wrong. The hand-computed
+\cppinline|-0.225| isolates exactly that risk.
 \end{keyinsight}
 
 \subsection{Phase 3 --- cut over the fixtures and retire the shim}

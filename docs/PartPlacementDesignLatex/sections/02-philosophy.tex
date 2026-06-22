@@ -55,8 +55,15 @@ that the caching split in \cref{sec:resolver} keeps off the per-step hot path.
 A placement model needs an unambiguous axial sign convention: a part's local origin must
 sit at a defined plane, and ``forward'' must mean one direction. The design fixes
 \textbf{\zfwd} --- the local origin of every part lies on the longitudinal axis at its
-\emph{aft} plane, so the part occupies $z \in [0, +\text{length}]$ moving forward toward the
-nose tip.
+\emph{fore} (forward) plane, so the part occupies $z \in [-\text{length}, 0]$: its fore plane
+is the origin ($z = 0$) and its aft plane is at $z = -\text{length}$.
+
+Putting the origin at the \emph{fore} plane (not the aft) is what makes the whole-rocket datum a
+recognizable point. The resolver plants the root --- the nosecone --- at its own origin, its
+fore plane (the \textbf{nose tip}), at the world origin; because every child composes off its
+parent's origin, the entire assembly is referenced to that one point. The derived center of mass
+therefore comes back relative to the nose tip --- a fixed, recognizable geometric datum --- not
+relative to any part's center of mass (\cref{sec:resolver}). The rocket extends aft into $-z$.
 
 This is not an arbitrary choice. It is the \emph{cheapest correct} choice, because both the
 renderer and the existing design files already use it; choosing the opposite would impose a
@@ -88,75 +95,70 @@ alternative pays a large, error-prone cost to arrive at an equivalent model.
 
 \subsection{The per-part-type local frame}
 
-With \zfwd{} fixed, each concrete part type's local frame is fully determined. The aft plane
-is always the origin; the part extends forward to its length.
+With \zfwd{} fixed, each concrete part type's local frame is fully determined. The fore plane
+is always the origin; the part extends aft to $-\text{length}$.
 
 \begin{itemize}
-  \item \textbf{\code{ConicalNoseCone}.} The aft plane (the base rim) is at $z = 0$ with
-  $r = \text{baseRadius}$; the fore point (the tip) is at $z = +\text{length}$ with $r = 0$.
+  \item \textbf{\code{ConicalNoseCone}.} The fore point (the tip) is at $z = 0$ with $r = 0$;
+  the aft plane (the base rim) is at $z = -\text{length}$ with $r = \text{baseRadius}$.
   The outer radius tapers linearly,
-  $\text{radiusOuterAt}(z) = \text{baseRadius}\,(1 - z/\text{length})$.
-  \item \textbf{\code{BodyTube}, \code{FinSet}, \code{HollowSphere}.} The aft plane is at
-  $z = 0$ and the fore plane at $z = +\text{length}$.
+  $\text{radiusOuterAt}(z) = \text{baseRadius}\,(-z/\text{length})$
+  (so $r \to 0$ at the tip, $r \to \text{baseRadius}$ at the base).
+  \item \textbf{\code{BodyTube}, \code{FinSet}, \code{HollowSphere}.} The fore plane is at
+  $z = 0$ and the aft plane at $z = -\text{length}$.
 \end{itemize}
 
 \tikzfig{convention-zframe}{The settled \zfwd{} convention. Each part's local origin sits on
-the longitudinal axis at its aft plane, occupying $z \in [0, +\text{length}]$. The single
-frame collision --- the cone's internal CM frame, whose origin is at mid-length and whose
-$+z$ points toward the base --- is shown opposed to the chosen forward direction and is
-reconciled by an explicit adapter rather than by altering the cone's tensor
-math.}{fig:convention}
+the longitudinal axis at its \emph{fore} plane, occupying $z \in [-\text{length}, 0]$, so the
+root's origin --- the nose tip --- is the whole-assembly datum. Every part --- the cone
+included --- uses this one frame; the solid cone's centroid sits at $L/4$ from the base
+($3L/4$ aft of the tip), so its $(\text{geometric centre} - \text{CM})$ displacement is $L/4$,
+the very offset the legacy CM-to-CM link forced authors to hand-compute.}{fig:convention}
 
-\Cref{fig:convention} also depicts the one place where the chosen convention does not match a
-pre-existing frame inside the code, which the next subsection treats as the single most
-correctness-critical detail of the whole design.
+\subsection{One frame for every part --- including the cone}\label{sec:philosophy-oneframe}
 
-\subsection{The one frame collision: the cone's internal CM frame}
+A clean placement model admits no special parts. Every part --- the \code{ConicalNoseCone} no
+exception --- lives in the single frame just defined: origin on the axis at the fore plane, $+z$
+toward the tip, mass and geometry expressed there. There is no second, per-part frame to
+reconcile and no adapter to maintain.
 
-The cone's inertia tensor is centroidal, and the helper that reports where that centroid sits
---- \code{coneCmOffset} (\src{model/parts/ConicalNoseCone.cpp}{49}) --- works in a frame that
-is \emph{opposite} to the convention just settled. It places the cone in $[-L/2, +L/2]$ with
-the base at $+L/2$, so its centroid is computed as
-$z = +L/2 - \bar{h}$, with $\bar{h} = L/4$ for a solid cone and $L/3$ for a thin shell:
+Achieving that requires correcting a latent defect in the current cone. Its centroidal-tensor
+helper reports the CM in a \emph{reversed} internal frame: it places the cone in $[-L/2,+L/2]$
+with the base at $+L/2$, so its $+z$ points aft, opposite the convention.
 
 \begin{listing}[htbp]
 \begin{minted}{cpp}
-// The tensor is centroidal; report where that CM sits relative to the component middle so
-// the assembly's addChildPart position is CM-to-CM. With the cone in [-L/2, +L/2] (base at
-// +L/2), the centroid is hbar forward of the base: L/4 (solid), L/3 (shell) => z = +L/2 - hbar.
+// CURRENT (defective): CM reported in a reversed, mid-length-origin, base-at-+z frame,
+// so its +z points toward the base -- the opposite of the forward convention.
 Vector3 ConicalNoseCone::coneCmOffset(double L, bool solid)
 {
    const double hbar = solid ? (L / 4.0) : (L / 3.0);
-   return Vector3{0.0, 0.0, L / 2.0 - hbar};
+   return Vector3{0.0, 0.0, L / 2.0 - hbar};   // wrong sign in the +z=forward frame
 }
 \end{minted}
-\caption{The cone's internal CM frame (\srccap{model/parts/ConicalNoseCone.cpp}{49}):
-mid-length origin, base at $+z$ --- the reverse of the chosen \zfwd{} placement frame, whose
-origin is the aft (base) plane with the tip at $+z$.}\label{lst:conecmoffset}
+\caption{The pre-existing reversed cone frame (\srccap{model/parts/ConicalNoseCone.cpp}{49}).
+This is an implementation mistake, not a design choice: it is the only place in the codebase
+whose $+z$ disagrees with the forward convention.}\label{lst:conecmoffset}
 \end{listing}
 
-This frame (\cref{lst:conecmoffset}) is the only place in the codebase whose $+z$ disagrees
-with the chosen forward direction. The tempting fix --- flip the cone's tensor and CM math so
-its $+z$ matches --- is precisely the wrong move: that math is correct, is exercised by the
-existing inertia tests, and is unrelated to placement. Inverting it to satisfy a placement
-convention would risk a correctness regression in the physics core in order to avoid a
-two-line coordinate transform.
+The fix is not an adapter that hides the reversal --- it is to \emph{remove} the reversal.
+\code{coneCmOffset} is corrected to report the centroid in the same \zfwd{} frame as every other
+part: the solid cone's CM sits $\bar{h} = L/4$ forward of the aft/base plane ($L/3$ for a shell).
+Expressed relative to the part's mid-length, as the \code{cm} member already is, that is
+$\bar{h} - L/2 = -L/4$ (solid). The cone's centroidal inertia tensor is \emph{unchanged}: it is
+axisymmetric and therefore invariant under the $z \to -z$ flip ($I_{xx}=I_{yy}$, and $I_{xx} =
+\int (y^2+z^2)\,dm$ is unaffected by $z \to -z$), so only the CM's sign was ever wrong.
 
-\begin{keyinsight}[The single most correctness-critical detail]
-The cone's internal CM frame (mid-length origin, base at $+z$) is the reverse of the chosen
-\zfwd{} placement frame (aft-plane origin, tip at $+z$). The design reconciles the two with
-\emph{one explicitly specified, unit-tested adapter} --- not by flipping the cone's tested
-tensor math. In the placement frame the cone's CM lies at $\text{cmZ}_{\text{fwd}} = \bar{h}$,
-i.e.\ $L/4$ forward of the base for a solid cone and $L/3$ for a shell, equivalently
-$L - \bar{h}$ aft of the tip ($3L/4$ for a solid cone). This adapter (developed in
-\cref{sec:datamodel}) is the \emph{only} consumer of \code{getCenterMassOffset()}
-(\src{model/parts/Part.h}{96}); it lives behind the new \code{cmStationLocal()} virtual, which
-the cone is the only part type to override for a frame flip. For a part whose CM is at mid-length
-$\text{cmZ}_{\text{fwd}} = L/2$. Getting this one transform right is what makes the cone's CM
-a correctly derived consequence of the geometry rather than a quietly inverted offset.
-\end{keyinsight}
+\begin{designrule}[No special parts]
+With the cone corrected, the center of mass of \emph{every} part is read by one uniform rule:
+the part's mid-plane (at $z = -L/2$, half a length aft of the fore origin) plus its mid-referenced
+\code{getCenterMassOffset()} (\src{model/parts/Part.h}{96}), all in the one shared frame. There
+is no \code{cmStationLocal} adapter, no per-type frame override, and no cross-frame vector
+addition anywhere in the placement path. CM falls out of geometry uniformly (\cref{sec:resolver}).
+\end{designrule}
 
-Isolating the collision to a single adapter is what allows the rest of the design to treat
-placement as pure geometry. No implicit cross-frame vector addition survives anywhere else:
-the resolver works entirely in the \zfwd{} placement frame, and the only translation between
-frames happens at one named, tested boundary.
+The physics tests that currently assert the reversed sign --- the cone CM-offset checks in
+\srcf{model/tests/NoseConeTests.cpp} and the aero $x_{cp}$ checks in
+\srcf{model/tests/AeroTests.cpp} --- are updated to the corrected frame as part of this work
+(\cref{sec:migration}). Adjusting a handful of tests written around the defect is the price of a
+model with no warts to remember, and it is paid once.
