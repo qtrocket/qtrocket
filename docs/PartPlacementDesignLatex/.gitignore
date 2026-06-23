@@ -23,6 +23,7 @@ diagrams/out/
 
 # --- minted cache ---
 _minted-*/
+_minted/
 
 # --- final PDF: keep tracked so reviewers can read it without a build ---
 !PartPlacement.pdf
