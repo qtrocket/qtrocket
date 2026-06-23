@@ -5,6 +5,8 @@ add_library(model
    MotorModelDatabase.h
    parts/Part.cpp
    parts/Part.h
+   parts/Placement.cpp
+   parts/Placement.h
    parts/HollowSphere.cpp
    parts/HollowSphere.h
    parts/ConicalNoseCone.cpp

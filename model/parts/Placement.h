@@ -4,6 +4,8 @@
 /// \cond
 // C++ headers
 #include <cstdint>
+#include <map>
+#include <optional>
 #include <string>
 #include <vector>
 /// \endcond
@@ -160,6 +162,43 @@ inline StationLink seatOnWall(double parentStation01)
    return StationLink{.parentStation01 = parentStation01, .childStation01 = 0.0, .gap = 0.0,
                       .seat = SeatKind::OnSurface};
 }
+
+// --- The resolver -------------------------------------------------------------------------------
+// The single authority for absolute placement: intent (StationLink) in, geometry (Pose) out. Both
+// the simulator and the visualizer consume its output, so the two cannot disagree (whitepaper 4).
+
+/// @brief Resolve one child's pose in the root frame from its parent's already-resolved pose and the
+///        link binding them. The heart of the resolver, shared by every entry point. Pure geometry:
+///        lines the parent station up with the child station, then applies the seat-signed gap
+///        (childOriginZ = p.z + signedGap - c.z); coaxial in 3-DOF (x = y = 0).
+Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
+                const StationLink& link);
+
+/// @brief THE resolver: a depth-first walk of the ownership tree from @p rootPose, producing one
+///        Placed per part in deterministic depth-first (attachment) order. Each non-root part's
+///        StationLink is looked up in @p links by the part's id; a part absent from the map abuts its
+///        parent (the zero-config default). Pure geometry -- no CM, no time, no mass.
+///
+///        NOTE: the @p links map is the Step-5 scaffold. Once StationLink lives in childParts
+///        (Step 6) it is dropped and the link is read from each child pair in storage.
+std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose,
+                                      const std::map<PartId, StationLink>& links);
+
+// --- Diagnostics --------------------------------------------------------------------------------
+
+/// @brief Layer 1 -- the radial seam check at one parent->child attachment, dispatched on SeatKind:
+///        equal outer radii for Abut/OnSurface, child OD within parent bore for NestInBore. Returns a
+///        located OverlapDiagnostic when the mated radii are incompatible, else nullopt.
+std::optional<OverlapDiagnostic> radialSeamCheck(const Part& parent, const Part& child,
+                                                 const StationLink& link, double tol = 1e-9);
+
+/// @brief Layer 2 -- the envelope sweep over a fully resolved tree. Builds a world axial interval per
+///        part, sorts them O(N log N), samples each offender at feature breakpoints (its own and every
+///        other endpoint within its span), and at each sample tests its outer radius against the
+///        capacity of the smallest-id covering host (the solid-host rule), EXCLUDING the offender
+///        itself, its descendants, and its direct seat parent (all legitimately adjacent). Returns the
+///        aggregated verdict, keeping the worst (deepest) violation per offender/host pair.
+SolveResult sweepOverlaps(const std::vector<Placed>& placed, double tol = 1e-9);
 
 } // namespace model::part
 
