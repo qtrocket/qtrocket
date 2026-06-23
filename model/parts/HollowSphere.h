@@ -51,6 +51,7 @@ public:
 
    double getInnerRadius() const { return innerRadius; } ///< Inner radius ri (meters).
    double getOuterRadius() const { return outerRadius; } ///< Outer radius ro (meters).
+   double getLength()      const override { return 2.0 * outerRadius; } ///< axial extent = diameter (pole to pole)
    double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
    double getVolume()      const { return volume; }      ///< Shell volume (4/3)pi(ro^3 - ri^3) (m^3).
 

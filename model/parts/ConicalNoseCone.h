@@ -50,7 +50,7 @@ public:
    std::string typeName() const override { return "NoseCone"; }
 
    double getBaseRadius()    const { return baseRadius; }
-   double getLength()        const { return length; }
+   double getLength()        const override { return length; }
    double getWallThickness() const { return wallThickness; }
    double getDensity()       const { return density; }
    bool   isSolid()          const { return solid; }

@@ -169,6 +169,16 @@ public:
    sim::AeroProfile getCompositeAero(double refArea) const;
 
    /**
+    * @brief This part's axial length L (m) along the longitudinal axis: the extent it occupies,
+    *        z in [-L, 0] in the +z = forward local frame. Promoted to a base virtual so the shared
+    *        placement machinery (stationAt / axialLength) can read it polymorphically; every concrete
+    *        geometry type overrides it. The base default is 0 -- a geometrically inert / zero-length
+    *        node (the test-only base Part, or a Motor, which v1 gives no geometry profile) -- which the
+    *        placement code treats as a point sample.
+    */
+   virtual double getLength() const { return 0.0; }
+
+   /**
     * @brief This part's own aerodynamic reference (frontal) area (m^2); 0 for a part that presents
     *        no frontal disc (the default). Overridden by parts with a real cross-section.
     *        @see maxFrontalReferenceArea

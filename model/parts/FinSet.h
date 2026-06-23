@@ -60,6 +60,7 @@ public:
 
    unsigned int getFinCount()  const { return finCount; }
    double getRootChord()       const { return rootChord; }
+   double getLength()          const override { return rootChord; } ///< axial extent = root chord (chord along z at the body surface)
    double getTipChord()        const { return tipChord; }
    double getSpan()            const { return span; }
    double getSweep()           const { return sweep; }

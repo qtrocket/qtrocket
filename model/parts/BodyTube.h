@@ -48,7 +48,7 @@ public:
 
    double getInnerRadius()   const { return innerRadius; }
    double getOuterRadius()   const { return outerRadius; }
-   double getLength()        const { return length; }
+   double getLength()        const override { return length; }
    double getDensity()       const { return density; }
    double getWettedArea()    const { return 2.0 * std::numbers::pi * outerRadius * length; } ///< P5 skin friction
    double getReferenceArea() const override { return std::numbers::pi * outerRadius * outerRadius; } ///< pi*ro^2
