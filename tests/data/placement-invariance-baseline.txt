@@ -1,0 +1,244 @@
+# QtRocket Part-Placement invariance baseline -- Phase 0 (implementation plan Part II Step 2).
+#
+# IMMUTABLE GROUND TRUTH, generated from the LEGACY CM-to-CM reader BEFORE the placement
+# refactor. NEVER regenerate this to make a failing migration pass: a diff here means the
+# refactor changed the physics, which is exactly what the migration must not do. Regeneration
+# is gated behind the QTROCKET_REGEN_PLACEMENT_BASELINE env var only to bootstrap this file.
+#
+# Each fixture is loaded with an EMPTY motor DB, so the snapshot is the pure AIRFRAME geometry
+# composite: a fixture stores its motor as <motor commonName=..>, not as a <part>, and the
+# motor is re-attached programmatically at a zero offset -- independent of the .qrd
+# part-placement this migration changes. Quantities (t = 0):
+#   mass     topPart->getCompositeMass(0)                  [kg, datum-independent]
+#   cm       topPart->getCompositeCm(0)      (x y z)       [m, LEGACY root-own-CM datum]
+#   inertia  topPart->getCompositeI(0)       (row-major)   [kg m^2, about the composite CG]
+#   cp       topPart->getCompositeAero(1).cp()  (valid cp) [m, LEGACY root-own-CM datum]
+#   part     '<index> <type> <x> <y> <z> <name>': each part's cumulative CM-to-CM offset
+#            from the root (root = 0), DFS pre-order -- the resolved station, existing convention.
+# Doubles are %.17g (exact IEEE-754 double round-trip).
+#
+format 1
+design large38_basic
+mass 0.16378115690911332
+cm 0 0 -0.18002049648619825
+inertia 0.0054856387151743773 0 0 0 0.0054856387151743773 0 0 0 9.3042721313888361e-05
+cp 1 -0.36535655395302258
+parts 3
+part 0 NoseCone 0 0 0 Nose
+part 1 BodyTube 0 0 -0.26000000000000001 Airframe
+part 2 FinSet 0 0 -0.42500000000000004 Fins
+design large38_multi
+mass 0.16941984209270111
+cm 0 0 -0.19264996999609832
+inertia 0.0061895878408917467 0 0 0 0.0061895878408917467 0 0 0 7.933372072151824e-05
+cp 1 -0.38402333785340914
+parts 4
+part 0 NoseCone 0 0 0 Nose
+part 1 BodyTube 0 0 -0.26000000000000001 Airframe
+part 2 FinSet 0 0 -0.435 SixFins
+part 3 BodyTube 0 0 -0.48499999999999999 Coupler
+design large38_nested
+mass 0.1527329250839829
+cm 0 0 -0.16753326038127053
+inertia 0.0052019856468042188 0 0 0 0.0052019856468042188 0 0 0 3.8680485358506575e-05
+cp 1 -0.010000000000000002
+parts 4
+part 0 NoseCone 0 0 0 Nose
+part 1 BodyTube 0 0 -0.26000000000000001 Airframe
+part 2 BodyTube 0 0 -0.44 Coupler
+part 3 BodyTube 0 0 -0.47999999999999998 InnerTube
+design large38_shell
+mass 0.13060024771488932
+cm 0 0 -0.35511977883141915
+inertia 0.0067888666269694427 0 0 0 0.0067888666269694427 0 0 0 0.00019435775711059938
+cp 1 -0.50892414916175521
+parts 3
+part 0 NoseCone 0 0 0 ShellNose
+part 1 BodyTube 0 0 -0.33000000000000002 LongAirframe
+part 2 FinSet 0 0 -0.54500000000000004 BigFins
+design large54_basic
+mass 0.65740973837900141
+cm 0 0 -0.25664384262915652
+inertia 0.053123829752852528 0 0 0 0.053123829752852528 0 0 0 0.00060489777374348808
+cp 1 -0.55436279336404637
+parts 3
+part 0 NoseCone 0 0 0 BasicNose
+part 1 BodyTube 0 0 -0.42499999999999999 BasicBody
+part 2 FinSet 0 0 -0.66500000000000004 BasicFins
+design large54_multi
+mass 0.71004610986434646
+cm 0 0 -0.29469379906282511
+inertia 0.065806685984580421 0 0 0 0.065806685984580421 0 0 0 0.00056737648742393463
+cp 1 -0.5738402660232369
+parts 4
+part 0 NoseCone 0 0 0 MultiNose
+part 1 BodyTube 0 0 -0.42499999999999999 MultiBody
+part 2 FinSet 0 0 -0.67500000000000004 MultiFins
+part 3 BodyTube 0 0 -0.76500000000000001 MultiCoupler
+design large54_shell
+mass 0.50410411668758948
+cm 0 0 -0.51280161744325392
+inertia 0.065427113056920061 0 0 0 0.065427113056920061 0 0 0 0.0010535649760319249
+cp 1 -0.78007400849863306
+parts 3
+part 0 NoseCone 0 0 0 ShellNose
+part 1 BodyTube 0 0 -0.53500000000000003 ShellBody
+part 2 FinSet 0 0 -0.85000000000000009 ShellFins
+design micro13_basic
+mass 0.0036246262974447235
+cm 0 0 -0.094792548965417944
+inertia 2.2209833919937892e-05 0 0 0 2.2209833919937892e-05 0 0 0 2.9874459921921318e-07
+cp 1 -0.16911665999892558
+parts 3
+part 0 NoseCone 0 0 0 nose
+part 1 BodyTube 0 0 -0.115 body
+part 2 FinSet 0 0 -0.1925 fins
+design micro13_multi
+mass 0.0037321030904336095
+cm 0 0 -0.092920626406196388
+inertia 2.1262610991343586e-05 0 0 0 2.1262610991343586e-05 0 0 0 2.1680235402858413e-07
+cp 1 -0.17194273326238099
+parts 4
+part 0 NoseCone 0 0 0 multi_nose
+part 1 BodyTube 0 0 -0.115 multi_body
+part 2 FinSet 0 0 -0.19600000000000001 multi_fins
+part 3 BodyTube 0 0 -0.115 multi_coupler
+design micro13_shell
+mass 0.0036608633903199152
+cm 0 0 -0.15848765244534557
+inertia 3.322325925450746e-05 0 0 0 3.322325925450746e-05 0 0 0 8.1095409807310295e-07
+cp 1 -0.23037516934302421
+parts 3
+part 0 NoseCone 0 0 0 shell_nose
+part 1 BodyTube 0 0 -0.14499999999999999 shell_body
+part 2 FinSet 0 0 -0.24099999999999999 shell_fins
+design micro13_triangular
+mass 0.0034086262974447235
+cm 0 0 -0.088600961040601736
+inertia 1.9957884992877591e-05 0 0 0 1.9957884992877591e-05 0 0 0 2.0283465921921314e-07
+cp 1 -0.16495258631594525
+parts 3
+part 0 NoseCone 0 0 0 tri_nose
+part 1 BodyTube 0 0 -0.115 tri_body
+part 2 FinSet 0 0 -0.1925 tri_fins
+design mid24_basic
+mass 0.044738160691708238
+cm 0 0 -0.15797837251987501
+inertia 0.0007969517778441817 0 0 0 0.0007969517778441817 0 0 0 1.1068390680168124e-05
+cp 1 -0.27146172065051122
+parts 3
+part 0 NoseCone 0 0 0 BasicNose
+part 1 BodyTube 0 0 -0.19500000000000001 BasicBody
+part 2 FinSet 0 0 -0.32000000000000001 BasicFins
+design mid24_multi
+mass 0.048589403813491971
+cm 0 0 -0.17449129624236187
+inertia 0.00094854863182572673 0 0 0 0.00094854863182572673 0 0 0 1.0931313726689026e-05
+cp 1 -0.28905456097850657
+parts 4
+part 0 NoseCone 0 0 0 MultiNose
+part 1 BodyTube 0 0 -0.19500000000000001 MultiBody
+part 2 FinSet 0 0 -0.32500000000000001 MultiFins
+part 3 BodyTube 0 0 -0.36499999999999999 MultiCoupler
+design mid24_shell
+mass 0.047676053891764422
+cm 0 0 -0.30169020961523568
+inertia 0.0012800451231728602 0 0 0 0.0012800451231728602 0 0 0 3.103965937484996e-05
+cp 1 -0.40720857302806723
+parts 3
+part 0 NoseCone 0 0 0 ShellNose
+part 1 BodyTube 0 0 -0.26000000000000001 ShellBody
+part 2 FinSet 0 0 -0.43000000000000005 ShellFins
+design mid29_basic
+mass 0.24695169936386593
+cm 0 0 -0.21367166132893348
+inertia 0.0092393442042867473 0 0 0 0.0092393442042867473 0 0 0 0.00013573638257879681
+cp 1 -0.40369259502711496
+parts 3
+part 0 NoseCone 0 0 0 Nose
+part 1 BodyTube 0 0 -0.27500000000000002 Airframe
+part 2 FinSet 0 0 -0.43500000000000005 Fins
+design mid29_eightfin
+mass 0.26945169936386593
+cm 0 0 -0.23215322085093962
+inertia 0.010244325694936999 0 0 0 0.010244325694936999 0 0 0 0.0001373632575787968
+cp 1 -0.41874165543983355
+parts 3
+part 0 NoseCone 0 0 0 Nose
+part 1 BodyTube 0 0 -0.27500000000000002 Airframe
+part 2 FinSet 0 0 -0.43500000000000005 Fins
+design mid29_multi
+mass 0.27411076785414967
+cm 0 0 -0.19993198529512707
+inertia 0.0096946001293523616 0 0 0 0.0096946001293523616 0 0 0 0.00011439598027979166
+cp 1 -0.41021482928034664
+parts 4
+part 0 NoseCone 0 0 0 Nose
+part 1 BodyTube 0 0 -0.27500000000000002 Airframe
+part 2 FinSet 0 0 -0.43500000000000005 Fins
+part 3 BodyTube 0 0 -0.075000000000000011 Coupler
+design mid29_shell
+mass 0.26707524470453187
+cm 0 0 -0.39642364689320259
+inertia 0.014455175722264721 0 0 0 0.014455175722264721 0 0 0 0.00038681504584939935
+cp 1 -0.55416497376749119
+parts 3
+part 0 NoseCone 0 0 0 ShellNose
+part 1 BodyTube 0 0 -0.35999999999999999 Airframe
+part 2 FinSet 0 0 -0.56499999999999995 Fins
+design small18_basic
+mass 0.019983672088408254
+cm 0 0 -0.14314061779083176
+inertia 0.0003010228675477826 0 0 0 0.0003010228675477826 0 0 0 4.3013378635604635e-06
+cp 1 -0.25345426272215382
+parts 3
+part 0 NoseCone 0 0 0 BasicNose
+part 1 BodyTube 0 0 -0.17499999999999999 BasicBody
+part 2 FinSet 0 0 -0.27999999999999997 BasicFins
+design small18_multi
+mass 0.020916601675268324
+cm 0 0 -0.14382868853097627
+inertia 0.00031648546040684365 0 0 0 0.00031648546040684365 0 0 0 3.7892451788047256e-06
+cp 1 -0.26487691255074686
+parts 4
+part 0 NoseCone 0 0 0 MultiNose
+part 1 BodyTube 0 0 -0.17499999999999999 MultiBody
+part 2 FinSet 0 0 -0.28499999999999998 MultiFins
+part 3 BodyTube 0 0 -0.074999999999999983 MultiCoupler
+design small18_shell
+mass 0.023114896734863995
+cm 0 0 -0.24393791757035338
+inertia 0.00043133331158930525 0 0 0 0.00043133331158930525 0 0 0 1.1987342909775828e-05
+cp 1 -0.32909314738789736
+parts 3
+part 0 NoseCone 0 0 0 ShellNose
+part 1 BodyTube 0 0 -0.215 ShellBody
+part 2 FinSet 0 0 -0.33999999999999997 ShellFins
+design xl75_basic
+mass 1.7210081083910749
+cm 0 0 -0.35002887461462379
+inertia 0.27082288515748976 0 0 0 0.27082288515748976 0 0 0 0.0026860298907715623
+cp 1 -0.82138061450104205
+parts 3
+part 0 NoseCone 0 0 0 BasicNose
+part 1 BodyTube 0 0 -0.59999999999999998 BasicBody
+part 2 FinSet 0 0 -0.97999999999999998 BasicFins
+design xl75_multi
+mass 1.7162418457116708
+cm 0 0 -0.32277423130790001
+inertia 0.25019528316855677 0 0 0 0.25019528316855677 0 0 0 0.0020881195871924919
+cp 1 -0.8098744316915889
+parts 4
+part 0 NoseCone 0 0 0 MultiNose
+part 1 BodyTube 0 0 -0.59999999999999998 MultiBody
+part 2 FinSet 0 0 -0.97999999999999998 MultiFins
+part 3 BodyTube 0 0 -0.10999999999999999 MultiCoupler
+design xl75_shell
+mass 1.1779191856791997
+cm 0 0 -0.72776028364173329
+inertia 0.27557071211676837 0 0 0 0.27557071211676837 0 0 0 0.004304676795568398
+cp 1 -1.1209895237936236
+parts 3
+part 0 NoseCone 0 0 0 ShellNose
+part 1 BodyTube 0 0 -0.73999999999999999 ShellBody
+part 2 FinSet 0 0 -1.22 ShellFins

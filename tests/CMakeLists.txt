@@ -5,12 +5,15 @@ add_executable(integration_tests
    PhysicsIntegrationTests.cpp
    MotorDatabasePersistenceTests.cpp
    DesignPersistenceTests.cpp
+   PlacementInvarianceTests.cpp
 )
 qtrocket_enable_coverage(integration_tests)
 
-# Absolute path to the bundled motor database, so the test runs from any cwd.
+# Absolute paths so the tests run from any cwd: the bundled motor database, and the design-fixture
+# corpus + the committed Part-Placement invariance baseline under tests/data.
 target_compile_definitions(integration_tests PRIVATE
-   QTROCKET_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
+   QTROCKET_DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+   QTROCKET_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data")
 
 target_link_libraries(integration_tests
    qtrocket_core
