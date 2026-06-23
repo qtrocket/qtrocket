@@ -55,6 +55,13 @@ public:
    double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
    double getVolume()      const { return volume; }      ///< Shell volume (4/3)pi(ro^3 - ri^3) (m^3).
 
+   /// @brief Outer silhouette: sqrt(ro^2 - (z+ro)^2) about the center at z = -ro -- ro at the equator,
+   ///        0 at both poles.
+   double radiusOuterAt(double zLocal) const override;
+   /// @brief Inner (shell-cavity) silhouette: ri at the equator, 0 outside the band |z+ro| <= ri.
+   double radiusInnerAt(double zLocal) const override;
+   bool   isSolid()        const override { return innerRadius <= 0.0; } ///< a shell when ri > 0
+
 protected:
    /// @brief Protected copy ctor + cloneShallow() implement clone() for this type (Part is otherwise
    ///        non-copyable). Defaulted: copies geometry/density and, via Part's protected copy ctor,

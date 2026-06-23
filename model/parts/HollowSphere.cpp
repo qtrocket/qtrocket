@@ -2,6 +2,8 @@
 
 /// \cond
 // C++ headers
+#include <algorithm> // std::max
+#include <cmath>     // std::sqrt
 #include <numbers>   // std::numbers::pi (C++23)
 #include <stdexcept>
 /// \endcond
@@ -46,6 +48,22 @@ double HollowSphere::computeVolume(double innerRadius, double outerRadius)
 double HollowSphere::computeMass(double innerRadius, double outerRadius, double density)
 {
    return density * computeVolume(innerRadius, outerRadius);
+}
+
+double HollowSphere::radiusOuterAt(double zLocal) const
+{
+   // Sphere centered at z = -outerRadius (the +z pole at z = 0, the -z pole at z = -2 ro). The outer
+   // silhouette is sqrt(ro^2 - dz^2): ro at the equator, 0 at both poles. max() guards the band edges.
+   const double dz = zLocal + outerRadius;
+   return std::sqrt(std::max(0.0, outerRadius * outerRadius - dz * dz));
+}
+
+double HollowSphere::radiusInnerAt(double zLocal) const
+{
+   // The shell cavity is a concentric sphere of radius innerRadius: innerRadius at the equator, 0
+   // outside the band |dz| <= innerRadius.
+   const double dz = zLocal + outerRadius;
+   return std::sqrt(std::max(0.0, innerRadius * innerRadius - dz * dz));
 }
 
 } // namespace model::part

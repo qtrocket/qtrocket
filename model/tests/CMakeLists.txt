@@ -13,6 +13,7 @@ add_executable(model_tests
    PartFactoryTests.cpp
    RocketModelTests.cpp
    PlacementTypesTests.cpp
+   GeometryProfileTests.cpp
 )
 qtrocket_enable_coverage(model_tests)
 

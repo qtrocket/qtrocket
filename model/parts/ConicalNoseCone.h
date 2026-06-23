@@ -53,9 +53,14 @@ public:
    double getLength()        const override { return length; }
    double getWallThickness() const { return wallThickness; }
    double getDensity()       const { return density; }
-   bool   isSolid()          const { return solid; }
+   bool   isSolid()          const override { return solid; }
    double getReferenceArea() const override { return std::numbers::pi * baseRadius * baseRadius; } ///< pi*R^2
    double getMaxRadius()     const { return baseRadius; } ///< for the rocket-wide max-disc ref area
+
+   /// @brief Linear taper: tip (z=0) -> 0, base (z=-L) -> baseRadius. Guards the divide so a degenerate
+   ///        zero-length cone (a flat disc/ring) returns baseRadius rather than evaluating 0/0.
+   double radiusOuterAt(double zLocal) const override
+   { return (length <= 1e-9) ? baseRadius : baseRadius * (-zLocal / length); }
 
    sim::AeroComponent getAero(double refArea) const override; ///< Barrowman; CNalpha=2 at ref base area
 

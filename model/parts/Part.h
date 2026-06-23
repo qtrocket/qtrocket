@@ -15,6 +15,7 @@
 /// \endcond
 
 // qtrocket headers
+#include "model/parts/Placement.h"   // Station (returned by stationAt); StationLink lands in childParts at Step 6
 #include "sim/Aero.h"
 #include "utils/math/MathTypes.h"
 
@@ -177,6 +178,52 @@ public:
     *        placement code treats as a point sample.
     */
    virtual double getLength() const { return 0.0; }
+
+   /**
+    * @brief Outer radius (m) of this part's silhouette at local axial station @p zLocal (z in
+    *        [-length, 0], +z = forward). Closed-form per part type; the base is a geometrically inert
+    *        part (0). A cone tapers linearly, a tube is constant, a sphere bulges. The overlap sweep
+    *        samples it across a span, so it must be callable independently of stationAt().
+    */
+   virtual double radiusOuterAt(double zLocal [[maybe_unused]]) const { return 0.0; }
+
+   /**
+    * @brief Inner (bore) radius (m) at local axial station @p zLocal; 0 for a solid part. The base is
+    *        0 (no bore); a BodyTube returns its constant inner wall, a HollowSphere its shell cavity.
+    */
+   virtual double radiusInnerAt(double zLocal [[maybe_unused]]) const { return 0.0; }
+
+   /**
+    * @brief This part's axial span length (m): the part occupies z in [-axialLength(), 0]. Defaults to
+    *        getLength(), the natural override point for a part whose envelope span differs from its
+    *        nominal length.
+    */
+   virtual double axialLength() const { return getLength(); }
+
+   /**
+    * @brief Whether this part is solid (no bore). The base infers it from the absence of a bore at the
+    *        fore plane (radiusInnerAt(0) <= 0) -- correct for a solid cone or rod. Parts whose bore is
+    *        zero at z = 0 but nonzero elsewhere (a HollowSphere shell, whose cavity vanishes at the
+    *        poles), or whose solidity is an authored property (a shell ConicalNoseCone), override it so
+    *        innerCapacityAt() routes through the right boundary.
+    */
+   virtual bool isSolid() const { return radiusInnerAt(0.0) <= 0.0; }
+
+   /**
+    * @brief A resolved axial landmark (z and radii) at fractional station @p station01 (0 = aft plane,
+    *        1 = fore plane), in this part's +z = forward local frame. @p station01 is clamped to [0,1]
+    *        (degenerate guard). Maps the fraction to z = (station01 - 1) * getLength() and reads the
+    *        radius profile there; symmetric parts need no override.
+    */
+   virtual Station stationAt(double station01) const;
+
+   /**
+    * @brief The radius (m) a host occupies at local station @p zLocal -- the solid-host rule: the bore
+    *        (radiusInnerAt) for a bored part, the outer skin (radiusOuterAt) for a solid one. An
+    *        offender of outer radius r fits iff r <= innerCapacityAt(z) + tol. Non-virtual: it branches
+    *        on isSolid() so the overlap sweep never has to.
+    */
+   double innerCapacityAt(double zLocal) const;
 
    /**
     * @brief This part's own aerodynamic reference (frontal) area (m^2); 0 for a part that presents

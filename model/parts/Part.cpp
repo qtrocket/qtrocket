@@ -279,4 +279,20 @@ std::shared_ptr<Part> Part::removeChildById(Id targetId)
    return nullptr;
 }
 
+Station Part::stationAt(double station01) const
+{
+   // Clamp the fraction (degenerate guard) and map it into the +z = forward local frame: station 1 is
+   // the fore plane (z = 0, the origin), station 0 the aft plane (z = -length).
+   const double s = std::clamp(station01, 0.0, 1.0);
+   const double z = (s - 1.0) * getLength();
+   return Station{z, radiusOuterAt(z), radiusInnerAt(z)};
+}
+
+double Part::innerCapacityAt(double zLocal) const
+{
+   // Solid-host rule: a solid part is bounded by its outer skin (the poke-through test); a bored part
+   // by its inner wall. Branching here keeps the overlap sweep free of solidity special cases.
+   return isSolid() ? radiusOuterAt(zLocal) : radiusInnerAt(zLocal);
+}
+
 } // namespace model::part

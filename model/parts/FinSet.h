@@ -72,6 +72,7 @@ public:
    double getWettedArea()      const { return 2.0 * getTotalFinArea(); }            ///< both faces, P5 skin friction
    double getReferenceArea()   const override { return std::numbers::pi * bodyRadius * bodyRadius; } ///< body disc -- fins do NOT inflate the rocket reference area
    double getMaxRadius()       const { return bodyRadius + span; }                  ///< fin tip radius (extent only)
+   double radiusOuterAt(double) const override { return bodyRadius; }               ///< body disc only -- NOT bodyRadius+span (see whitepaper 6.3)
 
    sim::AeroComponent getAero(double refArea) const override; ///< Barrowman fin-set term; see .cpp
 
