@@ -76,7 +76,8 @@ TEST(BodyTubeTest, TwoBodyTubesEndToEndEqualOneLongerTube)
 
    auto assembly = std::make_shared<model::part::BodyTube>("t1", ri, ro, L1, density);
    assembly->addChildPart(std::make_shared<model::part::BodyTube>("t2", ri, ro, L2, density),
-                          Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+                          model::part::StationLink{.parentStation01 = 1.0, .childStation01 = 0.0,
+                                                  .seat = model::part::SeatKind::Abut});
 
    const double totalLength = L1 + L2;
    const double totalMass = tubeMass(ri, ro, totalLength, density);
@@ -122,14 +123,14 @@ TEST(BodyTubeTest, RejectsNonPhysical)
 TEST(BodyTubeTest, CloneIsDeepTypePreserving)
 {
    auto tube = std::make_shared<model::part::BodyTube>("body", 0.018, 0.019, 0.30, 680.0);
-   tube->addChildPart(pointMass("tip", 0.05), Vector3{0.0, 0.0, 0.2});
+   tube->addChildPart(pointMass("tip", 0.05), model::part::abut(0.2));
 
    auto copy = tube->clone();
    const double massBefore = copy->getCompositeMass(0.0);
    const double iyyBefore = copy->getCompositeI(0.0)(1, 1);
 
    tube->setMass(99.0);
-   tube->addChildPart(pointMass("extra", 50.0), Vector3{0.0, 0.0, 1.0});
+   tube->addChildPart(pointMass("extra", 50.0), model::part::abut(1.0));
 
    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(1, 1), iyyBefore);

@@ -68,7 +68,8 @@ TEST(PartTest, CreationTests)
                0, 0, 1;
    Vector3 cm2{1, 0, 0};
    Vector3 R{2.0, 2.0, 2.0};
-   testPart.addChildPart(std::make_shared<model::part::Part>("testPart2", inertia2, 1.0, cm2), R);
+   testPart.addChildPart(std::make_shared<model::part::Part>("testPart2", inertia2, 1.0, cm2),
+                         model::part::abut(R.z()));
 
 
 }
@@ -185,7 +186,7 @@ TEST(PartCompositionTest, PointMassPairCompositeCmIsMassWeightedMidpoint)
    // is no datum shift here. The composite CM is the mass-weighted average.
    const double mp = 2.0, mc = 3.0, L = 4.0;
    auto parent = pointMass("parent", mp);
-   parent->addChildPart(pointMass("child", mc), Vector3{0.0, 0.0, L});
+   parent->addChildPart(pointMass("child", mc), model::part::abut(L));
 
    const Vector3 cm = parent->getCompositeCm(0.0);
    EXPECT_NEAR(cm(0), 0.0, 1e-12);
@@ -201,7 +202,7 @@ TEST(PartCompositionTest, PointMassPairInertiaIsAboutCompositeCmNotParentCm)
    // this about the PARENT's CM (mc*L^2), so this value pins the tensor to the composite CM.
    const double mp = 2.0, mc = 3.0, L = 4.0;
    auto parent = pointMass("parent", mp);
-   parent->addChildPart(pointMass("child", mc), Vector3{0.0, 0.0, L}); // coaxial: joining line is z
+   parent->addChildPart(pointMass("child", mc), model::part::abut(L)); // coaxial: joining line is z
 
    const double mu = mp * mc / (mp + mc);
    const double expected = mu * L * L; // 19.2
@@ -224,9 +225,9 @@ TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
    const double a = 1.0, b = 2.0;            // child at a from root; grandchild at b from child
 
    auto child = pointMass("child", mc);
-   child->addChildPart(pointMass("grandchild", mg), Vector3{0.0, 0.0, b}); // coaxial (axial chain)
+   child->addChildPart(pointMass("grandchild", mg), model::part::abut(b)); // coaxial (axial chain)
    auto root = pointMass("root", mr);
-   root->addChildPart(child, Vector3{0.0, 0.0, a});
+   root->addChildPart(child, model::part::abut(a));
 
    // Flat reference (masses on the axis at 0, a, a+b).
    const double x[3] = {0.0, a, a + b};
@@ -252,7 +253,7 @@ TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
    // clone() must produce a fully independent deep copy that preserves the dynamic type (no slicing).
    // Build a HollowSphere with a child, clone it, then mutate the original -> the clone is untouched.
    auto body = std::make_shared<model::part::HollowSphere>("body", 0.04, 0.05, 2700.0);
-   body->addChildPart(pointMass("tip", 0.1), Vector3{0.2, 0.0, 0.0});
+   body->addChildPart(pointMass("tip", 0.1), model::part::abut());
 
    auto copy = body->clone();
    const double massBefore = copy->getCompositeMass(0.0);
@@ -260,7 +261,7 @@ TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
 
    // Mutate the original every which way.
    body->setMass(99.0);
-   body->addChildPart(pointMass("extra", 50.0), Vector3{1.0, 0.0, 0.0});
+   body->addChildPart(pointMass("extra", 50.0), model::part::abut());
 
    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(1, 1), iyyBefore);
@@ -314,7 +315,7 @@ TEST(PartCompositionTest, TwoTubesEndToEndEqualOneLongerTube)
 
    auto assembly = tube("t1", ri, ro, L1, density);
    // tube 2's CM sits (L1 + L2)/2 along +z from tube 1's CM (touching faces).
-   assembly->addChildPart(tube("t2", ri, ro, L2, density), Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+   assembly->addChildPart(tube("t2", ri, ro, L2, density), model::part::abut((L1 + L2) / 2.0));
 
    const double totalLength = L1 + L2;
    const double totalMass = tubeMass(ri, ro, totalLength, density);
@@ -340,9 +341,9 @@ TEST(PartCompositionTest, ThreeTubesEndToEndEqualOneLongerTubeDepth2)
    const double L1 = 0.10, L2 = 0.20, L3 = 0.30;
 
    auto t2 = tube("t2", ri, ro, L2, density);
-   t2->addChildPart(tube("t3", ri, ro, L3, density), Vector3{0.0, 0.0, (L2 + L3) / 2.0});
+   t2->addChildPart(tube("t3", ri, ro, L3, density), model::part::abut((L2 + L3) / 2.0));
    auto assembly = tube("t1", ri, ro, L1, density);
-   assembly->addChildPart(t2, Vector3{0.0, 0.0, (L1 + L2) / 2.0});
+   assembly->addChildPart(t2, model::part::abut((L1 + L2) / 2.0));
 
    const double totalLength = L1 + L2 + L3;
    const double totalMass = tubeMass(ri, ro, totalLength, density);
@@ -375,7 +376,7 @@ TEST(PartCompositionTest, FindByIdLocatesAdoptedPartsAndRejectsAbsent)
    auto root = pointMass("root", 1.0);
    auto child = pointMass("child", 1.0);
    const model::part::Part::Id childId = child->getId();
-   root->addChildPart(child, Vector3{1.0, 0.0, 0.0}); // adopts: same object, same id, now in the tree
+   root->addChildPart(child, model::part::abut()); // adopts: same object, same id, now in the tree
 
    EXPECT_EQ(root->findById(root->getId()), root.get());
    EXPECT_EQ(root->findById(childId), child.get());    // adopted -> findable by its unchanged id
@@ -405,15 +406,15 @@ TEST(PartCompositionTest, GetChildPartsExposesChildrenAndAttachPositionsInOrder)
    auto b = pointMass("b", 1.0);
    const auto aId = a->getId();
    const auto bId = b->getId();
-   root->addChildPart(a, Vector3{0.0, 0.0, -0.3}); // axial: 3-DOF placement is coaxial (radial deferred)
-   root->addChildPart(b, Vector3{0.0, 0.0, -0.5});
+   root->addChildPart(a, model::part::abut(-0.3)); // axial: 3-DOF placement is coaxial (radial deferred)
+   root->addChildPart(b, model::part::abut(-0.5));
 
    const auto& kids = root->getChildParts();
    ASSERT_EQ(kids.size(), 2u);
    EXPECT_EQ(kids[0].first->getId(), aId);   // attachment order is preserved
    EXPECT_EQ(kids[1].first->getId(), bId);
-   // The legacy CM-to-CM offset is recovered into a StationLink; for these zero-length point masses the
-   // shim stores the axial offset as the gap of an abut link.
+   // abut(z) stores the axial offset directly as the gap of an Abut link; for these zero-length point
+   // masses the resolved fore-plane origin is exactly that gap.
    EXPECT_EQ(kids[0].second.seat, model::part::SeatKind::Abut);
    EXPECT_DOUBLE_EQ(kids[0].second.gap, -0.3);
    EXPECT_DOUBLE_EQ(kids[1].second.gap, -0.5);
@@ -425,7 +426,7 @@ TEST(PartCompositionTest, RemoveChildByIdDetachesReturnsAndRecomputesComposite)
    auto parent = pointMass("parent", mp);
    auto child = pointMass("child", mc);
    const auto childId = child->getId();
-   parent->addChildPart(child, Vector3{0.0, 0.0, L}); // coaxial (axial)
+   parent->addChildPart(child, model::part::abut(L)); // coaxial (axial)
 
    // Cache the composite WITH the child, so the post-removal reads must rebuild to stay correct.
    EXPECT_NEAR(parent->getCompositeMass(0.0), mp + mc, 1e-12);
@@ -453,8 +454,8 @@ TEST(PartCompositionTest, RemoveChildByIdFindsADescendantDeepInTheTree)
    auto child = pointMass("child", 1.0);
    auto grandchild = pointMass("grandchild", 1.0);
    const auto gcId = grandchild->getId();
-   child->addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
-   root->addChildPart(child, Vector3{1.0, 0.0, 0.0});
+   child->addChildPart(grandchild, model::part::abut());
+   root->addChildPart(child, model::part::abut());
 
    EXPECT_NEAR(root->getCompositeMass(0.0), 3.0, 1e-12);
    auto detached = root->removeChildById(gcId);
@@ -506,8 +507,8 @@ TEST(PartCompositionTest, RemoveChildByIdReturnsAnIntactMultiNodeSubtree)
    auto leaf = pointMass("leaf", 3.0);
    const auto midId = mid->getId();
    const auto leafId = leaf->getId();
-   mid->addChildPart(leaf, Vector3{1.0, 0.0, 0.0});
-   root->addChildPart(mid, Vector3{1.0, 0.0, 0.0});
+   mid->addChildPart(leaf, model::part::abut());
+   root->addChildPart(mid, model::part::abut());
 
    auto detached = root->removeChildById(midId);
    ASSERT_NE(detached, nullptr);
@@ -540,8 +541,8 @@ TEST_F(PartCompositionAccess, AdoptedChildIsReparentedAndDirtyPropagates)
    auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
    auto child = std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
    auto grandchild = std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
-   child->addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
-   root->addChildPart(child, Vector3{1.0, 0.0, 0.0});
+   child->addChildPart(grandchild, model::part::abut());
+   root->addChildPart(child, model::part::abut());
 
    // Adopted, not copied: the very objects we created are in the tree, correctly re-parented.
    EXPECT_EQ(&childAt(*root, 0), child.get());
@@ -559,10 +560,10 @@ TEST_F(PartCompositionAccess, CloneReparentsSubtreeWithFreshUniqueIds)
 {
    auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
    root->addChildPart(std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero()),
-                      Vector3{1.0, 0.0, 0.0});
+                      model::part::abut());
    childAt(*root, 0).addChildPart(
       std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero()),
-      Vector3{1.0, 0.0, 0.0});
+      model::part::abut());
 
    auto copy = root->clone();
    Part& copyChild = childAt(*copy, 0);
@@ -592,8 +593,8 @@ TEST_F(PartCompositionAccess, RemoveChildByIdClearsParentAndDirtiesAncestors)
    auto child = std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
    auto grandchild = std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
    const Part::Id gcId = grandchild->getId();
-   child->addChildPart(grandchild, Vector3{1.0, 0.0, 0.0});
-   root->addChildPart(child, Vector3{1.0, 0.0, 0.0});
+   child->addChildPart(grandchild, model::part::abut());
+   root->addChildPart(child, model::part::abut());
 
    root->getCompositeI(0.0);   // cleans root...
    child->getCompositeI(0.0);  // ...but cleaning root does not clean descendants, so clean `child` too

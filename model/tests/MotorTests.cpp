@@ -10,6 +10,7 @@
 
 // qtrocket headers
 #include "model/parts/Parts.h"   // pulls Motor.h + HollowSphere.h
+#include "model/tests/PlacementTestSupport.h"
 #include "model/MotorModel.h"
 #include "model/ThrustCurve.h"
 
@@ -85,7 +86,7 @@ std::shared_ptr<HollowSphere> makeAssembly(Motor*& motorOut, double offsetZ = -0
    auto motor = std::make_shared<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
    motorOut = motor.get();
    motorOut->getMotorModel().startMotor(0.0);
-   body->addChildPart(std::move(motor), Vector3{0.0, 0.0, offsetZ});
+   body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, offsetZ));
    return body;
 }
 } // namespace
@@ -162,7 +163,7 @@ TEST(MotorInertiaTest, MatchesClosedFormDuringBurn)
    const Matrix3 IMpum = motorRaw->getI();
    motorRaw->getMotorModel().startMotor(0.0);
    const Vector3 offset{0.0, 0.0, -0.2};
-   body->addChildPart(std::move(motor), offset);
+   body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, offset.z()));
 
    for(double t : {0.0, 1.0, 2.0})
    {
@@ -209,7 +210,7 @@ TEST(MotorInertiaTest, IzzDecreasesAndHasNoParallelAxisTerm)
    Motor* motorRaw = motor.get();
    const double IMzz = motorRaw->getI()(2, 2);
    motorRaw->getMotorModel().startMotor(0.0);
-   body->addChildPart(std::move(motor), Vector3{0.0, 0.0, -0.2});
+   body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, -0.2));
 
    // Izz gets NO parallel-axis contribution (purely axial offset) but is NOT constant: it equals
    // mB*IBzz + mM(t)*IMzz and shrinks as the motor's own longitudinal term shrinks with mass.
@@ -231,7 +232,7 @@ TEST(MotorInertiaTest, FrozenAtEmptyMassAfterBurnout)
    const Matrix3 IMpum = motorRaw->getI();
    motorRaw->getMotorModel().startMotor(0.0);
    const Vector3 offset{0.0, 0.0, -0.2};
-   body->addChildPart(std::move(motor), offset);
+   body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, offset.z()));
 
    const Matrix3 atBurnout = body->getCompositeI(2.0);
    // Bitwise-identical for every t >= burnout, including out-of-order probes.

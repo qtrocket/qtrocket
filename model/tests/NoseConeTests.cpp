@@ -188,14 +188,14 @@ TEST(NoseConeTest, RejectsNonPhysical)
 TEST(NoseConeTest, CloneIsDeepTypePreserving)
 {
    auto cone = std::make_shared<model::part::ConicalNoseCone>("nose", 0.019, 0.10, 0.0, 2700.0, true);
-   cone->addChildPart(pointMass("ballast", 0.02), Vector3{0.0, 0.0, 0.03});
+   cone->addChildPart(pointMass("ballast", 0.02), model::part::abut(0.03));
 
    auto copy = cone->clone();
    const double massBefore = copy->getCompositeMass(0.0);
    const double iyyBefore = copy->getCompositeI(0.0)(1, 1);
 
    cone->setMass(99.0);
-   cone->addChildPart(pointMass("extra", 50.0), Vector3{0.0, 0.0, 1.0});
+   cone->addChildPart(pointMass("extra", 50.0), model::part::abut(1.0));
 
    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(1, 1), iyyBefore);

@@ -171,10 +171,11 @@ public:
    ///        so the motor is cleared and the reference-area override reset.
    void clearDesign();
 
-   /// @brief Attach @p child under the part with id @p parentId at CM-to-CM offset @p offset.
+   /// @brief Attach @p child under the part with id @p parentId with placement intent @p link
+   ///        (default: abut the child's fore plane to the parent's aft plane).
    /// @return true on success; false if no part has @p parentId or the attach was rejected
    ///         (Part::addChildPart is a logged no-op on null / cycle / already-parented).
-   bool addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, Vector3 offset);
+   bool addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, part::StationLink link = {});
 
    /// @brief Detach and return the sub-tree rooted at @p id, or nullptr if absent. Refuses to remove
    ///        the root (returns nullptr). Re-resolves motorPart in case the motor was in the sub-tree.

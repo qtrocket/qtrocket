@@ -1,22 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<QtRocketDesign version="0.1">
+<QtRocketDesign version="0.2">
   <design name=""/>
   <part type="NoseCone" name="multi_nose">
     <params baseRadius="0.0071999999999999998" length="0.050000000000000003" wallThickness="0" density="400" solid="true"/>
-    <offset x="0" y="0" z="0"/>
     <children>
       <part type="BodyTube" name="multi_body">
         <params innerRadius="0.0066" outerRadius="0.0071999999999999998" length="0.17999999999999999" density="400"/>
-        <offset x="0" y="0" z="-0.115"/>
+        <link seat="Abut" parentStation="0" childStation="1" gap="-0.012500000000000011"/>
         <children>
           <part type="FinSet" name="multi_fins">
             <params density="400" rootChord="0.017999999999999999" tipChord="0.0080000000000000002" span="0.014" sweep="0.0080000000000000002" thickness="0.0011999999999999999" bodyRadius="0.0071999999999999998" finCount="6"/>
-            <offset x="0" y="0" z="-0.081000000000000003"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="-0.0013076923076923153"/>
             <children/>
           </part>
           <part type="BodyTube" name="multi_coupler">
             <params innerRadius="0.0057999999999999996" outerRadius="0.0066" length="0.02" density="400"/>
-            <offset x="0" y="0" z="0"/>
+            <link seat="NestInBore" parentStation="1" childStation="0" gap="0.10000000000000001"/>
             <children/>
           </part>
         </children>

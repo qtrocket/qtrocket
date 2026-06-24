@@ -130,7 +130,17 @@ void RocketModel::setMotorModel(const model::MotorModel& motor)
    {
       auto mp = std::make_shared<part::Motor>("Motor", motor);
       motorPart = mp.get();                       // borrow before ownership moves into the tree
-      topPart->addChildPart(std::move(mp), motorOffset);
+      // Place the motor's CM motorOffset.z forward of the airframe root's CM (motorOffset is zero
+      // today): join the two CM stations with that gap. The Motor carries no geometric envelope, so
+      // this never trips the overlap gate, and at zero offset the motor CM coincides with the root CM.
+      const auto cmStation = [](const part::Part& p)
+      {
+         const double L = p.getLength();
+         return (L > 0.0) ? 0.5 + p.getCenterMassOffset().z() / L : 0.0;
+      };
+      const part::StationLink motorLink{cmStation(*topPart), cmStation(*mp), motorOffset.z(),
+                                        part::SeatKind::Abut};
+      topPart->addChildPart(std::move(mp), motorLink);
    }
    else
    {
@@ -168,14 +178,14 @@ void RocketModel::clearDesign()
    setRoot(std::make_shared<part::HollowSphere>("Body", 0.04, 0.05, 2700.0));
 }
 
-bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, Vector3 offset)
+bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, part::StationLink link)
 {
    part::Part* parent = topPart ? topPart->findById(parentId) : nullptr;
    if(parent == nullptr) { return false; }
    // addChildPart is a logged no-op on null / cycle / already-parented, so detect success by the
    // parent's child count rather than trusting the (void) call.
    const auto before = parent->getChildParts().size();
-   parent->addChildPart(std::move(child), offset);
+   parent->addChildPart(std::move(child), link);
    const bool attached = parent->getChildParts().size() == before + 1;
    if(attached) { reresolveMotorPart(); } // a Motor sub-tree could have been attached
    return attached;

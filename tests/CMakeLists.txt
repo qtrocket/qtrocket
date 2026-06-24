@@ -6,6 +6,7 @@ add_executable(integration_tests
    MotorDatabasePersistenceTests.cpp
    DesignPersistenceTests.cpp
    PlacementInvarianceTests.cpp
+   PokeThroughRegressionTests.cpp
 )
 qtrocket_enable_coverage(integration_tests)
 

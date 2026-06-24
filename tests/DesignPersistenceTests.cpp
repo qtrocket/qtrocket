@@ -16,6 +16,7 @@
 #include "model/RocketModel.h"
 #include "model/MotorModelDatabase.h"
 #include "model/parts/Parts.h"
+#include "model/tests/PlacementTestSupport.h"
 #include "utils/Logger.h"
 
 namespace
@@ -63,13 +64,11 @@ TEST_F(DesignRoundTrip, GeometryRoundTripsMassCgStructureAndMultiChild)
 
    auto body = bodyTube("Body");
    const auto bodyId = body->getId();
-   ASSERT_TRUE(r.addPart(noseId, body, Vector3{0.0, 0.0, -0.13}));
-   ASSERT_TRUE(r.addPart(bodyId,
-      std::make_shared<model::part::FinSet>("Fins", 3, 0.10, 0.05, 0.05, 0.04, 0.003, 0.019, 600.0),
-      Vector3{0.0, 0.0, -0.08}));
-   ASSERT_TRUE(r.addPart(bodyId,
-      std::make_shared<model::part::BodyTube>("Coupler", 0.015, 0.019, 0.03, 900.0),
-      Vector3{0.0, 0.0, -0.10}));
+   ASSERT_TRUE(r.addPart(noseId, body, model::part::test::cmToCm(*r.getTopPart(), *body, -0.13)));
+   auto fins = std::make_shared<model::part::FinSet>("Fins", 3, 0.10, 0.05, 0.05, 0.04, 0.003, 0.019, 600.0);
+   ASSERT_TRUE(r.addPart(bodyId, fins, model::part::test::cmToCm(*body, *fins, -0.08)));
+   auto coupler = std::make_shared<model::part::BodyTube>("Coupler", 0.015, 0.019, 0.03, 900.0);
+   ASSERT_TRUE(r.addPart(bodyId, coupler, model::part::test::cmToCm(*body, *coupler, -0.10)));
 
    const std::string tmp = tempFile("geom");
    model::DesignSerializer::save(r, tmp);
@@ -232,13 +231,13 @@ TEST_F(DesignRoundTrip, DeeplyNestedDesignRoundTrips)
    const auto noseId = r.getTopPart()->getId();
    auto body = bodyTube("Body");
    const auto bodyId = body->getId();
-   ASSERT_TRUE(r.addPart(noseId, body, Vector3{0.0, 0.0, -0.10}));
+   ASSERT_TRUE(r.addPart(noseId, body, model::part::abut(-0.10)));
    auto coupler = std::make_shared<model::part::BodyTube>("Coupler", 0.015, 0.019, 0.03, 900.0);
    const auto couplerId = coupler->getId();
-   ASSERT_TRUE(r.addPart(bodyId, coupler, Vector3{0.0, 0.0, -0.10}));
+   ASSERT_TRUE(r.addPart(bodyId, coupler, model::part::abut(-0.10)));
    ASSERT_TRUE(r.addPart(couplerId,
       std::make_shared<model::part::BodyTube>("Inner", 0.010, 0.015, 0.02, 900.0),
-      Vector3{0.0, 0.0, -0.02}));
+      model::part::abut(-0.02)));
 
    const std::string tmp = tempFile("deep");
    model::DesignSerializer::save(r, tmp);
@@ -328,9 +327,9 @@ TEST_F(DesignRoundTrip, DefaultLinkIsElidedAndReloadsAsAbut)
    for(int i = 0; i < 3; ++i) { EXPECT_NEAR(cg2(i), cg(i), 1e-9); }
 }
 
-// A 0.1 file stores CM-to-CM <offset> (no <link>); it must still load, routing each child through the
-// deprecated recovery shim. The presence of <offset> (not its absence) selects the shim branch.
-TEST_F(DesignRoundTrip, LegacyOffsetFileLoadsViaShim)
+// A legacy 0.1 file stores CM-to-CM <offset> placements. With the shim retired (0.2-only), such a file
+// is rejected with a clear error rather than silently mis-placed.
+TEST_F(DesignRoundTrip, LegacyOffsetFileIsRejected)
 {
    const std::string tmp = tempFile("legacyoffset");
    writeTextFile(tmp,
@@ -347,13 +346,8 @@ TEST_F(DesignRoundTrip, LegacyOffsetFileLoadsViaShim)
 
    model::MotorModelDatabase motors;
    model::RocketModel r;
-   model::DesignSerializer::load(r, motors, tmp);
+   EXPECT_THROW(model::DesignSerializer::load(r, motors, tmp), std::runtime_error);
    std::filesystem::remove(tmp);
-
-   ASSERT_EQ(r.getTopPart()->typeName(), "NoseCone");
-   ASSERT_EQ(r.getTopPart()->getChildParts().size(), 1u);
-   EXPECT_EQ(r.getTopPart()->getChildParts()[0].first->getName(), "Body");
-   EXPECT_GT(r.getMass(0.0), 0.0); // shim placed the child; composite mass is real
 }
 
 // An unknown seat string is rejected fail-closed with a clear error (not silently defaulted).
@@ -376,3 +370,4 @@ TEST_F(DesignRoundTrip, UnknownSeatKindIsRejected)
    EXPECT_THROW(model::DesignSerializer::load(r, motors, tmp), std::runtime_error);
    std::filesystem::remove(tmp);
 }
+

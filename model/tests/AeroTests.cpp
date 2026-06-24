@@ -8,6 +8,7 @@
 
 #include "model/MotorModel.h"
 #include "model/RocketModel.h"
+#include "model/tests/PlacementTestSupport.h"
 #include "model/ThrustCurve.h"
 #include "model/parts/Part.h"
 #include "model/parts/Parts.h"
@@ -72,8 +73,8 @@ TEST(AeroTest, CompositeCpIsCNalphaWeighted)
    EXPECT_DOUBLE_EQ(ba.cnAlpha, 0.0); // the body carries no normal force
 
    const double zBody = 0.225, zFins = 0.38; // CM-to-CM z stations from the nose CM (root datum)
-   nose->addChildPart(std::move(body), Vector3{0.0, 0.0, zBody});
-   nose->addChildPart(std::move(fins), Vector3{0.0, 0.0, zFins});
+   nose->addChildPart(body, model::part::test::cmToCm(*nose, *body, zBody));
+   nose->addChildPart(fins, model::part::test::cmToCm(*nose, *fins, zFins));
 
    const sim::AeroProfile prof = nose->getCompositeAero(refArea);
 
@@ -99,9 +100,9 @@ TEST(AeroTest, CompositeCdIsAdditive)
 {
    auto root = std::make_shared<AeroStub>("root", sim::AeroComponent{0.0, 0.0, 0.10});
    root->addChildPart(std::make_shared<AeroStub>("c1", sim::AeroComponent{0.5, 0.0, 0.20}),
-                      Vector3{0.0, 0.0, 0.10});
+                      model::part::abut(0.10));
    root->addChildPart(std::make_shared<AeroStub>("c2", sim::AeroComponent{0.0, 0.0, 0.30}),
-                      Vector3{0.0, 0.0, 0.20});
+                      model::part::abut(0.20));
 
    const sim::AeroProfile prof = root->getCompositeAero(1.0);
    EXPECT_NEAR(prof.cd, 0.60, 1e-12);      // cd adds over all parts
@@ -131,7 +132,7 @@ TEST(AeroTest, SharedReferenceAreaInvariant)
    const double rA = pi * R * R;
    const sim::AeroComponent noseA = nose->getAero(rA);
    const sim::AeroComponent finsA = fins->getAero(rA);
-   nose->addChildPart(std::move(fins), Vector3{0.0, 0.0, 0.30});
+   nose->addChildPart(fins, model::part::test::cmToCm(*nose, *fins, 0.30));
 
    const sim::AeroProfile profA = nose->getCompositeAero(rA);
    EXPECT_NEAR(profA.cnAlpha, noseA.cnAlpha + finsA.cnAlpha, 1e-12); // additive only after rescaling
@@ -165,8 +166,8 @@ TEST(AeroTest, AssembledRocketCmMassAndRefArea)
    // Fins mount at the body's aft end: root LE at body CM + (Lbody/2 - cr), set CM another xc aft.
    const double zFinsFromBody = (Lbody / 2.0 - cr) + finAxialMassCentroid(cr, ct, sweep);
 
-   body->addChildPart(std::move(fins), Vector3{0.0, 0.0, zFinsFromBody});
-   nose->addChildPart(std::move(body), Vector3{0.0, 0.0, zBody});
+   body->addChildPart(fins, model::part::test::cmToCm(*body, *fins, zFinsFromBody));
+   nose->addChildPart(body, model::part::test::cmToCm(*nose, *body, zBody));
 
    // Composite mass = sum of the parts.
    EXPECT_NEAR(nose->getCompositeMass(0.0), mN + mB + mF, 1e-12);
@@ -209,8 +210,8 @@ TEST(AeroTest, MotorIsMassButNotAeroOrReferenceContributor)
    auto nose = std::make_shared<model::part::ConicalNoseCone>("nose", R, 0.10, 0.0, 900.0, true);
    auto body = std::make_shared<model::part::BodyTube>("body", 0.018, R, 0.40, 680.0);
    auto fins = std::make_shared<model::part::FinSet>("fins", 3, 0.10, 0.05, 0.05, 0.04, 0.003, R, 600.0);
-   nose->addChildPart(std::move(body), Vector3{0.0, 0.0, 0.225});
-   nose->addChildPart(std::move(fins), Vector3{0.0, 0.0, 0.38});
+   nose->addChildPart(body, model::part::test::cmToCm(*nose, *body, 0.225));
+   nose->addChildPart(fins, model::part::test::cmToCm(*nose, *fins, 0.38));
 
    const double massNoMotor = nose->getCompositeMass(0.0);
    const double refNoMotor  = nose->maxFrontalReferenceArea();
@@ -219,7 +220,7 @@ TEST(AeroTest, MotorIsMassButNotAeroOrReferenceContributor)
    auto motor = std::make_shared<model::part::Motor>("motor", makeTestMotor(0.060, 0.030, 1.5, 20.0));
    const double motorMass = motor->getMass(0.0);
    EXPECT_GT(motorMass, 0.0);
-   nose->addChildPart(std::move(motor), Vector3{0.0, 0.0, 0.50});
+   nose->addChildPart(motor, model::part::test::cmToCm(*nose, *motor, 0.50));
 
    // Mass grows by exactly the motor's mass; CM shifts aft toward it.
    EXPECT_NEAR(nose->getCompositeMass(0.0), massNoMotor + motorMass, 1e-12);
@@ -246,8 +247,8 @@ TEST(AeroTest, CompositeCpThreadsNestedStations)
    const sim::AeroComponent fa = fins->getAero(refArea);
 
    const double zBody = 0.225, zFinsFromBody = 0.15; // fins nested UNDER body
-   body->addChildPart(std::move(fins), Vector3{0.0, 0.0, zFinsFromBody});
-   nose->addChildPart(std::move(body), Vector3{0.0, 0.0, zBody});
+   body->addChildPart(fins, model::part::test::cmToCm(*body, *fins, zFinsFromBody));
+   nose->addChildPart(body, model::part::test::cmToCm(*nose, *body, zBody));
 
    const sim::AeroProfile prof = nose->getCompositeAero(refArea);
    const double zFins = zBody + zFinsFromBody; // cumulative station from the root CM

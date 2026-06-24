@@ -325,7 +325,10 @@ std::vector<fs::path> designFiles()
 {
    std::vector<fs::path> files;
    for(const auto& e : fs::directory_iterator(kDesignsDir))
-      if(e.is_regular_file() && e.path().extension() == ".qrd")
+      if(e.is_regular_file() && e.path().extension() == ".qrd"
+         // *_pokethrough.qrd is the frozen self-intersecting offender (Part-Placement T4); it
+         // deliberately fails the overlap gate, so it is NOT part of the flyable flight matrix.
+         && e.path().filename().string().find("pokethrough") == std::string::npos)
          files.push_back(e.path());
    std::sort(files.begin(), files.end());
    return files;

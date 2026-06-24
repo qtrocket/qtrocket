@@ -71,11 +71,11 @@ TEST(RocketModelFacadeTest, AddPartAttachesUnderParentAndReportsSuccessOrFailure
 
    auto fins = finSet("Fins");
    const double finsMass = fins->getMass(0.0);
-   EXPECT_TRUE(r.addPart(rootId, fins, Vector3{0.0, 0.0, -0.10}));
+   EXPECT_TRUE(r.addPart(rootId, fins, model::part::abut(-0.10)));
    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass); // composite grew by the fins
 
    // Bad parent id -> false, and the tree is unchanged.
-   EXPECT_FALSE(r.addPart(999999u, bodyTube("Orphan"), Vector3::Zero()));
+   EXPECT_FALSE(r.addPart(999999u, bodyTube("Orphan"), model::part::abut()));
    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass);
 }
 
@@ -89,7 +89,7 @@ TEST(RocketModelFacadeTest, RemovePartRefusesRootAndDetachesChildren)
    auto fins = finSet("Fins");
    const Part::Id finsId = fins->getId();
    const double finsMass = fins->getMass(0.0);
-   ASSERT_TRUE(r.addPart(rootId, fins, Vector3{0.0, 0.0, -0.10}));
+   ASSERT_TRUE(r.addPart(rootId, fins, model::part::abut(-0.10)));
 
    // The root cannot be removed via removePart; the tree stays intact.
    EXPECT_EQ(r.removePart(rootId), nullptr);
@@ -114,13 +114,13 @@ TEST(RocketModelFacadeTest, AddPartAttachesUnderANonRootDescendant)
 
    auto mid = bodyTube("Mid");
    const Part::Id midId = mid->getId();
-   ASSERT_TRUE(r.addPart(rootId, mid, Vector3{0.0, 0.0, -0.20})); // mid under the root
+   ASSERT_TRUE(r.addPart(rootId, mid, model::part::abut(-0.20))); // mid under the root
 
    auto leaf = finSet("Fins");
    const Part::Id leafId = leaf->getId();
    const double massBefore = r.getMass(0.0);
    const double leafMass = leaf->getMass(0.0);
-   EXPECT_TRUE(r.addPart(midId, leaf, Vector3{0.0, 0.0, -0.10})); // leaf under the descendant `mid`
+   EXPECT_TRUE(r.addPart(midId, leaf, model::part::abut(-0.10))); // leaf under the descendant `mid`
    EXPECT_DOUBLE_EQ(r.getMass(0.0), massBefore + leafMass);       // composite includes the deep child
    ASSERT_NE(r.findPart(leafId), nullptr);                        // and findPart reaches it
    EXPECT_EQ(r.findPart(leafId)->getName(), "Fins");
@@ -136,7 +136,7 @@ TEST(RocketModelFacadeTest, RemovePartOfTheMotorBranchDropsTheMotor)
 
    auto motor = std::make_shared<model::part::Motor>("M", model::MotorModel{});
    const Part::Id motorId = motor->getId();
-   ASSERT_TRUE(r.addPart(rootId, motor, Vector3::Zero()));
+   ASSERT_TRUE(r.addPart(rootId, motor, model::part::abut()));
    EXPECT_TRUE(r.isMotorSet()); // addPart re-resolved and found the attached motor
 
    auto detached = r.removePart(motorId);
@@ -157,7 +157,7 @@ TEST(RocketModelFacadeTest, SetRootReresolvesMotorPartSoThrustNeverDangles)
    // Install a NEW tree that itself contains a Motor node -> motorPart must re-borrow it (the old
    // tree, and its Motor, are freed when topPart is replaced).
    auto root2 = bodyTube("Body2");
-   root2->addChildPart(std::make_shared<model::part::Motor>("M2", model::MotorModel{}), Vector3::Zero());
+   root2->addChildPart(std::make_shared<model::part::Motor>("M2", model::MotorModel{}), model::part::abut());
    r.setRoot(root2);
    EXPECT_TRUE(r.isMotorSet());             // re-borrowed from the new tree, not the freed old one
    EXPECT_NO_THROW((void)r.getThrust(1.0)); // safe: no dangling pointer

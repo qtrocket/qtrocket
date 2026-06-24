@@ -30,46 +30,6 @@ Matrix3 parallelAxisTerm(const Vector3& d)
 std::atomic<Part::Id> nextPartId{1};
 Part::Id makePartId() { return nextPartId.fetch_add(1, std::memory_order_relaxed); }
 
-/// @brief Infer the seat kind of a legacy attachment from the PART PAIR (whitepaper 8.2.1): a fin
-///        seats on the wall (OnSurface); a child whose OD fits the parent bore nests in it
-///        (NestInBore); otherwise the rims abut (Abut). Inferred from the parts, BEFORE any gap sign,
-///        so it is not circular -- NestInBore is the one seat that flips the sign.
-SeatKind inferSeat(const Part& parent, const Part& child)
-{
-   if(child.typeName() == "FinSet") { return SeatKind::OnSurface; }
-   const double childOuter = child.radiusOuterAt(0.0);   // child fore-plane OD (constant for a tube)
-   const double parentBore = parent.radiusInnerAt(0.0);  // parent fore-plane bore
-   if(parentBore > 0.0 && childOuter <= parentBore + 1e-9) { return SeatKind::NestInBore; }
-   return SeatKind::Abut;
-}
-
-/// @brief Recover the StationLink equivalent to a legacy CM-to-CM offset (whitepaper 8.2.1). Works
-///        entirely in +z = forward, so no axis is mirrored, and uses the SAME uniform local-CM
-///        expression (-L/2 + getCenterMassOffset().z()) the forward derivation uses, so it inverts
-///        cleanly per part: the recovered link reproduces the legacy child-CM-minus-parent-CM
-///        difference (childCm_tip = parentCmLocalZ + legacyOffset.z), the property the invariance gate
-///        relies on.
-StationLink recoverLink(const Part& parent, const Part& child, const Vector3& legacyOffset)
-{
-   const double parentCmLocalZ = -parent.getLength() / 2.0 + parent.getCenterMassOffset().z();
-   const double childCmLocalZ  = -child.getLength() / 2.0 + child.getCenterMassOffset().z();
-   // 1. Child fore-plane origin (in the parent frame) that reproduces the legacy CM offset.
-   const double childOriginZ = parentCmLocalZ - childCmLocalZ + legacyOffset.z();
-   // 2. Seat from the part pair, BEFORE applying any sign.
-   const SeatKind seat = inferSeat(parent, child);
-   // 3. Canonical station pair per seat; the gap absorbs whatever remains, so the resolved origin
-   //    equals childOriginZ regardless of the pair chosen.
-   double parentStation01 = 0.0;
-   double childStation01  = 1.0;
-   if(seat == SeatKind::NestInBore) { parentStation01 = 1.0; childStation01 = 0.0; }
-   else if(seat == SeatKind::OnSurface) { childStation01 = 0.0; }
-   const double pz          = (parentStation01 - 1.0) * parent.getLength();
-   const double cz          = (childStation01 - 1.0) * child.getLength();
-   const double gapUnsigned = childOriginZ + cz - pz;
-   // 4. Apply the seat sign LAST.
-   const double gap = (seat == SeatKind::NestInBore) ? -gapUnsigned : gapUnsigned;
-   return StationLink{parentStation01, childStation01, gap, seat, Quaternion::Identity()};
-}
 } // anonymous namespace
 
 Part::Part(const std::string& n,
@@ -145,19 +105,6 @@ void Part::addChildPart(std::shared_ptr<Part> child, StationLink link)
    // computeCompositeAt) and the resolved placement (rebuilt by ensurePlacementCache).
    markAsNeedsRecomputing();
    markPlacementDirty();
-}
-
-void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
-{
-   // Transitional shim: recover the StationLink that reproduces the legacy CM-to-CM placement, then
-   // forward to the primary overload. (A null child is forwarded so the primary logs it uniformly.)
-   if(!child)
-   {
-      addChildPart(std::move(child), StationLink{});
-      return;
-   }
-   const StationLink link = recoverLink(*this, *child, position);
-   addChildPart(std::move(child), link);
 }
 
 std::shared_ptr<Part> Part::cloneShallow() const

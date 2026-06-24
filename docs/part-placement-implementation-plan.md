@@ -1401,6 +1401,27 @@ spine; do them in order.
 - **Gating tests:** `PlacementInvariance.*` re-run on the `0.2` corpus; `WorkedExampleTests.*` (T4);
   `PokeThroughRegressionTests.UnfixedFixtureStillFires`; full `qtrocket_*` including `-L heavy`.
 
+  > **Note (2026-06-24) — as built.** Two plan premises did not hold and one decision was taken:
+  > - **No production poke-through to fix.** Empirically `xl75_multi` is **clean** under the shim and
+  >   stays clean after a faithful `0.2` cutover (the corpus re-saves with **zero drift** in mass/CG/
+  >   inertia — the cutover is purely `<offset>`→`<link>`). The legacy fixture's recovered links keep the
+  >   coupler clear of the nose; the poke-through exists only in the whitepaper's gap=0.04 geometry. So
+  >   `xl75_multi_pokethrough.qrd` is **hand-authored** from that whitepaper design (the
+  >   `ResolverSweepTests.CouplerPokesThroughNose` geometry), not "copied from an un-fixed xl75_multi."
+  >   `WorkedExampleTests` + `PokeThroughRegressionTests` drive it end-to-end through the reader.
+  > - **Clean break to 0.2-only (user decision).** The serializer no longer recovers `<offset>`: a legacy
+  >   `0.1` file is **rejected with a clear error** (`LegacyOffsetFileIsRejected`). The `Vector3`
+  >   `addChildPart` overload, `RocketModel::addPart`'s `Vector3` parameter, and `recoverLink`/`inferSeat`
+  >   are all removed; the production authoring surface is `StationLink`-only.
+  > - **Test migration.** ~60 call sites moved to `StationLink`. Composition/aero/motor tests that pin
+  >   values to a geometric-center-to-center placement use a small **test-only** helper
+  >   `model::part::test::cmToCm` (`model/tests/PlacementTestSupport.h`) that re-expresses that intent as
+  >   an explicit CM-station `StationLink` (behaviour-preserving, no production shim); clone/structural
+  >   tests use `abut(z)`. The CLI `addpart` now places by an abut gap (`z`); the runtime motor attaches
+  >   via a CM-station link so its CG contribution is unchanged.
+  > - The pokethrough fixture is excluded from the design-matrix enumeration (`designFiles()` skips
+  >   `*_pokethrough.qrd`) since it deliberately fails the gate and is not flyable.
+
 ### Step 13 — Heavy sweep + final regression
 
 - **Do:** run `ctest --test-dir build -R 'qtrocket_*'` (both `-LE heavy` and `-L heavy`).

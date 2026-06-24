@@ -303,12 +303,6 @@ public:
     */
    virtual void addChildPart(std::shared_ptr<Part> child, StationLink link = {});
 
-   /// @brief Transitional CM-to-CM shim, retained through the Part-Placement migration so legacy call
-   ///        sites and every legacy <offset> .qrd fixture still attach. It RECOVERS the equivalent
-   ///        StationLink from the legacy center-of-mass-to-center-of-mass offset (see Part.cpp) and
-   ///        forwards to the primary overload. Removed once the corpus is cut over (plan Step 12).
-   void addChildPart(std::shared_ptr<Part> child, Vector3 position);
-
    /**
     * @brief Detach the descendant with @p targetId from its owning parent and return it.
     *

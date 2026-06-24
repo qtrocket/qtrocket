@@ -237,14 +237,14 @@ TEST(FinSetTest, CloneIsDeepTypePreserving)
 {
    auto fins = std::make_shared<model::part::FinSet>(
       "fins", 4, EX.cr, EX.ct, EX.s, EX.sweep, EX.thk, EX.rb, EX.rho);
-   fins->addChildPart(pointMass("rail", 0.01), Vector3{0.0, 0.0, 0.01});
+   fins->addChildPart(pointMass("rail", 0.01), model::part::abut(0.01));
 
    auto copy = fins->clone();
    const double massBefore = copy->getCompositeMass(0.0);
    const double izzBefore = copy->getCompositeI(0.0)(2, 2);
 
    fins->setMass(99.0);
-   fins->addChildPart(pointMass("extra", 50.0), Vector3{0.0, 0.0, 1.0});
+   fins->addChildPart(pointMass("extra", 50.0), model::part::abut(1.0));
 
    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(2, 2), izzBefore);

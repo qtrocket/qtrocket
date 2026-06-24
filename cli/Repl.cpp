@@ -168,8 +168,8 @@ std::optional<double>* doubleFieldFor(const std::string& key, model::part::PartP
 }
 
 // Parse remaining "key=value" tokens into a PartParams (geometry keys), the part name ("name"), and
-// the CM-to-CM attach offset ("x"/"y"/"z"). A bad numeric value returns an error string (empty on
-// success); an UNKNOWN key is warned-and-skipped (forward tolerance, per the spec).
+// the attach offset ("x"/"y"/"z"); only z is used today (the forward standoff of an abut seat). A bad
+// numeric value returns an error string (empty on success); an UNKNOWN key is warned-and-skipped.
 std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& p, Vector3& offset)
 {
    std::string tok;
@@ -872,7 +872,9 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
       const auto childId = child->getId();
-      if(!rocket->addPart(parentId, std::move(child), offset))
+      // The child abuts its parent's aft plane with a forward standoff of the parsed z (x/y are coaxial
+      // in 3-DOF and ignored). A richer seat/station grammar can layer on later (whitepaper 8).
+      if(!rocket->addPart(parentId, std::move(child), model::part::abut(offset.z())))
       {
          out << "ERR addpart: no part with id " << parentId << " (or the attach was rejected)\n";
          return true;

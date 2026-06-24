@@ -1,17 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<QtRocketDesign version="0.1">
+<QtRocketDesign version="0.2">
   <design name=""/>
   <part type="NoseCone" name="ShellNose">
     <params baseRadius="0.02" length="0.16" wallThickness="0.002" density="1400" solid="false"/>
-    <offset x="0" y="0" z="0"/>
     <children>
       <part type="BodyTube" name="LongAirframe">
         <params innerRadius="0.0195" outerRadius="0.02" length="0.5" density="1400"/>
-        <offset x="0" y="0" z="-0.33000000000000002"/>
+        <link seat="Abut" parentStation="0" childStation="1" gap="-0.026666666666666672"/>
         <children>
           <part type="FinSet" name="BigFins">
             <params density="1400" rootChord="0.070000000000000007" tipChord="0.029999999999999999" span="0.070000000000000007" sweep="0.059999999999999998" thickness="0.0030000000000000001" bodyRadius="0.02" finCount="4"/>
-            <offset x="0" y="0" z="-0.215"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="-0.017333333333333312"/>
             <children/>
           </part>
         </children>

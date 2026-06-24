@@ -174,10 +174,10 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
          const std::string childName = child->getName();
          const auto before = node->getChildParts().size();
 
-         // The reader distinguishes the element shapes by which is present: a <link> (current intent
-         // form, 0.2), a legacy <offset> (CM-to-CM, 0.1, routed through the deprecated shim), or
-         // NEITHER -- a 0.2 part whose default-equal link was elided on write, which attaches by the
-         // zero-config abut default.
+         // 0.2 is the only supported placement form: a <link> (explicit intent) or NEITHER -- a part
+         // whose default-equal link was elided on write, which attaches by the zero-config abut default.
+         // A legacy 0.1 <offset> (CM-to-CM) is no longer recovered; such a file is rejected with a clear
+         // error rather than silently mis-placed.
          if(childNode.get_child_optional("link"))
          {
             const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
@@ -196,10 +196,9 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
          }
          else if(childNode.get_child_optional("offset"))
          {
-            const Vector3 off{ childNode.get<double>("offset.<xmlattr>.x", 0.0),
-                               childNode.get<double>("offset.<xmlattr>.y", 0.0),
-                               childNode.get<double>("offset.<xmlattr>.z", 0.0) };
-            node->addChildPart(std::move(child), off); // legacy 0.1 CM-to-CM shim
+            throw std::runtime_error(
+               "DesignSerializer: legacy 0.1 <offset> placement is no longer supported; this file "
+               "predates the 0.2 <link> format and must be re-created");
          }
          else
          {
