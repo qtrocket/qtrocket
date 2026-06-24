@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 /// \endcond
 
@@ -27,6 +28,20 @@ std::string tempFile(const std::string& tag)
 std::shared_ptr<model::part::BodyTube> bodyTube(const std::string& name)
 {
    return std::make_shared<model::part::BodyTube>(name, 0.0, 0.019, 0.20, 680.0);
+}
+
+std::string readFile(const std::string& path)
+{
+   std::ifstream in(path);
+   std::stringstream ss;
+   ss << in.rdbuf();
+   return ss.str();
+}
+
+void writeTextFile(const std::string& path, const std::string& contents)
+{
+   std::ofstream f(path);
+   f << contents;
 }
 
 class DesignRoundTrip : public ::testing::Test
@@ -265,4 +280,99 @@ TEST_F(DesignRoundTrip, MotorThrustWorksAfterReload)
    r2.launch();
    EXPECT_NO_THROW((void)r2.getThrust(0.5));
    EXPECT_DOUBLE_EQ(r2.getThrust(0.5), r.getThrust(0.5));
+}
+
+// ---- Step 10: <link> serialization, version 0.2 --------------------------------------------------
+
+// The writer stamps the current format version 0.2 (the <link> placement form).
+TEST_F(DesignRoundTrip, SaveWritesVersion0_2)
+{
+   const std::string tmp = tempFile("version");
+   {
+      model::RocketModel r;
+      r.setRoot(bodyTube("Solo"));
+      model::DesignSerializer::save(r, tmp);
+   }
+   const std::string xml = readFile(tmp);
+   std::filesystem::remove(tmp);
+   EXPECT_NE(xml.find("version=\"0.2\""), std::string::npos) << "writer must stamp version 0.2";
+}
+
+// A child attached by the zero-config default link (abut) round-trips: the writer ELIDES the default
+// <link>, and the reader's neither-element branch recovers the same abut placement. This exercises both
+// the elision (write) and the "0.2 file with no <link> attaches by abut" (read) DoD points together.
+TEST_F(DesignRoundTrip, DefaultLinkIsElidedAndReloadsAsAbut)
+{
+   model::RocketModel r;
+   r.setRoot(std::make_shared<model::part::ConicalNoseCone>("Nose", 0.019, 0.10, 0.0, 2700.0, true));
+   r.getTopPart()->addChildPart(bodyTube("Body")); // default StationLink{} == abut, equal radii
+
+   const std::string tmp = tempFile("defaultlink");
+   model::DesignSerializer::save(r, tmp);
+   const std::string xml = readFile(tmp);
+
+   // No <link> element anywhere: the body's link was the default (elided), and the root's link is the
+   // default placeholder (also elided).
+   EXPECT_EQ(xml.find("<link"), std::string::npos) << "a default-equal link must be elided on write";
+
+   model::MotorModelDatabase motors;
+   model::RocketModel r2;
+   model::DesignSerializer::load(r2, motors, tmp);
+   std::filesystem::remove(tmp);
+
+   // The child still attaches, and its placement matches the original abut -- proven by the composite CG.
+   ASSERT_EQ(r2.getTopPart()->getChildParts().size(), 1u);
+   EXPECT_EQ(r2.getTopPart()->getChildParts()[0].first->getName(), "Body");
+   const Vector3 cg  = r.getTopPart()->getCompositeCm(0.0);
+   const Vector3 cg2 = r2.getTopPart()->getCompositeCm(0.0);
+   for(int i = 0; i < 3; ++i) { EXPECT_NEAR(cg2(i), cg(i), 1e-9); }
+}
+
+// A 0.1 file stores CM-to-CM <offset> (no <link>); it must still load, routing each child through the
+// deprecated recovery shim. The presence of <offset> (not its absence) selects the shim branch.
+TEST_F(DesignRoundTrip, LegacyOffsetFileLoadsViaShim)
+{
+   const std::string tmp = tempFile("legacyoffset");
+   writeTextFile(tmp,
+      "<QtRocketDesign version=\"0.1\">"
+      "<design name=\"\"/>"
+      "<part type=\"NoseCone\" name=\"Nose\">"
+      "<params baseRadius=\"0.019\" length=\"0.10\" wallThickness=\"0\" density=\"2700\" solid=\"true\"/>"
+      "<offset x=\"0\" y=\"0\" z=\"0\"/>"
+      "<children>"
+      "<part type=\"BodyTube\" name=\"Body\">"
+      "<params innerRadius=\"0\" outerRadius=\"0.019\" length=\"0.20\" density=\"680\"/>"
+      "<offset x=\"0\" y=\"0\" z=\"-0.10\"/><children/></part>"
+      "</children></part></QtRocketDesign>");
+
+   model::MotorModelDatabase motors;
+   model::RocketModel r;
+   model::DesignSerializer::load(r, motors, tmp);
+   std::filesystem::remove(tmp);
+
+   ASSERT_EQ(r.getTopPart()->typeName(), "NoseCone");
+   ASSERT_EQ(r.getTopPart()->getChildParts().size(), 1u);
+   EXPECT_EQ(r.getTopPart()->getChildParts()[0].first->getName(), "Body");
+   EXPECT_GT(r.getMass(0.0), 0.0); // shim placed the child; composite mass is real
+}
+
+// An unknown seat string is rejected fail-closed with a clear error (not silently defaulted).
+TEST_F(DesignRoundTrip, UnknownSeatKindIsRejected)
+{
+   const std::string tmp = tempFile("badseat");
+   writeTextFile(tmp,
+      "<QtRocketDesign version=\"0.2\">"
+      "<design name=\"\"/>"
+      "<part type=\"NoseCone\" name=\"Nose\">"
+      "<params baseRadius=\"0.019\" length=\"0.10\" wallThickness=\"0\" density=\"2700\" solid=\"true\"/>"
+      "<children>"
+      "<part type=\"BodyTube\" name=\"Body\">"
+      "<params innerRadius=\"0\" outerRadius=\"0.019\" length=\"0.20\" density=\"680\"/>"
+      "<link seat=\"Bogus\" parentStation=\"0\" childStation=\"1\" gap=\"0\"/><children/></part>"
+      "</children></part></QtRocketDesign>");
+
+   model::MotorModelDatabase motors;
+   model::RocketModel r;
+   EXPECT_THROW(model::DesignSerializer::load(r, motors, tmp), std::runtime_error);
+   std::filesystem::remove(tmp);
 }

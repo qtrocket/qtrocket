@@ -80,6 +80,18 @@ pt::ptree writeLink(const part::StationLink& link)
    return n;
 }
 
+// True when a link carries no authored intent beyond the zero-config default (child fore plane abuts
+// parent aft plane, no gap). Such a link is ELIDED on write and recovered as the default by the
+// reader's neither-element branch. childRot is not persisted in 0.2 (the documented additive 6-DOF
+// step), so only the serialized scalar fields and the seat participate; in 3-DOF childRot is always the
+// identity, so the elision loses nothing.
+bool isDefaultLink(const part::StationLink& link)
+{
+   const part::StationLink d{};
+   return link.seat == d.seat && link.parentStation01 == d.parentStation01
+       && link.childStation01 == d.childStation01 && link.gap == d.gap;
+}
+
 // Recursively serialize a (non-Motor) part and its non-Motor descendants. @p link is this part's
 // stored placement intent relative to its parent (a default link for the root, ignored on load). The
 // absolute pose is never serialized -- it is re-derived by the resolver on load (whitepaper 7).
@@ -89,7 +101,12 @@ pt::ptree writePart(const part::Part& node, const part::StationLink& link)
    pn.put("<xmlattr>.type", node.typeName());
    pn.put("<xmlattr>.name", node.getName());
    pn.add_child("params", writeParams(part::params(node)));
-   pn.add_child("link", writeLink(link));
+   // Emit <link> only when it carries non-default intent; a default-equal link (zero-config abut) is
+   // elided and recovered as the default by the reader's neither-element branch (whitepaper 7).
+   if(!isDefaultLink(link))
+   {
+      pn.add_child("link", writeLink(link));
+   }
 
    pt::ptree children;
    for(const auto& [child, childLink] : node.getChildParts())
@@ -157,9 +174,10 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
          const std::string childName = child->getName();
          const auto before = node->getChildParts().size();
 
-         // The reader distinguishes the two element shapes by which is present: a <link> (current
-         // intent form) or a legacy <offset> (CM-to-CM, routed through the deprecated shim). Defaults
-         // are the zero-config abut link, so a <part> with neither still attaches.
+         // The reader distinguishes the element shapes by which is present: a <link> (current intent
+         // form, 0.2), a legacy <offset> (CM-to-CM, 0.1, routed through the deprecated shim), or
+         // NEITHER -- a 0.2 part whose default-equal link was elided on write, which attaches by the
+         // zero-config abut default.
          if(childNode.get_child_optional("link"))
          {
             const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
@@ -176,12 +194,16 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
                Quaternion::Identity()};
             node->addChildPart(std::move(child), link);
          }
-         else
+         else if(childNode.get_child_optional("offset"))
          {
             const Vector3 off{ childNode.get<double>("offset.<xmlattr>.x", 0.0),
                                childNode.get<double>("offset.<xmlattr>.y", 0.0),
                                childNode.get<double>("offset.<xmlattr>.z", 0.0) };
-            node->addChildPart(std::move(child), off); // legacy CM-to-CM shim
+            node->addChildPart(std::move(child), off); // legacy 0.1 CM-to-CM shim
+         }
+         else
+         {
+            node->addChildPart(std::move(child), part::StationLink{}); // elided default -> abut
          }
          if(node->getChildParts().size() != before + 1) // addChildPart is a silent no-op on rejection
          {
@@ -198,7 +220,8 @@ void DesignSerializer::save(const RocketModel& rocket, const std::string& filena
 {
    pt::ptree tree;
    // Format version "major.minor": load accepts any minor within major 0 and rejects other majors.
-   tree.put("QtRocketDesign.<xmlattr>.version", "0.1");
+   // 0.2 introduces the <link> placement element (0.1 wrote a CM-to-CM <offset>, still read via shim).
+   tree.put("QtRocketDesign.<xmlattr>.version", "0.2");
    tree.put("QtRocketDesign.design.<xmlattr>.name", rocket.getName());
 
    tree.add_child("QtRocketDesign.part", writePart(*rocket.getTopPart(), part::StationLink{}));
