@@ -1317,12 +1317,23 @@ spine; do them in order.
   parts whose CM is off-center *and* whose helper formerly carried a wrong reference, so they are the
   parts where a stale-sign mistake could survive the aggregate check yet still be wrong. The
   hand-computed `-0.225` isolates exactly that risk for the cone.
-- **Equality is exact, not within a tolerance** — the migration is a re-expression of the same
-  arithmetic over the same geometry, so any deviation is a defect a tolerance would hide. Use exact
-  `==` for mass/inertia and for `getCompositeCm` after the datum shift (the shift is by a hand-known
-  constant); hand-computed scalars like `-0.225` may use a tight `1e-12`.
-- **DoD:** the gate passes on all 24 fixtures with exact equality; the cone CM pins to `-0.225`; the
-  fin CM pins to `x_c - L`.
+- **Equality within the ULP-drift tolerance** *(amended — see note)* — the original plan called for
+  exact `==`, on the premise that the migration is a re-expression of the *same* arithmetic so any
+  deviation is a real defect. That premise does not hold in IEEE-754: the resolver re-associates the
+  floating-point sums (different composite-walk order, plus the datum shift adds new add/subtracts),
+  and FP addition is not associative, so the result is mathematically identical but drifts from the
+  legacy bits. The gate therefore compares mass/inertia and `getCompositeCm`-after-datum-shift with a
+  relative tolerance `kTol = 1e-9` (`tests/PlacementInvarianceTests.cpp`). The measured worst drift
+  across all 24 fixtures is `2.2204460492503131e-16` (**exactly 1 ULP**), so the tolerance is ~7 orders
+  of magnitude above the noise floor and far below any real placement bug (which moves a value by
+  orders of magnitude more). `ReportWorstDrift` prints the live worst drift every run, so a regression
+  that widens it toward the tolerance stays visible even while the assertion passes. Hand-computed
+  scalars like `-0.225` use a tight `1e-12`.
+  > **Decision (2026-06-23):** keep the `1e-9` tolerance and amend this DoD rather than pursue true
+  > bit-identity (which would require restructuring the new arithmetic to match the legacy operation
+  > order exactly — fragile, and partly infeasible because the datum shift introduces new ops).
+- **DoD:** the gate passes on all 24 fixtures within the documented `1e-9` tolerance (worst observed
+  drift = 1 ULP); the cone CM pins to `-0.225` at `1e-12`; the fin CM pins to `x_c - L` at `1e-12`.
 - **Gating tests:** `PlacementInvariance.*` (all), `PlacementInvariance.ConeNoseCmHandPinnedMinus0p225`,
   `PlacementInvariance.FinSetCmHandPinned`.
 

@@ -333,3 +333,74 @@ TEST(PlacementInvariance, ReportWorstDrift)
    std::cout << "[ INVARIANCE ] worst relative drift = " << f17(worst) << " at " << where << "\n";
    EXPECT_LT(worst, kTol) << "drift exceeds the tolerance at " << where;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Hand-pinned CM sub-tests (implementation plan Step 9). A symmetric part has its CM at mid-length
+// (cmLocalZ = -L/2), so a sign slip cannot hide there. The cone and fin set are the only current parts
+// whose CM is off-center AND whose helper formerly carried a wrong reference (the cone's reversed-frame
+// sign, the fin's end- vs mid-chord reference), so they are the parts where a stale-sign mistake could
+// survive the aggregate gate above yet still be wrong. These two tests pin each off-center part's local
+// CM to a value HAND-COMPUTED from raw geometry -- independent of both readers -- at a tight 1e-12 (the
+// plan permits a tolerance for these hand-computed scalars).
+
+namespace
+{
+constexpr double kHandTol = 1e-12;
+
+/// Load a fixture's airframe-only tree (empty motor DB, as in snapshotFixture) and hand back its root.
+/// getTopPart() returns the owning shared_ptr by value, so the tree outlives the local RocketModel.
+std::shared_ptr<model::part::Part> loadAirframe(const std::string& stem)
+{
+   utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);  // quiet motor-absent warnings
+   model::RocketModel        rocket;
+   model::MotorModelDatabase motors;  // intentionally empty -> airframe geometry only
+   model::DesignSerializer::load(rocket, motors, kDesignsDir + "/" + stem + ".qrd");
+   return rocket.getTopPart();
+}
+
+/// A part's OWN CM in its local fore-plane (tip) datum: -L/2 + getCenterMassOffset().z().
+double localCmZ(const model::part::Part& p)
+{
+   return -p.getLength() / 2.0 + p.getCenterMassOffset().z();
+}
+
+/// First part of the given typeName() in resolved DFS order (the fixtures hold one of each).
+const model::part::Part* findByType(const model::part::Part& root, const std::string& type)
+{
+   for(const model::part::Placed& pl : model::part::resolvePlacements(root, model::part::Pose{}))
+   {
+      if(pl.part->typeName() == type) { return pl.part; }
+   }
+   return nullptr;
+}
+}  // namespace
+
+// xl75_multi's solid nose cone (L = 0.30 m): the centroid of a solid cone sits hbar = L/4 forward of
+// the base, so its CM in the tip datum is hbar - L = L/4 - L = -3L/4 = -0.225 m (i.e. 3L/4 aft of the
+// tip). The reversed-frame defect would instead report +0.075 m, so this hand-pin isolates that risk.
+TEST(PlacementInvariance, ConeNoseCmHandPinnedMinus0p225)
+{
+   const std::shared_ptr<model::part::Part> root = loadAirframe("xl75_multi");
+   const model::part::Part*                 cone = findByType(*root, "NoseCone");
+   ASSERT_NE(cone, nullptr) << "xl75_multi must contain a NoseCone";
+   EXPECT_NEAR(cone->getLength(), 0.30, kHandTol) << "fixture cone length changed -- re-derive the pin";
+   EXPECT_NEAR(localCmZ(*cone), -0.225, kHandTol);
+}
+
+// xl75_multi's fin set: the axial MASS centroid x_c is measured from the root leading edge, so in the
+// tip datum the CM is x_c - L (L = rootChord). x_c is hand-computed here from the fixture's trapezoid
+// geometry (cr = 0.10, ct = 0.04, sweep = 0.04), NOT read back through the part, so an end- vs mid-chord
+// reference slip (the latent fin defect, worth cr/2 = 0.05 m) would be caught.
+TEST(PlacementInvariance, FinSetCmHandPinned)
+{
+   const std::shared_ptr<model::part::Part> root = loadAirframe("xl75_multi");
+   const model::part::Part*                 fin  = findByType(*root, "FinSet");
+   ASSERT_NE(fin, nullptr) << "xl75_multi must contain a FinSet";
+
+   const double cr = 0.10, ct = 0.04, sweep = 0.04;  // fixture trapezoid (hard-coded -> independent)
+   const double xc = (cr * cr + cr * ct + ct * ct + sweep * (cr + 2.0 * ct)) / (3.0 * (cr + ct));
+   const double expected = xc - cr;  // x_c - L, with L = rootChord ~= -0.0457 m
+
+   EXPECT_NEAR(fin->getLength(), cr, kHandTol) << "fixture fin root chord changed -- re-derive the pin";
+   EXPECT_NEAR(localCmZ(*fin), expected, kHandTol);
+}
