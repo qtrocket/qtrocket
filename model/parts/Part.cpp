@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <utility>
 /// \endcond
 
@@ -227,6 +229,11 @@ void Part::ensurePlacementCache() const
    if(placementDirty)
    {
       resolvedCache = resolvePlacements(*this, Pose{}); // this part planted at the local origin
+      // Diagnostics gate: run the Layer-2 envelope sweep ONCE here, alongside the resolve, and cache the
+      // verdict. Both consumers read this cached SolveResult -- computeCompositeAt refuses a failed solve
+      // and the visualizer flags the offender -- so the check costs nothing per ODE step (whitepaper 4.5,
+      // 6). Geometry (hence overlaps) is invariant under a burn, so it is gated by placementDirty alone.
+      resolvedDiagnostics = sweepOverlaps(resolvedCache);
       placementDirty = false;
    }
 }
@@ -237,6 +244,17 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
    // geometry by getMass(t). Each part's CM in the sub-tree-root frame is its resolved fore-plane
    // origin plus the uniform local-CM station (-L/2 + getCenterMassOffset().z()); +z = forward.
    ensurePlacementCache();
+
+   // Diagnostics gate: a self-intersecting design is a hard, located failure -- never a silently-wrong
+   // mass/inertia. The verdict is cached (computed once per structural resolve), so this is a flag read,
+   // not a re-sweep, on every burn step (the GateDoesNotReFirePerStepDuringBurn guarantee).
+   if(!resolvedDiagnostics.ok)
+   {
+      const std::string detail = resolvedDiagnostics.diagnostics.empty()
+                                    ? std::string("self-intersecting geometry")
+                                    : resolvedDiagnostics.diagnostics.front().message;
+      throw std::runtime_error("Part::computeCompositeAt: placement solve failed -- " + detail);
+   }
 
    struct Contribution { Vector3 cmInRoot; const Part* part; double mass; };
    std::vector<Contribution> parts;

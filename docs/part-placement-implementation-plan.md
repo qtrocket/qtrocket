@@ -1362,6 +1362,24 @@ spine; do them in order.
 - **Gating tests:** `DiagnosticsGateTests.OverNestedCouplerStopsSolve`,
   `DiagnosticsGateTests.CleanDesignSolves`, `DiagnosticsGateTests.GateDoesNotReFirePerStepDuringBurn`.
 
+  > **Note (2026-06-23) — a sweep false positive surfaced and was fixed here, to keep the [invariance-safe]
+  > guarantee.** The plan assumed the shim-loaded corpus was clean except `xl75_multi` (whose poke-through
+  > appears only at the Step-12 `NestInBore` cutover — under the shim it is clean). Empirically, two OTHER
+  > corpus fixtures, `mid24_multi` and `large38_multi`, resolved `ok == false` today — but on a **false
+  > positive**, not a real overlap: a fin set mounted on the body's outer wall, whose root chord overhangs
+  > the body aft plane, axially overlaps a sibling AFT coupler of the **same outer radius**; the Layer-2
+  > sweep compared the fin's body disc (at `bodyRadius`) against that coupler's **bore**, as if an
+  > externally-mounted part had to fit inside it. They are radially separated by the airframe wall — no
+  > collision. Wiring a throwing gate without fixing this would have broken `PlacementInvariance` on those
+  > two. **Fix:** `sweepOverlaps` now skips the bore-capacity test when the offender's outer radius reaches
+  > the (hollow) host's outer skin (`rOff >= hostOuter`) — it is sitting ON/OUTSIDE the host, not nested
+  > within it. A **solid** host keeps the poke-through test unchanged (there `cap == hostOuter`, so the
+  > guard never trips and `xl75`'s coupler-through-nose still fires). Regressed by
+  > `SweepTests.OnSurfaceFinOverCoRadialAftCouplerIsClean`; the fix touches only the `ok`/diagnostics
+  > verdict, never mass/inertia/CM, so it is invariance-safe by construction. With it, all 24 fixtures
+  > resolve `ok == true` under the shim, so Step 12's "every production `0.2` fixture resolves clean"
+  > expectation is unchanged (mid24/large38 were never real poke-throughs; only `xl75_multi` is).
+
 ### Step 12 — Phase 3: cut over the fixtures, surface+fix the poke-through, retire the shim **[invariance]**
 
 - **Do:** re-save the corpus to `0.2` (`<offset>` → `<link>`). For `xl75_multi`, the coupler migrates to

@@ -260,6 +260,28 @@ TEST(SweepTests, OnSurfaceFinNotFalseDisc)
    }
 }
 
+TEST(SweepTests, OnSurfaceFinOverCoRadialAftCouplerIsClean)
+{
+   // Regression for the fin-vs-coupler FALSE POSITIVE (corpus fixtures mid24_multi / large38_multi):
+   // a fin set mounted on the body's outer wall, whose root chord protrudes a hair past the body aft
+   // plane, axially overlaps a sibling AFT coupler of the SAME outer radius (a tail tube continuing the
+   // airframe OD). The fin's body disc (r = bodyRadius) sits ON the coupler's outer skin, not inside its
+   // bore -- they are radially separated by the airframe wall -- so the sweep must NOT flag it.
+   auto body    = std::make_shared<BodyTube>("B", 0.0121, 0.013, 0.30, 1000.0);   // OD 0.013, bore 0.0121
+   auto fins    = std::make_shared<FinSet>("F", 6, 0.04, 0.02, 0.025, 0.015, 0.0025, 0.013, 900.0);
+   auto coupler = std::make_shared<BodyTube>("C", 0.0121, 0.013, 0.04, 1000.0);    // co-radial aft tube
+
+   // Fin root near the aft end so it overhangs the body aft plane; coupler abutted aft of the body.
+   body->addChildPart(
+      fins, StationLink{.parentStation01 = 0.02, .childStation01 = 0.0, .seat = SeatKind::OnSurface});
+   body->addChildPart(coupler, StationLink{.parentStation01 = 0.0, .childStation01 = 1.0,
+                                           .gap = 0.0, .seat = SeatKind::Abut});
+
+   const SolveResult r = sweepOverlaps(resolvePlacements(*body, Pose{}));
+   EXPECT_TRUE(r.ok) << "fin disc on a co-radial aft coupler must not false-collide";
+   EXPECT_TRUE(r.diagnostics.empty());
+}
+
 TEST(SweepTests, FullyNestedCouplerIsClean)
 {
    // Insert the coupler its full length (depth 0.08) so it stays entirely inside the body bore and

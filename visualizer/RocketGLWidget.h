@@ -98,6 +98,7 @@ private:
       int                      wireVertexCount{0};    ///< expanded edge vertices (3 edges/triangle)
       QString                  typeName;          ///< ColorScheme lookup key
       QVector3D                color{0.7F, 0.7F, 0.7F}; ///< resolved RGB in [0,1]
+      bool                     overlapOffender{false}; ///< diagnostics flagged this part; render in the error color
    };
 
    /// @brief Upload @ref items into @ref meshes (requires a current GL context). Clears any prior

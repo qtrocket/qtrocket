@@ -188,6 +188,17 @@ SolveResult sweepOverlaps(const std::vector<Placed>& placed, double tol)
 
          const double rOff = off.part->radiusOuterAt(zWorld - off.originZ);
          const double cap  = host->part->innerCapacityAt(zWorld - host->originZ);
+
+         // A hollow host's bore capacity gates only an offender NESTED within the host's outer envelope.
+         // When the offender's outer radius reaches the host's outer skin (rOff >= hostOuter), it sits ON
+         // or OUTSIDE that skin -- e.g. a fin set's body disc lying on a co-radial aft coupler, or any
+         // part sharing the outer mould line -- so a bore "intrusion" is a modelling artifact, not a
+         // collision. A SOLID host keeps the poke-through test unchanged: there cap == hostOuter, so this
+         // guard never trips and exceeding the surface still flags (the xl75 coupler-through-nose case).
+         const double hostOuter = host->part->radiusOuterAt(zWorld - host->originZ);
+         const bool   boreHost  = cap < hostOuter - tol;        // hollow: capacity is the bore, not the skin
+         if(boreHost && rOff >= hostOuter - tol) { continue; }  // offender lies on/outside the host skin
+
          if(rOff > cap + tol)
          {
             const double pen = rOff - cap;

@@ -15,6 +15,7 @@ add_executable(model_tests
    PlacementTypesTests.cpp
    GeometryProfileTests.cpp
    ResolverSweepTests.cpp
+   DiagnosticsGateTests.cpp
 )
 qtrocket_enable_coverage(model_tests)
 

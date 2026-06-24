@@ -49,6 +49,12 @@ struct RenderItem
    Mesh    mesh;
    QString typeName; ///< Part::typeName() -- the ColorScheme lookup key
    QString name;     ///< Part::getName() -- for UI / picking / tooltips
+
+   /// @brief True when the diagnostics sweep flagged this part as an overlap offender. The renderer
+   ///        overrides the type color with an error color so a self-intersecting design reads at a
+   ///        glance; @ref overlapMessage carries the located reason for a tooltip / status line.
+   bool    overlapOffender{false};
+   QString overlapMessage; ///< located diagnostic for this offender (empty when not an offender)
 };
 
 /**

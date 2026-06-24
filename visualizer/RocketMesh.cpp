@@ -8,12 +8,15 @@
 #include "model/parts/BodyTube.h"
 #include "model/parts/FinSet.h"
 #include "model/parts/HollowSphere.h"
+#include "utils/Logger.h"
 #include "utils/math/MathTypes.h"
 
 // C++ headers
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <string>
 #include <tuple>
 
 namespace viz
@@ -431,6 +434,20 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
    const std::vector<model::part::Placed> placed =
       model::part::resolvePlacements(*root, model::part::Pose{});
 
+   // The diagnostics sweep verdict (cached, computed once per structural resolve): map each offender id
+   // to its located message so the offending RenderItems render in an error color. Surface the failure
+   // on the log too, so a headless / CLI caller sees the same hard signal the simulator throws on.
+   std::map<model::part::PartId, std::string> offenderMessage;
+   const model::part::SolveResult& diag = root->placementDiagnostics();
+   if(!diag.ok)
+   {
+      for(const model::part::OverlapDiagnostic& d : diag.diagnostics)
+      {
+         offenderMessage[d.offender] = d.message;
+         utils::Logger::getInstance()->error("RocketMesh: placement overlap -- " + d.message);
+      }
+   }
+
    for(const model::part::Placed& p : placed)
    {
       const model::part::Part& part = *p.part;
@@ -468,6 +485,11 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
          item.mesh = std::move(mesh);
          item.typeName = QString::fromStdString(part.typeName());
          item.name = QString::fromStdString(part.getName());
+         if(const auto it = offenderMessage.find(part.getId()); it != offenderMessage.end())
+         {
+            item.overlapOffender = true;
+            item.overlapMessage  = QString::fromStdString(it->second);
+         }
          items.push_back(std::move(item));
       }
    }

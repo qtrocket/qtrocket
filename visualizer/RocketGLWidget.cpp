@@ -514,8 +514,9 @@ void RocketGLWidget::uploadMeshes()
       gm->vbo.release();
       gm->ibo.release();
 
-      gm->indexCount = static_cast<int>(src.indices.size());
-      gm->typeName   = item.typeName;
+      gm->indexCount      = static_cast<int>(src.indices.size());
+      gm->typeName        = item.typeName;
+      gm->overlapOffender = item.overlapOffender;
 
       // Wireframe geometry: expand each triangle into its three edges as an explicit GL_LINES
       // buffer (positions + normals preserved so the lit shader shades the lines identically). This
@@ -619,8 +620,12 @@ void RocketGLWidget::buildOverlays()
 
 void RocketGLWidget::applySchemeColors()
 {
+   // A part the diagnostics sweep flagged as an overlap offender renders in a fixed error red, overriding
+   // its type color, so a self-intersecting design is unmistakable regardless of the active scheme.
+   static const QVector3D kErrorColor{0.90F, 0.10F, 0.10F};
    for (const auto& meshPtr : meshes)
-      meshPtr->color = qcolorToVec3(scheme.colorFor(meshPtr->typeName));
+      meshPtr->color = meshPtr->overlapOffender ? kErrorColor
+                                                : qcolorToVec3(scheme.colorFor(meshPtr->typeName));
 }
 
 void RocketGLWidget::cleanup()

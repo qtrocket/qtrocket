@@ -170,6 +170,14 @@ public:
    sim::AeroProfile getCompositeAero(double refArea) const;
 
    /**
+    * @brief The cached Layer-2 envelope-sweep verdict for this sub-tree (this part planted at the local
+    *        origin), resolved once per structural change. @c ok == false means the geometry
+    *        self-intersects; @c diagnostics locate each offender. The same verdict the composite gate
+    *        throws on, exposed so the visualizer can flag the offending parts in an error colour.
+    */
+   const SolveResult& placementDiagnostics() const { ensurePlacementCache(); return resolvedDiagnostics; }
+
+   /**
     * @brief This part's axial length L (m) along the longitudinal axis: the extent it occupies,
     *        z in [-L, 0] in the +z = forward local frame. Promoted to a base virtual so the shared
     *        placement machinery (stationAt / axialLength) can read it polymorphically; every concrete
@@ -392,6 +400,12 @@ private:
    ///        a burning motor every step (the two gates of whitepaper 4.5). mutable: it is a memoized
    ///        derivation, rebuilt by const readers.
    mutable std::vector<Placed> resolvedCache;
+
+   /// @brief Cached Layer-2 envelope-sweep verdict for resolvedCache, rebuilt alongside it by
+   ///        ensurePlacementCache (once per structural resolve, NOT per ODE step). ok == false means the
+   ///        sub-tree self-intersects: computeCompositeAt refuses it and the visualizer flags the
+   ///        offender, so the two consumers cannot disagree about validity (whitepaper 6).
+   mutable SolveResult resolvedDiagnostics;
 
    /// @brief Resolve this sub-tree's placements into resolvedCache iff placementDirty, then clear it.
    void ensurePlacementCache() const;
