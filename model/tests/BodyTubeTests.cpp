@@ -7,6 +7,7 @@
 
 #include "model/InertiaTensors.h"
 #include "model/parts/BodyTube.h"
+#include "model/parts/HollowSphere.h"
 #include "model/parts/Part.h"
 
 namespace
@@ -118,6 +119,25 @@ TEST(BodyTubeTest, RejectsNonPhysical)
    EXPECT_THROW(model::part::BodyTube("bad", 0.019, 0.019, 0.30, 680.0), std::invalid_argument); // ri==ro
    EXPECT_THROW(model::part::BodyTube("bad", 0.018, 0.019, 0.00, 680.0), std::invalid_argument); // L==0
    EXPECT_THROW(model::part::BodyTube("bad", 0.018, 0.019, 0.30, 0.0),   std::invalid_argument); // rho==0
+}
+
+TEST(BodyTubeTest, TubeAndSphereCmAtMid)
+{
+   // T3 uniform-rule: an axially symmetric part has its own CM at mid-length, so getCenterMassOffset().z()
+   // is exactly 0 and its local CM station is -L/2. Pinned DIRECTLY here (not via a composite) for the two
+   // symmetric primitives -- a body tube and a hollow sphere -- so a stray non-zero offset cannot hide.
+   const double cmTol = 1e-15;
+
+   const double ri = 0.018, ro = 0.019, L = 0.30;
+   model::part::BodyTube tube("body", ri, ro, L, 680.0);
+   EXPECT_NEAR(tube.getCenterMassOffset().z(), 0.0, cmTol);
+   EXPECT_NEAR(-tube.getLength() / 2.0 + tube.getCenterMassOffset().z(), -L / 2.0, cmTol);  // cmLocalZ
+
+   const double sphereRo = 0.05;  // axialLength = 2*ro, so -L/2 = -ro
+   model::part::HollowSphere sphere("ball", 0.0, sphereRo, 900.0);
+   EXPECT_NEAR(sphere.getCenterMassOffset().z(), 0.0, cmTol);
+   EXPECT_NEAR(sphere.getLength(), 2.0 * sphereRo, cmTol);
+   EXPECT_NEAR(-sphere.getLength() / 2.0 + sphere.getCenterMassOffset().z(), -sphereRo, cmTol);  // cmLocalZ
 }
 
 TEST(BodyTubeTest, CloneIsDeepTypePreserving)

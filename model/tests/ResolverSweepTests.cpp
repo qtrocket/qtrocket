@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "model/parts/BodyTube.h"
@@ -228,6 +229,21 @@ TEST(SweepTests, Layer1NestInBoreOverWideFlags)
    EXPECT_NEAR(d->penetration, 0.039 - 0.0376, 1e-12);
 }
 
+TEST(SweepTests, Layer1AbutMismatchFlags)
+{
+   // Two parts abutted rim-to-rim whose outer radii differ by more than tol: the Abut seam check must
+   // flag exactly one diagnostic (offender = child, host = parent) with the rim-radius gap as the
+   // penetration. (The over-wide test above is NestInBore; this exercises the distinct Abut branch.)
+   auto              host  = std::make_shared<BodyTube>("Host", 0.030, 0.040, 0.20, 1700.0);  // OD 0.040
+   auto              child = std::make_shared<BodyTube>("Child", 0.020, 0.030, 0.10, 1700.0); // OD 0.030
+   const StationLink link  = model::part::abut();  // default abut: child fore -> parent aft, equal radii expected
+   const auto        d     = radialSeamCheck(*host, *child, link);
+   ASSERT_TRUE(d.has_value());
+   EXPECT_EQ(d->offender, child->getId());
+   EXPECT_EQ(d->host, host->getId());
+   EXPECT_NEAR(d->penetration, 0.040 - 0.030, 1e-12);  // |parent rim - child rim|
+}
+
 // ---- Layer 2: envelope sweep (T4) ---------------------------------------------------------------
 
 TEST(SweepTests, CouplerPokesThroughNose)
@@ -243,6 +259,30 @@ TEST(SweepTests, CouplerPokesThroughNose)
    EXPECT_EQ(d.host, s.nose);  // the host is the nose -- a non-tree neighbour (coupler is linked to the body)
    EXPECT_NEAR(d.zWorld, -0.26, 1e-12);
    EXPECT_NEAR(d.penetration, 0.0376 - 0.0395 * (0.26 / 0.30), 1e-12);  // ~0.003367 m
+}
+
+TEST(SweepTests, Layer2DiagnosticIsLocated)
+{
+   // A poke-through diagnostic carries a LOCATED, human-readable message, not a bare flag: it names the
+   // offender and host by id, the offending OD, the host capacity, the penetration, and the world z.
+   // (The plan's worked-example narrative -- "0.04 m forward of the body rim", "skin" -- is not produced
+   // by the generic envelope sweep, which reasons over intervals and capacities, not seat relationships;
+   // the realized message is this located OD/capacity/z form. See the plan's Part III as-built note.)
+   const Stack               s      = buildXl75();
+   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{});
+   const SolveResult         r      = sweepOverlaps(placed);
+
+   ASSERT_FALSE(r.ok);
+   ASSERT_EQ(r.diagnostics.size(), 1u);
+   const model::part::OverlapDiagnostic& d = r.diagnostics.front();
+
+   ASSERT_FALSE(d.message.empty());
+   EXPECT_NE(d.message.find("intrudes"), std::string::npos) << d.message;
+   EXPECT_NE(d.message.find("z="), std::string::npos) << d.message;
+   EXPECT_NE(d.message.find(std::to_string(d.offender)), std::string::npos)
+      << "message must name the offender id: " << d.message;
+   EXPECT_NE(d.message.find(std::to_string(d.host)), std::string::npos)
+      << "message must name the host id: " << d.message;
 }
 
 TEST(SweepTests, OnSurfaceFinNotFalseDisc)
@@ -280,6 +320,44 @@ TEST(SweepTests, OnSurfaceFinOverCoRadialAftCouplerIsClean)
    const SolveResult r = sweepOverlaps(resolvePlacements(*body, Pose{}));
    EXPECT_TRUE(r.ok) << "fin disc on a co-radial aft coupler must not false-collide";
    EXPECT_TRUE(r.diagnostics.empty());
+}
+
+TEST(SweepTests, TieBreakSmallestId)
+{
+   // When an offender's sample station is covered by MORE THAN ONE valid (non-excluded) host, the sweep
+   // must select the smallest-Id covering host (Placement.cpp), so the diagnostic is deterministic and
+   // reproducible -- independent of child-insertion order and the (unstable) interval sort. No real
+   // fixture produces a multi-cover host, so this is a crafted geometry: three co-located coaxial solid
+   // rods abutted to a trunk's aft plane -- two thin hosts of EQUAL outer radius (so they never flag each
+   // other: rOff == cap) and one fat offender that pokes through BOTH at once.
+   auto base     = std::make_shared<BodyTube>("Base", 0.0, 0.02, 0.05, 1000.0);     // solid trunk
+   // Construct lo BEFORE hi so lo carries the SMALLER id; the fat offender pokes both equally.
+   auto lo       = std::make_shared<BodyTube>("HostLo", 0.0, 0.01, 0.10, 1000.0);    // solid, OD 0.01
+   auto hi       = std::make_shared<BodyTube>("HostHi", 0.0, 0.01, 0.10, 1000.0);    // solid, OD 0.01
+   auto offender = std::make_shared<BodyTube>("Offender", 0.0, 0.03, 0.10, 1000.0);  // solid, OD 0.03
+   const PartId loId = lo->getId(), hiId = hi->getId(), offId = offender->getId();
+   ASSERT_LT(loId, hiId) << "construction order should make lo the smaller id";
+
+   // Co-locate all three on the trunk's aft plane (identical abut link => identical resolved span). Add
+   // the LARGER-id host FIRST, so a correct result proves the choice tracks id, not insertion order.
+   const StationLink coincide = model::part::abut();
+   base->addChildPart(hi, coincide);
+   base->addChildPart(lo, coincide);
+   base->addChildPart(offender, coincide);
+
+   const SolveResult r = sweepOverlaps(resolvePlacements(*base, Pose{}));
+   ASSERT_FALSE(r.ok);
+   ASSERT_EQ(r.diagnostics.size(), 1u);  // only the fat offender pokes; the equal-radius hosts do not
+   const model::part::OverlapDiagnostic& d = r.diagnostics.front();
+   EXPECT_EQ(d.offender, offId);
+   EXPECT_EQ(d.host, loId) << "multi-cover host must be the smallest id (" << loId << "), not " << hiId;
+   EXPECT_NEAR(d.penetration, 0.03 - 0.01, 1e-12);
+
+   // Reproducible: re-resolving the SAME tree (what a reload does) yields the identical host, with no
+   // dependence on the unstable interval sort.
+   const SolveResult r2 = sweepOverlaps(resolvePlacements(*base, Pose{}));
+   ASSERT_EQ(r2.diagnostics.size(), 1u);
+   EXPECT_EQ(r2.diagnostics.front().host, loId);
 }
 
 TEST(SweepTests, FullyNestedCouplerIsClean)

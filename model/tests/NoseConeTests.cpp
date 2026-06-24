@@ -151,6 +151,33 @@ TEST(NoseConeTest, AeroConeCNalphaAndCp)
    EXPECT_NEAR(tipStation(shell), -2.0 / 3.0 * L, 1e-12);
 }
 
+// CP is a function of external SHAPE only, never of mass distribution. A solid cone and a thin-shell
+// cone of identical base radius and length are aerodynamically identical (same CNalpha, same CP at
+// 2/3 L aft of the tip) but have DIFFERENT centers of mass (-L/4 vs -L/6 from the middle). So the
+// COMPOSITE cp must be the textbook -2/3 L for BOTH, independent of the CM. This locks in a placement-
+// migration correction: the legacy aero walk leaked each part's own CM into cnAlphaXcp/cnAlpha (it gave
+// +L/12 vs 0 for these two cones -- the source of the static-margin drift across the corpus), which the
+// migrated CM-station formula (Part::getCompositeAero) exactly cancels. A regression that re-contaminates
+// cp with the CM would split these two values apart.
+TEST(NoseConeTest, CompositeCpIsCmIndependentSolidVsShell)
+{
+   const double R = 0.0395, L = 0.30;
+   const double refArea = pi * R * R;
+   auto solid = std::make_shared<model::part::ConicalNoseCone>("solid", R, L, 0.0,   1700.0, true);
+   auto shell = std::make_shared<model::part::ConicalNoseCone>("shell", R, L, 0.001, 1700.0, false);
+
+   // Precondition: the two cones really DO have different CM (else CM-independence proves nothing).
+   ASSERT_NEAR(solid->getCenterMassOffset().z(), -L / 4.0, 1e-12);
+   ASSERT_NEAR(shell->getCenterMassOffset().z(), -L / 6.0, 1e-12);
+
+   // ... yet identical composite CP, equal to the textbook 2/3 L aft of the tip (CM-independent).
+   const double cpSolid = solid->getCompositeAero(refArea).cp();
+   const double cpShell = shell->getCompositeAero(refArea).cp();
+   EXPECT_NEAR(cpSolid, -2.0 / 3.0 * L, 1e-12);
+   EXPECT_NEAR(cpShell, -2.0 / 3.0 * L, 1e-12);
+   EXPECT_DOUBLE_EQ(cpSolid, cpShell);
+}
+
 TEST(NoseConeTest, ReducesToShellVsSolidCorrectly)
 {
    // The `solid` flag must switch BOTH the CM location and the inertia tensor (guards against the flag

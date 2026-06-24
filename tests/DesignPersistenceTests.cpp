@@ -5,6 +5,7 @@
 /// \cond
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -369,5 +370,60 @@ TEST_F(DesignRoundTrip, UnknownSeatKindIsRejected)
    model::RocketModel r;
    EXPECT_THROW(model::DesignSerializer::load(r, motors, tmp), std::runtime_error);
    std::filesystem::remove(tmp);
+}
+
+// All three distinct seat kinds (Abut / NestInBore / OnSurface) with NON-default station and gap fields
+// round-trip exactly: each reloaded StationLink equals the original (seat, both stations, gap). childRot
+// is not persisted in 0.2 (identity in 3-DOF), so it is not compared. This is the only direct check of
+// non-default link fidelity -- the other round-trip tests use the default abut link and verify placement
+// only indirectly via the composite CG. (No composite is computed here: purely serialization fidelity.)
+TEST_F(DesignRoundTrip, LinkRoundTrips)
+{
+   using model::part::SeatKind;
+   using model::part::StationLink;
+
+   auto root  = std::make_shared<model::part::BodyTube>("Root", 0.0376, 0.0395, 0.50, 700.0);
+   auto cAbut = std::make_shared<model::part::BodyTube>("Abutted", 0.0376, 0.0395, 0.10, 700.0);
+   auto cNest = std::make_shared<model::part::BodyTube>("Nested", 0.030, 0.0376, 0.08, 700.0);
+   auto cSurf = std::make_shared<model::part::FinSet>("Surfaced", 3, 0.05, 0.02, 0.03, 0.02, 0.003, 0.0395, 600.0);
+
+   const StationLink lAbut{.parentStation01 = 0.0,  .childStation01 = 1.0, .gap = 0.012, .seat = SeatKind::Abut};
+   const StationLink lNest{.parentStation01 = 1.0,  .childStation01 = 0.0, .gap = 0.04,  .seat = SeatKind::NestInBore};
+   const StationLink lSurf{.parentStation01 = 0.30, .childStation01 = 0.0, .gap = 0.0,   .seat = SeatKind::OnSurface};
+
+   root->addChildPart(cAbut, lAbut);
+   root->addChildPart(cNest, lNest);
+   root->addChildPart(cSurf, lSurf);
+
+   model::RocketModel r;
+   r.setRoot(root);
+
+   const std::string tmp = tempFile("links");
+   model::DesignSerializer::save(r, tmp);
+   model::MotorModelDatabase motors;
+   model::RocketModel r2;
+   model::DesignSerializer::load(r2, motors, tmp);
+   std::filesystem::remove(tmp);
+
+   // Index reloaded children by name so the comparison is order-independent.
+   std::map<std::string, StationLink> got;
+   for(const auto& [child, link] : r2.getTopPart()->getChildParts())
+   {
+      got[child->getName()] = link;
+   }
+   ASSERT_EQ(got.size(), 3u);
+
+   const auto expectLink = [&](const std::string& name, const StationLink& exp)
+   {
+      ASSERT_TRUE(got.count(name) == 1u) << "missing reloaded child '" << name << "'";
+      const StationLink& a = got[name];
+      EXPECT_EQ(a.seat, exp.seat) << name << " seat";
+      EXPECT_DOUBLE_EQ(a.parentStation01, exp.parentStation01) << name << " parentStation";
+      EXPECT_DOUBLE_EQ(a.childStation01, exp.childStation01) << name << " childStation";
+      EXPECT_DOUBLE_EQ(a.gap, exp.gap) << name << " gap";
+   };
+   expectLink("Abutted", lAbut);
+   expectLink("Nested", lNest);
+   expectLink("Surfaced", lSurf);
 }
 

@@ -602,14 +602,16 @@ resolved `childPose.origin.z()` — the same root-frame station every other cons
 tuple (`RocketMesh.cpp:466-469`), instead translates each geometric-centered primitive by the
 resolver's `Pose.origin` (and, when 6-DOF arrives, rotates by `Pose.orient`).
 
-> **Aero static-margin invariance (a subtlety the invariance gate relies on).** The datum change moves
-> both `cp()` and `cg()` by the *same* fixed offset — the root's own CM station — because both are now
-> reported relative to the nose tip rather than the root's own CM. The integrator consumes mass and
-> inertia *about the CM* (both datum-independent and bit-stable) and the **static margin `cp() − cg()`
-> is therefore bit-invariant** across the refactor, even though the absolute `cp()` and `cg()` values
-> move to the tip datum together. This tells the implementer exactly which aero quantities must be
-> bit-stable (mass, inertia-about-CM, `cp() − cg()`) versus datum-shifted (absolute `cp()`, `cg()`).
-> It is checked by an integration test (T6).
+> **Aero CP datum + a correction the migration makes (updated 2026-06-24).** The datum change moves both
+> `cp()` and `cg()` to the nose-tip datum. `cg`, mass, and inertia-about-CM are bit-invariant across the
+> refactor. The **static margin `cp() − cg()` is NOT** bit-invariant, however: implementing its test
+> surfaced that the *legacy* `cp` was CM-contaminated (the legacy aero walk leaked each part's own CM into
+> `cnAlphaXcp/cnAlpha`), so the migrated, CM-cancelling `cp` *corrects* the static margin by ~0.1–2% on
+> every fixture. The migrated `cp` is the physically correct, CM-independent value (a CP is a function of
+> external shape only). 3-DOF flight is unaffected — `cp` is unused until 6-DOF. So the implementer must
+> hold bit-stable: **mass, inertia-about-CM, CG (after the datum shift), resolved stations** — but `cp`
+> and the static margin are *corrected*, not preserved. The correction is pinned by
+> `NoseConeTest.CompositeCpIsCmIndependentSolidVsShell`.
 
 > **Both consumers, one resolver, identical numbers.** The simulator's composite/aero code and the
 > visualizer's mesh walk obtain every part's absolute placement from the *same* call to
@@ -1302,8 +1304,10 @@ spine; do them in order.
   reproduce the Phase-0 snapshot: bit-identical `getCompositeMass(0)` and `getCompositeI(0)`, and
   matching `getCompositeCm(0)` + resolved stations after the one tip-datum shift.
 - **Gating tests:** `PlacementInvariance.MassAndInertiaBitIdentical`,
-  `PlacementInvariance.CgMatchesUnderTipDatumShift`, `PlacementInvariance.ResolvedStationsMatch`,
-  `PlacementInvariance.StaticMarginBitInvariant`. Plus the full
+  `PlacementInvariance.CgMatchesUnderTipDatumShift`, `PlacementInvariance.ResolvedStationsMatch`. (A
+  planned `StaticMarginBitInvariant` was dropped: it revealed the migration *corrects* a CM-contaminated
+  legacy `cp` rather than preserving it — see the Part III as-built note; the correctness is pinned by
+  `NoseConeTest.CompositeCpIsCmIndependentSolidVsShell`.) Plus the full
   `model_tests`/`integration_tests`/`cli_tests` green.
 
 ### Step 9 — Phase 2: run the gate + the hand-checked CM sub-tests **[invariance]**
@@ -1440,6 +1444,48 @@ where the migration is a pure re-expression (mass, inertia about CM, the datum-s
 margin); `1e-12` for hand-computed scalars; `1e-4`/`1e-5` where existing tests already use
 approximations (`FinSetTests.cpp:110`, the cone disk-integral oracle `NoseConeTests.cpp:88-92`).
 
+> **As-built (2026-06-24).** T1–T8 were authored incrementally as the Part II gating tests, not as a
+> separate phase. A read-only audit reconciled every plan row against the tree; the suite was already
+> ~85% present (most rows live under as-built names that differ from the idealized names below — match
+> on the *assertion*, not the literal test name). The audit's residual gaps were then closed:
+>
+> - **Filled (5):** `T5 LinkRoundTrips` (`DesignPersistenceTests.cpp` — the only *direct* check that
+>   non-default `NestInBore`/`OnSurface` link fields survive save→load); `T6 CorpusStableAfterCutover`
+>   (`PlacementInvarianceTests.cpp` — proves the migrated 0.2 writer is reload-idempotent on the corpus);
+>   `T4 Layer1AbutMismatchFlags` (the Abut rim-mismatch path, distinct from the existing NestInBore
+>   over-wide test); `T3 TubeAndSphereCmAtMid` (`BodyTubeTests.cpp` — direct symmetric-part CM rule for
+>   the tube and the sphere); `T4 TieBreakSmallestId` (`ResolverSweepTests.cpp` — a crafted three-rod
+>   multi-cover geometry proving the sweep picks the smallest-id covering host deterministically;
+>   mutation-verified to fail if the rule is flipped).
+> - **`T6 StaticMarginBitInvariant` — the premise was FALSE; the migration *corrected* `cp` (2026-06-24).**
+>   Writing this test surfaced that the static margin `cp() − cg()` is **not** invariant: it changed by
+>   ~0.1–2% on **all 24** fixtures. Investigation (algebraic + an empirical solid-vs-shell-cone probe)
+>   proved this is a **correction, not a regression**. The legacy aero walk leaked each part's own CM into
+>   the CP (`cnAlphaXcp/cnAlpha`), so the legacy `cp` was CM-contaminated; the migrated formula cancels
+>   the CM, giving the textbook CM-independent CP (a cone's CP is 2/3 L from its tip regardless of mass).
+>   `mass / inertia / CG / resolved stations` remain bit-invariant; 3-DOF flight is unaffected (`cp` is
+>   unused until 6-DOF). **Resolution:** the false-premise invariance test was removed; the correctness it
+>   should have guarded is now locked by `NoseConeTest.CompositeCpIsCmIndependentSolidVsShell` (solid and
+>   shell cones of identical shape ⇒ identical composite `cp` = −2/3 L). The §Part II aero-invariance note,
+>   the Step-8 gating list, the §Guarantees summary, and the `Part.cpp` `getCompositeAero` comment were all
+>   corrected to state `cp`/static-margin is corrected, **not** legacy-invariant.
+> - **`T4 Layer2DiagnosticIsLocated` — realized against the actual message.** The generic envelope sweep
+>   reasons over intervals and capacities, not seat relationships, so it cannot (and does not) emit the
+>   worked-example narrative "0.04 m forward of the body rim" / "skin". The production message
+>   (`Placement.cpp`) is the located form `part <id> (OD …) intrudes into part <id> (capacity …) by …
+>   at z=…`; the test asserts that located content (offender/host ids, OD/capacity, penetration, z).
+>   The narrative phrasing in the row below is descriptive intent, not a serialized contract.
+> - **Obsolete (4) — retired by the Step-12 clean break** (the legacy 0.1 `<offset>` shim was removed):
+>   `T5 LegacyOffsetStillLoads` and `T6 ShimSeatInferredBeforeSign` / `ShimNoMirror` / `ShimAbutRecovers`.
+>   All four are replaced by `DesignRoundTrip.LegacyOffsetFileIsRejected` (a 0.1 file is now rejected with
+>   a clear error, not silently re-placed). Annotated inline below.
+> - **Deferred (intentional, tracked):** `T6 Phase0SnapshotIsSelfConsistent` (low value —
+>   the baseline is frozen and already diffed bit-for-bit); `T8 TensorRotationIsIdentityUnderIdentityR`
+>   (the `R·I·Rᵀ` line is deliberately omitted in 3-DOF, so there is nothing to guard until 6-DOF — a
+>   co-located `TODO` at the omitted line in `Part.cpp` ties the test-to-write to the code-to-write).
+>   The `GateStopsBothConsumers` visualizer-colour sub-claim is likewise untested (GL render path);
+>   the composite-gate throw half is covered by `DiagnosticsGateTests`.
+
 ### T1 — Geometry profile unit tests (`model_tests`, Step 4)
 
 | Test | Assertion |
@@ -1498,7 +1544,7 @@ The `xl75_multi` end-to-end, with exact whitepaper numbers:
 | `GateStopsBothConsumers` | `SolveResult.ok == false` → `computeCompositeAt`/`getCompositeI(0)` throws; visualizer renders the offender in error colour. |
 | `FixedFixtureResolvesClean` | after reducing the depth/length (Step 12), `xl75_multi` resolves `ok == true`. |
 | `OnSurfaceFinNotFalseDisc` | the fin set contributes only its body disc to the sweep; it does **not** false-positive against the adjacent body tube (regression for the rejected `bodyRadius + span` disc). |
-| `TieBreakSmallestId` | when multiple intervals cover a sample station, the host is the smallest-`Id` covering part excluding the offender and its ancestor chain; reproducible across reloads. |
+| `TieBreakSmallestId` | **DONE (2026-06-24, `ResolverSweepTests.cpp`).** When multiple intervals cover a sample station, the host is the smallest-`Id` covering part excluding the offender and its ancestor chain; reproducible across re-resolves. Crafted three-rod multi-cover geometry; mutation-verified (flipping the rule to largest-id fails the test). |
 
 ### T5 — Serialization / `<link>` tests (`integration_tests`, Step 10)
 
@@ -1508,7 +1554,7 @@ The `xl75_multi` end-to-end, with exact whitepaper numbers:
 | `OmittedDefaultLinkAbuts` | a `0.2` `<part>` with no `<link>` attaches `{0, 1, 0, Abut}`. |
 | `DefaultLinkIsElidedOnWrite` | a default-equal link is not written. |
 | `UnknownSeatRejected` | `seat="Wedge"` → load error on the `makePart`-rejection path (fail-closed). |
-| `LegacyOffsetStillLoads` | a `0.1` `<offset>` file loads via the shim, reproducing the legacy placement (also covered by T6). |
+| `LegacyOffsetStillLoads` | **OBSOLETE (Step-12 clean break — shim removed).** Replaced by `LegacyOffsetFileIsRejected`: a `0.1` `<offset>` file is now rejected with a clear error, not re-placed. |
 | `VersionGateUnchanged` | `0.2` passes the `major == "0"` gate (`DesignSerializer.cpp:186`); an unknown major is still rejected. |
 | `RoundTripPreservesMassCgStructure` | extends `DesignPersistenceTests` to `0.2`: mass, CG, child count, multi-child order preserved. |
 
@@ -1520,12 +1566,12 @@ The `xl75_multi` end-to-end, with exact whitepaper numbers:
 | `MassAndInertiaBitIdentical` | for all 24 fixtures, migrated `getCompositeMass(0)` and `getCompositeI(0)` equal the Phase-0 snapshot with exact `==`. |
 | `CgMatchesUnderTipDatumShift` | migrated `getCompositeCm(0)` equals the Phase-0 CG re-expressed into the tip datum by `cmLocalZ_root` (no extra tolerance). |
 | `ResolvedStationsMatch` | every part's resolved axial station equals the legacy station under the same single datum shift. |
-| `StaticMarginBitInvariant` | `cp() - cg()` (static margin) is bit-stable across the refactor for every fixture, even though absolute `cp()`/`cg()` both move to the tip datum together (§4.4). |
+| `StaticMarginBitInvariant` | **PREMISE FALSE — removed (2026-06-24).** The static margin is **not** legacy-invariant: the migration *corrected* a CM-contaminated legacy `cp` (changed ~0.1–2% on all 24 fixtures). The correctness it should have guarded — `cp` is CM-independent (shape-only) — is now pinned by `NoseConeTest.CompositeCpIsCmIndependentSolidVsShell`. See the as-built note above. |
 | `ConeNoseCmHandPinnedMinus0p225` | `xl75_multi` solid nose `cmLocalZ == -0.225` (hand-computed, independent of both code paths, `1e-12`). |
 | `FinSetCmHandPinned` | `xl75_multi` fin set `cmLocalZ == x_c - L` (hand-computed). |
-| `ShimSeatInferredBeforeSign` | the shim recovers `NestInBore` for the coupler (small OD inside large ID) *before* signing the gap, so the recovered station equals the legacy `+0.49`-derived station. |
-| `ShimNoMirror` | the legacy `+0.49` coupler offset is read as forward with no sign flip (regression for "+z forward throughout"). |
-| `ShimAbutRecovers` | the legacy nose→body `<offset z=-0.6>` recovers to an `Abut` link whose resolved body station matches the legacy station (sign-preserving seat). |
+| `ShimSeatInferredBeforeSign` | **OBSOLETE (Step-12 clean break — shim removed).** Replaced by `LegacyOffsetFileIsRejected`. |
+| `ShimNoMirror` | **OBSOLETE (Step-12 clean break — shim removed).** Replaced by `LegacyOffsetFileIsRejected`. |
+| `ShimAbutRecovers` | **OBSOLETE (Step-12 clean break — shim removed).** Replaced by `LegacyOffsetFileIsRejected`. |
 | `CorpusStableAfterCutover` | re-running the invariance gate on the fresh `0.2` corpus (Step 12) confirms corrected designs are stable under reload. |
 
 ### T7 — Structural / regression tests (existing suites, Steps 6, 13)
@@ -1767,9 +1813,11 @@ below are the **live** ones and supersede them.
   mass re-weights every step. `setMass`/`setI` do not set `placementDirty`. (§4.5)
 - **Diagnostics gate both consumers cheaply.** `SolveResult.ok == false` stops both; computed once per
   structural resolve, cached; guarding the inner loop is one boolean. (§6.5)
-- **Physics-invariant migration.** Bit-identical mass and inertia-about-CM; CG matches after one known
-  datum shift to the nose tip; static margin `cp() - cg()` bit-invariant; gated by a test written
-  first whose baseline is never disturbed. (§Part II, T6)
+- **Physics-invariant migration (with one correction).** Bit-identical mass and inertia-about-CM; CG
+  matches after one known datum shift to the nose tip; resolved stations bit-stable — gated by a test
+  written first whose baseline is never disturbed. The static margin `cp() − cg()` is the one quantity
+  the migration *corrects* rather than preserves (the legacy `cp` was CM-contaminated by ~0.1–2%); 3-DOF
+  flight is unaffected (`cp` unused until 6-DOF). (§Part II, T6 as-built note)
 - **Zero schema cost for 6-DOF.** `Pose::orient` and `StationLink::childRot` carried from day one;
   enabling rotation adds one composition line (`I' = R I Rᵀ`), no type/schema/signature change. (§8)
 - **Degenerate geometry is total.** Clamped stations, guarded taper divide, point-sample zero-length

@@ -231,6 +231,11 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
    // Pass 2: inertia about the composite CM. Shift each part's own (mass-weighted) tensor to temp_cm
    // via the parallel-axis theorem. (6-DOF would first rotate the tensor by pl.pose.orient -- the one
    // new line of whitepaper 9.2; identity today, so it is omitted to stay bit-stable.)
+   // TODO(6-DOF, whitepaper 9.2): when that R*I*R^T rotation is added here, write the deferred test
+   // PlacementTypesTests.TensorRotationIsIdentityUnderIdentityR in the SAME change -- it pins that the
+   // new term reduces to identity in 3-DOF (a no-op on existing flights). Deferred deliberately (plan
+   // T8): there is no production rotation to guard until this line exists, so a test written now could
+   // only assert an Eigen identity, not QtRocket behavior.
    Matrix3 I = Matrix3::Zero();
    for(const Contribution& c : parts)
    {
@@ -245,8 +250,15 @@ sim::AeroProfile Part::getCompositeAero(double refArea) const
 {
    // Both consumers read the same resolved geometry: re-express every part's x_cp (reported from its
    // OWN CM) onto the shared sub-tree-root (tip) datum -- the part's CM station = pose.origin.z +
-   // (-L/2 + getCenterMassOffset().z()). cp() and cg() then share the tip datum, so cp() - cg() (the
-   // static margin) is datum-independent and bit-stable across the refactor (whitepaper 4.4).
+   // (-L/2 + getCenterMassOffset().z()). Adding cmStation back exactly CANCELS the part's own CM that
+   // cnAlphaXcp carried, so the composite cp is independent of mass distribution -- a CP depends on
+   // external shape only (pinned by NoseConeTest.CompositeCpIsCmIndependentSolidVsShell). cp() and cg()
+   // then share the tip datum, so cp() - cg() (the static margin) is datum-independent within the
+   // resolved tree (whitepaper 4.4).
+   // NOTE: this is NOT bit-stable against the LEGACY reader. The legacy aero walk omitted this cancelling
+   // term, leaking each part's CM into cp, so the migration CORRECTS the static margin by ~0.1-2% on the
+   // corpus (the migrated cp is the physically correct one). 3-DOF flight is unaffected -- cp is unused
+   // until 6-DOF. (Mass/inertia/CG/stations DO remain bit-invariant; see PlacementInvarianceTests.)
    ensurePlacementCache();
    sim::AeroProfile profile;
    profile.refArea = refArea;

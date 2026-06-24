@@ -12,8 +12,10 @@
 //     definition -- `Phase0SnapshotIsSelfConsistent` passes, establishing the ground truth.
 //   * Later (Steps 8-9, 12): the SAME snapshot machinery is re-run against the MIGRATED reader and
 //     compared to this baseline (mass/inertia bit-identical; CG and stations after one known
-//     tip-datum shift; static margin cp()-cg() bit-invariant). Those comparison tests are added in
-//     Step 8 and reuse `snapshotFixture` / `parseBaseline` below.
+//     tip-datum shift). Those comparison tests are added in Step 8 and reuse `snapshotFixture` /
+//     `parseBaseline` below. NOTE: the static margin cp()-cg() is deliberately NOT compared -- the
+//     migration CORRECTS a CM-contaminated legacy cp (see the StaticMargin note further down and
+//     NoseConeTest.CompositeCpIsCmIndependentSolidVsShell), so the baseline cp is not reproduced.
 //
 // Two deliberate choices, both documented in the baseline header:
 //   1. Each fixture is loaded with an EMPTY motor DB. A fixture stores its motor as `<motor
@@ -33,6 +35,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -89,6 +92,34 @@ std::string f17(double x)
    return std::string(buf);
 }
 
+/// Snapshot a fully built airframe tree (the migrated reader's output) -- the invariance quantities at
+/// t = 0. Shared by the fixture loader and the cutover-reload check (CorpusStableAfterCutover) below.
+DesignSnapshot snapshotRoot(model::part::Part& root)  // non-const: getComposite* lazily recompute
+{
+   DesignSnapshot s;
+   s.mass    = root.getCompositeMass(0.0);
+   s.cm      = root.getCompositeCm(0.0);
+   s.inertia = root.getCompositeI(0.0);
+
+   // cp() = cnAlphaXcp / cnAlpha is independent of the reference area (it cancels), so any fixed,
+   // nonzero refArea gives a reproducible CP; use 1.0.
+   const sim::AeroProfile aero = root.getCompositeAero(1.0);
+   s.cp      = aero.cp();
+   s.cpValid = aero.cpValid;
+
+   // Per-part CM station in the tip datum: pose.origin + the uniform local CM (-L/2 +
+   // getCenterMassOffset().z()) -- the same expression the migrated composite pass uses. DFS order,
+   // matching the baseline's DFS order. parts[0] is the root: its station IS cmLocalZ_root.
+   for(const model::part::Placed& pl : model::part::resolvePlacements(root, model::part::Pose{}))
+   {
+      const Vector3 off = pl.part->getCenterMassOffset();
+      const Vector3 cmLocal(off.x(), off.y(), -pl.part->getLength() / 2.0 + off.z());
+      const Vector3 cmInRoot = pl.pose.origin + pl.pose.orient * cmLocal;
+      s.parts.push_back(PartStation{pl.part->typeName(), pl.part->getName(), cmInRoot});
+   }
+   return s;
+}
+
 /// Load one fixture (EMPTY motor DB -> airframe-only) and snapshot the MIGRATED reader's output.
 /// CG / CP / per-part stations come back in the new tip datum (relative to the nose tip); the
 /// comparison (below) re-expresses the legacy root-own-CM-datum baseline into it by the single fixed
@@ -98,31 +129,7 @@ DesignSnapshot snapshotFixture(const std::string& stem)
    model::RocketModel        rocket;
    model::MotorModelDatabase motors;  // intentionally empty -- see the file/baseline header
    model::DesignSerializer::load(rocket, motors, kDesignsDir + "/" + stem + ".qrd");
-
-   const std::shared_ptr<model::part::Part> root = rocket.getTopPart();
-
-   DesignSnapshot s;
-   s.mass    = root->getCompositeMass(0.0);
-   s.cm      = root->getCompositeCm(0.0);
-   s.inertia = root->getCompositeI(0.0);
-
-   // cp() = cnAlphaXcp / cnAlpha is independent of the reference area (it cancels), so any fixed,
-   // nonzero refArea gives a reproducible CP; use 1.0.
-   const sim::AeroProfile aero = root->getCompositeAero(1.0);
-   s.cp      = aero.cp();
-   s.cpValid = aero.cpValid;
-
-   // Per-part CM station in the tip datum: pose.origin + the uniform local CM (-L/2 +
-   // getCenterMassOffset().z()) -- the same expression the migrated composite pass uses. DFS order,
-   // matching the baseline's DFS order. parts[0] is the root: its station IS cmLocalZ_root.
-   for(const model::part::Placed& pl : model::part::resolvePlacements(*root, model::part::Pose{}))
-   {
-      const Vector3 off = pl.part->getCenterMassOffset();
-      const Vector3 cmLocal(off.x(), off.y(), -pl.part->getLength() / 2.0 + off.z());
-      const Vector3 cmInRoot = pl.pose.origin + pl.pose.orient * cmLocal;
-      s.parts.push_back(PartStation{pl.part->typeName(), pl.part->getName(), cmInRoot});
-   }
-   return s;
+   return snapshotRoot(*rocket.getTopPart());
 }
 
 /// Relative-or-absolute closeness: |a - b| <= tol * max(1, |a|, |b|).
@@ -308,6 +315,14 @@ TEST(PlacementInvariance, ResolvedStationsMatch)
    }
 }
 
+// NOTE: the static margin cp - cg is deliberately NOT asserted invariant against the legacy baseline.
+// The migration CORRECTED a latent bug: the legacy aero walk leaked each part's own CM into the CP
+// (cnAlphaXcp/cnAlpha), so the legacy cp -- and hence the baseline static margin -- was wrong by ~0.1-2%
+// on every fixture. The migrated CP is CM-independent (a CP depends on external shape only), which is the
+// physically correct behavior; it is pinned by NoseConeTest.CompositeCpIsCmIndependentSolidVsShell. The
+// migrated mass / inertia / CG / resolved stations stay bit-invariant (the tests above), and 3-DOF flight
+// is unaffected (cp is unused until 6-DOF). See the plan's Part III as-built note (T6).
+
 // Diagnostic: report the worst observed relative drift across the corpus, so the chosen tolerance can
 // be judged against reality (and a regression that widens it is visible in the log).
 TEST(PlacementInvariance, ReportWorstDrift)
@@ -332,6 +347,55 @@ TEST(PlacementInvariance, ReportWorstDrift)
    }
    std::cout << "[ INVARIANCE ] worst relative drift = " << f17(worst) << " at " << where << "\n";
    EXPECT_LT(worst, kTol) << "drift exceeds the tolerance at " << where;
+}
+
+// Step-12 cutover stability: the fresh 0.2 corpus must be reload-stable. Loading a fixture, saving it
+// back through the MIGRATED 0.2 writer, and reloading must reproduce the same composite mass / CG /
+// inertia and the same resolved part stations (an idempotent round trip). This re-runs the invariance
+// quantities on the corpus AS WRITTEN by the new serializer -- proving the cutover designs do not drift
+// on reload, independent of the frozen legacy baseline. (Empty motor DB both ways -> airframe-only, so
+// the motor's absence is consistent and never perturbs the comparison.)
+TEST(PlacementInvariance, CorpusStableAfterCutover)
+{
+   utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);  // quiet motor-absent warnings
+   const std::map<std::string, DesignSnapshot> baseline = parseBaseline();
+   ASSERT_EQ(baseline.size(), kCorpusSize) << "the Phase-0 corpus is fixed at 24 fixtures";
+
+   for(const auto& [stem, ignored] : baseline)
+   {
+      // Snapshot the fixture as loaded ...
+      model::RocketModel        r1;
+      model::MotorModelDatabase m1;
+      model::DesignSerializer::load(r1, m1, kDesignsDir + "/" + stem + ".qrd");
+      const DesignSnapshot a = snapshotRoot(*r1.getTopPart());
+
+      // ... save it back through the 0.2 writer and reload it.
+      const std::string tmp =
+         (std::filesystem::temp_directory_path() / ("qtrocket_cutover_" + stem + ".qrd")).string();
+      model::DesignSerializer::save(r1, tmp);
+      model::RocketModel        r2;
+      model::MotorModelDatabase m2;
+      model::DesignSerializer::load(r2, m2, tmp);
+      std::filesystem::remove(tmp);
+      const DesignSnapshot b = snapshotRoot(*r2.getTopPart());
+
+      EXPECT_DOUBLE_EQ(b.mass, a.mass) << stem << " mass not reload-stable";
+      EXPECT_TRUE(approxEq(b.cm.z(), a.cm.z(), kTol, stem + " cg.z reload"));
+      for(int r = 0; r < 3; ++r)
+      {
+         for(int c = 0; c < 3; ++c)
+         {
+            EXPECT_TRUE(approxEq(b.inertia(r, c), a.inertia(r, c), kTol, stem + " I reload"));
+         }
+      }
+      ASSERT_EQ(b.parts.size(), a.parts.size()) << stem << " part count changed on reload";
+      for(std::size_t i = 0; i < a.parts.size(); ++i)
+      {
+         const std::string tag = stem + " part " + std::to_string(i);
+         EXPECT_EQ(b.parts[i].type, a.parts[i].type) << tag << " type";
+         EXPECT_TRUE(approxEq(b.parts[i].station.z(), a.parts[i].station.z(), kTol, tag + " station"));
+      }
+   }
 }
 
 // ---------------------------------------------------------------------------------------------------
