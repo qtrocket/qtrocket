@@ -50,32 +50,54 @@ pt::ptree writeParams(const part::PartParams& p)
    return n;
 }
 
-pt::ptree writeOffset(const Vector3& off)
+// SeatKind <-> attribute string, one shared table so reader and writer agree by construction.
+std::string seatToString(part::SeatKind seat)
+{
+   switch(seat)
+   {
+      case part::SeatKind::Abut:       return "Abut";
+      case part::SeatKind::NestInBore: return "NestInBore";
+      case part::SeatKind::OnSurface:  return "OnSurface";
+   }
+   return "Abut";
+}
+
+std::optional<part::SeatKind> seatFromString(const std::string& s)
+{
+   if(s == "Abut")       { return part::SeatKind::Abut; }
+   if(s == "NestInBore") { return part::SeatKind::NestInBore; }
+   if(s == "OnSurface")  { return part::SeatKind::OnSurface; }
+   return std::nullopt;
+}
+
+pt::ptree writeLink(const part::StationLink& link)
 {
    pt::ptree n;
-   n.put("<xmlattr>.x", off.x());
-   n.put("<xmlattr>.y", off.y());
-   n.put("<xmlattr>.z", off.z());
+   n.put("<xmlattr>.seat", seatToString(link.seat));
+   n.put("<xmlattr>.parentStation", link.parentStation01);
+   n.put("<xmlattr>.childStation", link.childStation01);
+   n.put("<xmlattr>.gap", link.gap);
    return n;
 }
 
-// Recursively serialize a (non-Motor) part and its non-Motor descendants. @p offset is this part's
-// CM-to-CM offset relative to its parent ({0,0,0} for the root, ignored on load).
-pt::ptree writePart(const part::Part& node, const Vector3& offset)
+// Recursively serialize a (non-Motor) part and its non-Motor descendants. @p link is this part's
+// stored placement intent relative to its parent (a default link for the root, ignored on load). The
+// absolute pose is never serialized -- it is re-derived by the resolver on load (whitepaper 7).
+pt::ptree writePart(const part::Part& node, const part::StationLink& link)
 {
    pt::ptree pn;
    pn.put("<xmlattr>.type", node.typeName());
    pn.put("<xmlattr>.name", node.getName());
    pn.add_child("params", writeParams(part::params(node)));
-   pn.add_child("offset", writeOffset(offset));
+   pn.add_child("link", writeLink(link));
 
    pt::ptree children;
-   for(const auto& [child, childOffset] : node.getChildParts())
+   for(const auto& [child, childLink] : node.getChildParts())
    {
       // The motor is serialized separately, by common name (see save) -- not as a tree part, since it
       // cannot be rebuilt by the geometry factory.
       if(dynamic_cast<const part::Motor*>(child.get()) != nullptr) { continue; }
-      children.add_child("part", writePart(*child, childOffset)); // add_child (NOT put) for siblings
+      children.add_child("part", writePart(*child, childLink)); // add_child (NOT put) for siblings
    }
    pn.add_child("children", children);
    return pn;
@@ -131,13 +153,36 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
       for(const auto& [key, childNode] : *kids)
       {
          if(key != "part") { continue; } // skip any non-<part> entry (e.g. an <xmlattr> pseudo-node)
-         const Vector3 off{ childNode.get<double>("offset.<xmlattr>.x", 0.0),
-                            childNode.get<double>("offset.<xmlattr>.y", 0.0),
-                            childNode.get<double>("offset.<xmlattr>.z", 0.0) };
          std::shared_ptr<part::Part> child = buildPart(childNode);
          const std::string childName = child->getName();
          const auto before = node->getChildParts().size();
-         node->addChildPart(std::move(child), off);
+
+         // The reader distinguishes the two element shapes by which is present: a <link> (current
+         // intent form) or a legacy <offset> (CM-to-CM, routed through the deprecated shim). Defaults
+         // are the zero-config abut link, so a <part> with neither still attaches.
+         if(childNode.get_child_optional("link"))
+         {
+            const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
+            const auto        seat    = seatFromString(seatStr);
+            if(!seat) // fail-closed, on the same path as makePart's unknown-type rejection
+            {
+               throw std::runtime_error("DesignSerializer: unknown seat kind '" + seatStr + "'");
+            }
+            const part::StationLink link{
+               childNode.get<double>("link.<xmlattr>.parentStation", 0.0),
+               childNode.get<double>("link.<xmlattr>.childStation", 1.0),
+               childNode.get<double>("link.<xmlattr>.gap", 0.0),
+               *seat,
+               Quaternion::Identity()};
+            node->addChildPart(std::move(child), link);
+         }
+         else
+         {
+            const Vector3 off{ childNode.get<double>("offset.<xmlattr>.x", 0.0),
+                               childNode.get<double>("offset.<xmlattr>.y", 0.0),
+                               childNode.get<double>("offset.<xmlattr>.z", 0.0) };
+            node->addChildPart(std::move(child), off); // legacy CM-to-CM shim
+         }
          if(node->getChildParts().size() != before + 1) // addChildPart is a silent no-op on rejection
          {
             throw std::runtime_error(
@@ -156,7 +201,7 @@ void DesignSerializer::save(const RocketModel& rocket, const std::string& filena
    tree.put("QtRocketDesign.<xmlattr>.version", "0.1");
    tree.put("QtRocketDesign.design.<xmlattr>.name", rocket.getName());
 
-   tree.add_child("QtRocketDesign.part", writePart(*rocket.getTopPart(), Vector3::Zero()));
+   tree.add_child("QtRocketDesign.part", writePart(*rocket.getTopPart(), part::StationLink{}));
 
    if(rocket.isMotorSet())
    {

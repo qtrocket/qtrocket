@@ -6,7 +6,7 @@
 // C++ headers
 #include <vector>
 #include <string>
-#include <tuple>
+#include <utility>
 #include <memory>
 #include <cstdint>
 #include <limits>
@@ -88,7 +88,7 @@ public:
    ///        Flags this part and every ancestor for recompute.
    virtual void setI(const Matrix3& I) { inertiaTensor = I; markAsNeedsRecomputing(); }
    /// @brief Get the per-unit-mass (geometric) inertia tensor (m^2). @see getCompositeI()
-   virtual Matrix3 getI() { return inertiaTensor; }
+   virtual Matrix3 getI() const { return inertiaTensor; }
 
    /// @brief This part's center of mass relative to the middle of the component (the `cm` member).
    ///        Zero for the centrally-symmetric parts; non-zero for a cone (its CM is L/4 or L/3 from
@@ -110,7 +110,7 @@ public:
     * @brief This part's own mass at simulation time @p t (kg).
     * @param t simulation time (seconds); lets overrides model time-varying mass (e.g. a motor)
     */
-   virtual double getMass(double t [[maybe_unused]])
+   virtual double getMass(double t [[maybe_unused]]) const
    {
       return mass;
    }
@@ -263,10 +263,11 @@ public:
     */
    Part* findById(Id targetId);
 
-   /// @brief Read-only view of this part's direct children paired with their CM-to-CM attach
-   ///        positions, in attachment order. Lets an assembler / serializer / CLI walk the tree
-   ///        without owning or mutating it. @see addChildPart for the position convention.
-   const std::vector<std::tuple<std::shared_ptr<Part>, Vector3>>& getChildParts() const
+   /// @brief Read-only view of this part's direct children paired with their StationLink (the stored
+   ///        placement intent), in attachment order. Lets an assembler / serializer / CLI walk the
+   ///        tree without owning or mutating it. Absolute placement is DERIVED by resolvePlacements,
+   ///        never stored. @see addChildPart.
+   const std::vector<std::pair<std::shared_ptr<Part>, StationLink>>& getChildParts() const
    { return childParts; }
 
    /**
@@ -282,18 +283,23 @@ public:
     * @brief Attach an existing part as a child of this part by TRANSFERRING OWNERSHIP.
     *
     * The tree adopts @p child as-is -- no copy, so its dynamic type and id are preserved -- and
-    * re-parents it. This part and every ancestor are flagged dirty; the composite mass, CM, and
-    * inertia are rebuilt lazily on the next composite read (see computeCompositeAt()). Logged
-    * no-op if @p child is null, already has a parent, or is this part or one of its ancestors (which
-    * would form a cycle).
+    * re-parents it. This part and every ancestor are flagged dirty (mass AND placement); the composite
+    * mass/CM/inertia and the resolved placement are rebuilt lazily on the next read. Logged no-op if
+    * @p child is null, already has a parent, or is this part or one of its ancestors (a cycle).
     *
-    * To attach a duplicate of a part you want to keep using, pass child->clone().
+    * The relationship is physical INTENT: a default-constructed StationLink abuts the child's fore
+    * plane to the parent's aft plane, so the trivial nose->body->... stack costs zero authored numbers.
     *
-    * @param child    part to adopt; the shared_ptr is moved from
-    * @param position Relative position of the child part's center-of-mass w.r.t the
-    *                 parent's center of mass
+    * @param child part to adopt; the shared_ptr is moved from
+    * @param link  the station-pair placement intent (default: abut aft)
     */
-   virtual void addChildPart(std::shared_ptr<Part> child, Vector3 position);
+   virtual void addChildPart(std::shared_ptr<Part> child, StationLink link = {});
+
+   /// @brief Transitional CM-to-CM shim, retained through the Part-Placement migration so legacy call
+   ///        sites and every legacy <offset> .qrd fixture still attach. It RECOVERS the equivalent
+   ///        StationLink from the legacy center-of-mass-to-center-of-mass offset (see Part.cpp) and
+   ///        forwards to the primary overload. Removed once the corpus is cut over (plan Step 12).
+   void addChildPart(std::shared_ptr<Part> child, Vector3 position);
 
    /**
     * @brief Detach the descendant with @p targetId from its owning parent and return it.
@@ -337,11 +343,6 @@ private:
    ///        tensors about that CM. CG and the tensor therefore come from ONE walk.
    CompositeProperties computeCompositeAt(double t);
 
-   /// @brief Recursive worker for getCompositeAero. Folds this part's getAero(refArea) into @p out
-   ///        after shifting its CM-relative x_cp by @p axialStation (this part's CM offset from the
-   ///        root CM, accumulated from child @p position z-offsets), then recurses into children.
-   void accumulateAeroAt(sim::AeroProfile& out, double refArea, double axialStation) const;
-
    /// @brief Mass-delta gate: (re)build the cached compositeCm/compositeInertiaTensor via
    ///        computeCompositeAt(t) iff structurally dirty OR the composite mass moved since the last
    ///        build; then record builtAtCompositeMass and clear the dirty flag. No-op otherwise.
@@ -378,9 +379,30 @@ private:
 
    bool needsRecomputing{false}; ///< True when the cached composite quantities are stale.
 
-   /// @brief  child parts and the relative positions of their center of mass w.r.t.
-   ///         the center of mass of this part
-   std::vector<std::tuple<std::shared_ptr<Part>, Vector3>> childParts;
+   /// @brief True when the resolved placement cache (resolvedCache) is stale. Set by a STRUCTURAL or
+   ///        geometry edit (addChildPart/removeChildById) and propagated UP the ownership chain like
+   ///        needsRecomputing; deliberately NOT set by a pure mass/inertia edit (setMass/setI), since
+   ///        geometry is unchanged then. Starts true so the first composite read resolves once.
+   ///        mutable so the const composite/aero readers (getCompositeAero) can memoize through it.
+   mutable bool placementDirty{true};
+
+   /// @brief Cached resolver output for this sub-tree (this part planted at the local origin), rebuilt
+   ///        by ensurePlacementCache only when placementDirty. computeCompositeAt re-weights it by
+   ///        getMass(t) every step, so geometry resolves once per structural change while mass tracks
+   ///        a burning motor every step (the two gates of whitepaper 4.5). mutable: it is a memoized
+   ///        derivation, rebuilt by const readers.
+   mutable std::vector<Placed> resolvedCache;
+
+   /// @brief Resolve this sub-tree's placements into resolvedCache iff placementDirty, then clear it.
+   void ensurePlacementCache() const;
+
+   /// @brief Flag this part, and every ancestor, as needing a placement re-resolve.
+   void markPlacementDirty()
+   { placementDirty = true; if(parent) { parent->markPlacementDirty(); }}
+
+   /// @brief  child parts paired with their stored placement intent (StationLink). The absolute pose
+   ///         is DERIVED by resolvePlacements, never stored here.
+   std::vector<std::pair<std::shared_ptr<Part>, StationLink>> childParts;
 };
 
 } // namespace model::part

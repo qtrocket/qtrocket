@@ -86,7 +86,9 @@ TEST(BodyTubeTest, TwoBodyTubesEndToEndEqualOneLongerTube)
    const Vector3 cm = assembly->getCompositeCm(0.0);
    EXPECT_NEAR(cm(0), 0.0, 1e-12);
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
-   EXPECT_NEAR(cm(2), L2 / 2.0, 1e-12); // merged center is L2/2 beyond tube 1's own center
+   // Composite CG is now reported in the root's fore-plane (tip) datum, not the root's own CM: it
+   // shifts by cmLocalZ_root = -L1/2, so the merged center sits at L2/2 - L1/2 = (L2 - L1)/2.
+   EXPECT_NEAR(cm(2), (L2 - L1) / 2.0, 1e-12);
 
    const Matrix3 merged = totalMass * model::InertiaTensors::Tube(ri, ro, totalLength);
    const Matrix3 I = assembly->getCompositeI(0.0);

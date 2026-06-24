@@ -46,25 +46,27 @@ Matrix3 ConicalNoseCone::coneTensor(double R, double L, bool solid)
    return solid ? InertiaTensors::SolidCone(R, L) : InertiaTensors::ConicalShell(R, L);
 }
 
-// The tensor is centroidal; report where that CM sits relative to the component middle so the
-// assembly's addChildPart position is CM-to-CM. With the cone in [-L/2, +L/2] (base at +L/2), the
-// centroid is hbar forward of the base: L/4 (solid), L/3 (shell) => z = +L/2 - hbar.
+// The tensor is centroidal; report where that CM sits relative to the component middle, in the shared
+// +z = forward frame (tip at +L/2 fore, base at -L/2 aft). The centroid is hbar forward of the BASE,
+// i.e. hbar - L/2 from the middle: -L/4 (solid), -L/6 (shell). (The tensor is axisymmetric and
+// z-flip invariant, so only this CM sign was ever wrong; see the whitepaper 2.3.)
 Vector3 ConicalNoseCone::coneCmOffset(double L, bool solid)
 {
    const double hbar = solid ? (L / 4.0) : (L / 3.0);
-   return Vector3{0.0, 0.0, L / 2.0 - hbar};
+   return Vector3{0.0, 0.0, hbar - L / 2.0};
 }
 
 sim::AeroComponent ConicalNoseCone::getAero(double refArea) const
 {
    // Barrowman cone: CNalpha = 2 referenced to the base area (pi R^2), rescaled to the shared
    // refArea; cd is a P5 placeholder. The cone CP is 2/3 L aft of the tip (shape-independent). Report
-   // x_cp from the cone's OWN CM (the shared composite datum): with base at +L/2 and tip at -L/2,
-   //   x_cp(from middle) = -L/2 + 2/3 L = L/6,   z_cm = L/2 - hbar,
-   //   x_cp(from CM) = L/6 - (L/2 - hbar) = hbar - L/3   ( = -L/12 solid, 0 shell ).
+   // x_cp from the cone's OWN CM (the shared composite datum) in the corrected +z = forward frame
+   // (tip at +L/2, base at -L/2):
+   //   x_cp(from middle) = +L/2 - 2/3 L = -L/6,   z_cm = hbar - L/2,
+   //   x_cp(from CM) = -L/6 - (hbar - L/2) = L/3 - hbar   ( = +L/12 solid, 0 shell ).
    const double cnAlpha = 2.0 * (std::numbers::pi * baseRadius * baseRadius) / refArea;
    const double hbar = solid ? (length / 4.0) : (length / 3.0);
-   const double xcpFromCm = hbar - length / 3.0;
+   const double xcpFromCm = length / 3.0 - hbar;
    return {cnAlpha, cnAlpha * xcpFromCm, 0.0};
 }
 

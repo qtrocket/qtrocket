@@ -27,6 +27,47 @@ Matrix3 parallelAxisTerm(const Vector3& d)
 ///        memory. Starts at 1, leaving 0 as a reserved "none/invalid" id.
 std::atomic<Part::Id> nextPartId{1};
 Part::Id makePartId() { return nextPartId.fetch_add(1, std::memory_order_relaxed); }
+
+/// @brief Infer the seat kind of a legacy attachment from the PART PAIR (whitepaper 8.2.1): a fin
+///        seats on the wall (OnSurface); a child whose OD fits the parent bore nests in it
+///        (NestInBore); otherwise the rims abut (Abut). Inferred from the parts, BEFORE any gap sign,
+///        so it is not circular -- NestInBore is the one seat that flips the sign.
+SeatKind inferSeat(const Part& parent, const Part& child)
+{
+   if(child.typeName() == "FinSet") { return SeatKind::OnSurface; }
+   const double childOuter = child.radiusOuterAt(0.0);   // child fore-plane OD (constant for a tube)
+   const double parentBore = parent.radiusInnerAt(0.0);  // parent fore-plane bore
+   if(parentBore > 0.0 && childOuter <= parentBore + 1e-9) { return SeatKind::NestInBore; }
+   return SeatKind::Abut;
+}
+
+/// @brief Recover the StationLink equivalent to a legacy CM-to-CM offset (whitepaper 8.2.1). Works
+///        entirely in +z = forward, so no axis is mirrored, and uses the SAME uniform local-CM
+///        expression (-L/2 + getCenterMassOffset().z()) the forward derivation uses, so it inverts
+///        cleanly per part: the recovered link reproduces the legacy child-CM-minus-parent-CM
+///        difference (childCm_tip = parentCmLocalZ + legacyOffset.z), the property the invariance gate
+///        relies on.
+StationLink recoverLink(const Part& parent, const Part& child, const Vector3& legacyOffset)
+{
+   const double parentCmLocalZ = -parent.getLength() / 2.0 + parent.getCenterMassOffset().z();
+   const double childCmLocalZ  = -child.getLength() / 2.0 + child.getCenterMassOffset().z();
+   // 1. Child fore-plane origin (in the parent frame) that reproduces the legacy CM offset.
+   const double childOriginZ = parentCmLocalZ - childCmLocalZ + legacyOffset.z();
+   // 2. Seat from the part pair, BEFORE applying any sign.
+   const SeatKind seat = inferSeat(parent, child);
+   // 3. Canonical station pair per seat; the gap absorbs whatever remains, so the resolved origin
+   //    equals childOriginZ regardless of the pair chosen.
+   double parentStation01 = 0.0;
+   double childStation01  = 1.0;
+   if(seat == SeatKind::NestInBore) { parentStation01 = 1.0; childStation01 = 0.0; }
+   else if(seat == SeatKind::OnSurface) { childStation01 = 0.0; }
+   const double pz          = (parentStation01 - 1.0) * parent.getLength();
+   const double cz          = (childStation01 - 1.0) * child.getLength();
+   const double gapUnsigned = childOriginZ + cz - pz;
+   // 4. Apply the seat sign LAST.
+   const double gap = (seat == SeatKind::NestInBore) ? -gapUnsigned : gapUnsigned;
+   return StationLink{parentStation01, childStation01, gap, seat, Quaternion::Identity()};
+}
 } // anonymous namespace
 
 Part::Part(const std::string& n,
@@ -69,7 +110,7 @@ Part::Part(const Part& orig)
      childParts()
 { }
 
-void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
+void Part::addChildPart(std::shared_ptr<Part> child, StationLink link)
 {
    if(!child)
    {
@@ -96,12 +137,25 @@ void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
 
    // Adopt the child as-is (no copy, so its dynamic type and id are preserved) and re-parent it.
    child->parent = this;
-   childParts.emplace_back(std::move(child), std::move(position));
+   childParts.emplace_back(std::move(child), std::move(link));
 
-   // Don't fold the child in incrementally; just flag this part and every ancestor dirty. The
-   // composite mass/CM/inertia are rebuilt lazily (and correctly, about the composite CM) by
-   // computeCompositeAt() on the next composite read.
+   // A structural edit invalidates BOTH caches up the tree: the composite mass/CM/inertia (rebuilt by
+   // computeCompositeAt) and the resolved placement (rebuilt by ensurePlacementCache).
    markAsNeedsRecomputing();
+   markPlacementDirty();
+}
+
+void Part::addChildPart(std::shared_ptr<Part> child, Vector3 position)
+{
+   // Transitional shim: recover the StationLink that reproduces the legacy CM-to-CM placement, then
+   // forward to the primary overload. (A null child is forwarded so the primary logs it uniformly.)
+   if(!child)
+   {
+      addChildPart(std::move(child), StationLink{});
+      return;
+   }
+   const StationLink link = recoverLink(*this, *child, position);
+   addChildPart(std::move(child), link);
 }
 
 std::shared_ptr<Part> Part::cloneShallow() const
@@ -114,11 +168,11 @@ std::shared_ptr<Part> Part::cloneShallow() const
 std::shared_ptr<Part> Part::clone() const
 {
    std::shared_ptr<Part> copy = cloneShallow(); // this node: correct dynamic type, fresh id, no kids
-   for(const auto& [child, pos] : childParts)
+   for(const auto& [child, link] : childParts)
    {
       std::shared_ptr<Part> childCopy = child->clone(); // recurse polymorphically (no slicing)
       childCopy->parent = copy.get();
-      copy->childParts.emplace_back(std::move(childCopy), pos);
+      copy->childParts.emplace_back(std::move(childCopy), link); // the placement intent clones verbatim
    }
    return copy;
 }
@@ -128,7 +182,7 @@ double Part::getCompositeMass(double t)
    // Cheap, LIVE mass-only sum: this node plus every descendant. The ODE divisor AND the gate key
    // for getCompositeI(t); deliberately does no tensor work.
    double m = getMass(t);
-   for(auto& [child, pos] : childParts)
+   for(const auto& [child, link] : childParts)
    {
       m += child->getCompositeMass(t);
    }
@@ -166,38 +220,57 @@ Matrix3 Part::getCompositeI(double t)
    return compositeInertiaTensor;
 }
 
+void Part::ensurePlacementCache() const
+{
+   // Structural gate: re-resolve this sub-tree's geometry only when a part was added/removed or a
+   // length changed (placementDirty), NEVER on a mass change -- geometry is invariant under a burn.
+   if(placementDirty)
+   {
+      resolvedCache = resolvePlacements(*this, Pose{}); // this part planted at the local origin
+      placementDirty = false;
+   }
+}
+
 Part::CompositeProperties Part::computeCompositeAt(double t)
 {
-   // Pass 1: composite mass + CM at t, evaluated LIVE from getMass(t). Everything is in this part's
-   // own-CM frame (its own CM at the origin); a child's composite CM in this frame is
-   // (pos + child subtree CM). Capture this node's own mass once -- getMass(t) may scan a curve.
-   const double selfMass = getMass(t);
-   double m = selfMass;
-   Vector3 weighted = Vector3::Zero();                        // sum of subtreeMass * (pos + subtree CM)
-   std::vector<std::pair<Vector3, CompositeProperties>> kids; // (attach pos, child composite) for pass 2
-   kids.reserve(childParts.size());
-   for(auto& [child, pos] : childParts)
+   // Geometry is resolved ONCE per structural change (placement gate); here we re-weight that fixed
+   // geometry by getMass(t). Each part's CM in the sub-tree-root frame is its resolved fore-plane
+   // origin plus the uniform local-CM station (-L/2 + getCenterMassOffset().z()); +z = forward.
+   ensurePlacementCache();
+
+   struct Contribution { Vector3 cmInRoot; const Part* part; double mass; };
+   std::vector<Contribution> parts;
+   parts.reserve(resolvedCache.size());
+
+   // Pass 1: mass-weighted composite CM.
+   double  m        = 0.0;
+   Vector3 weighted = Vector3::Zero();
+   for(const Placed& pl : resolvedCache)
    {
-      CompositeProperties cc = child->computeCompositeAt(t);
-      m        += cc.mass;
-      weighted += cc.mass * (pos + cc.cm);
-      kids.emplace_back(pos, cc);
+      const double  pm       = pl.part->getMass(t);
+      const Vector3 cmOffset = pl.part->getCenterMassOffset();
+      const Vector3 cmLocal(cmOffset.x(), cmOffset.y(),
+                            -pl.part->getLength() / 2.0 + cmOffset.z());
+      const Vector3 cmInRoot = pl.pose.origin + pl.pose.orient * cmLocal;
+      m        += pm;
+      weighted += pm * cmInRoot;
+      parts.push_back(Contribution{cmInRoot, pl.part, pm});
    }
-   // Guard the divide: a fully massless subtree has no meaningful CM, so leave it at the origin.
+   // Guard the divide: a fully massless sub-tree has no meaningful CM, so leave it at the origin.
    Vector3 temp_cm = Vector3::Zero();
    if(m > 0.0)
    {
       temp_cm = weighted / m;
    }
 
-   // Pass 2: inertia about the composite CM. Shift this part's own tensor (mass-weighted at t) and
-   // each child's composite tensor (about that child's subtree CM) to the composite CM via the
-   // parallel-axis theorem -- the same math as before, now driven by getMass(t).
-   Matrix3 I = selfMass * inertiaTensor + selfMass * parallelAxisTerm(temp_cm);
-   for(const auto& [pos, cc] : kids)
+   // Pass 2: inertia about the composite CM. Shift each part's own (mass-weighted) tensor to temp_cm
+   // via the parallel-axis theorem. (6-DOF would first rotate the tensor by pl.pose.orient -- the one
+   // new line of whitepaper 9.2; identity today, so it is omitted to stay bit-stable.)
+   Matrix3 I = Matrix3::Zero();
+   for(const Contribution& c : parts)
    {
-      const Vector3 d = (pos + cc.cm) - temp_cm; // child subtree CM -> composite CM
-      I += cc.inertia + cc.mass * parallelAxisTerm(d);
+      const Vector3 d = c.cmInRoot - temp_cm;
+      I += c.mass * c.part->getI() + c.mass * parallelAxisTerm(d);
    }
 
    return CompositeProperties{m, temp_cm, I};
@@ -205,24 +278,21 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
 
 sim::AeroProfile Part::getCompositeAero(double refArea) const
 {
+   // Both consumers read the same resolved geometry: re-express every part's x_cp (reported from its
+   // OWN CM) onto the shared sub-tree-root (tip) datum -- the part's CM station = pose.origin.z +
+   // (-L/2 + getCenterMassOffset().z()). cp() and cg() then share the tip datum, so cp() - cg() (the
+   // static margin) is datum-independent and bit-stable across the refactor (whitepaper 4.4).
+   ensurePlacementCache();
    sim::AeroProfile profile;
    profile.refArea = refArea;
-   accumulateAeroAt(profile, refArea, 0.0); // the root part's CM is the shared datum (station 0)
-   return profile;
-}
-
-void Part::accumulateAeroAt(sim::AeroProfile& out, double refArea, double axialStation) const
-{
-   // getAero reports x_cp from THIS part's CM; shift it to the shared root-CM datum by adding
-   // cnAlpha * axialStation to the weighted moment before folding in. A zero-CNalpha part contributes
-   // nothing to either the moment or the (CNalpha-weighted) CP average -- exactly the body-tube case.
-   const sim::AeroComponent c = getAero(refArea);
-   out += sim::AeroComponent{c.cnAlpha, c.cnAlphaXcp + c.cnAlpha * axialStation, c.cd};
-   for(const auto& [child, pos] : childParts)
+   for(const Placed& pl : resolvedCache)
    {
-      // pos is the child CM relative to this part's CM; thread its axial (z) offset down the tree.
-      child->accumulateAeroAt(out, refArea, axialStation + pos.z());
+      const sim::AeroComponent c = pl.part->getAero(refArea);
+      const double cmStationZ =
+         pl.pose.origin.z() + (-pl.part->getLength() / 2.0 + pl.part->getCenterMassOffset().z());
+      profile += sim::AeroComponent{c.cnAlpha, c.cnAlphaXcp + c.cnAlpha * cmStationZ, c.cd};
    }
+   return profile;
 }
 
 double Part::maxFrontalReferenceArea() const
@@ -254,22 +324,23 @@ Part* Part::findById(Id targetId)
 std::shared_ptr<Part> Part::removeChildById(Id targetId)
 {
    // Symmetric with findById/addChildPart. Scan THIS node's direct children first: on a hit, move
-   // the owning shared_ptr out, erase the (child, position) tuple, clear the detached node's parent,
-   // and mark this part (the ex-parent) and every ancestor dirty. markAsNeedsRecomputing() -- not the
-   // mass-delta gate -- is what guarantees the next composite read rebuilds, so removing even a
-   // zero-mass sub-tree refreshes the cache. Otherwise recurse into the children.
+   // the owning shared_ptr out, erase the (child, link) pair, clear the detached node's parent, and
+   // mark this part (the ex-parent) and every ancestor dirty -- BOTH the mass/inertia cache (so even a
+   // zero-mass sub-tree refreshes) and the placement cache (the resolved tree shrank). Otherwise
+   // recurse into the children.
    for(auto it = childParts.begin(); it != childParts.end(); ++it)
    {
-      if(std::get<0>(*it)->id == targetId)
+      if(it->first->id == targetId)
       {
-         std::shared_ptr<Part> detached = std::move(std::get<0>(*it));
+         std::shared_ptr<Part> detached = std::move(it->first);
          childParts.erase(it);
          detached->parent = nullptr;
          markAsNeedsRecomputing();
+         markPlacementDirty();
          return detached;
       }
    }
-   for(auto& [child, pos] : childParts)
+   for(auto& [child, link] : childParts)
    {
       if(std::shared_ptr<Part> hit = child->removeChildById(targetId))
       {

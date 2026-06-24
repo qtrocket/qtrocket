@@ -98,11 +98,12 @@ TEST(FinSetTest, CmOnAxisForN3AndN4)
    {
       SCOPED_TRACE(testing::Message() << "N = " << N);
       const model::part::FinSet fins = makeFins(N);
-      // The stored CM offset is on-axis at the axial mass centroid ...
+      // The stored CM offset is on-axis at the axial mass centroid, reported relative to the MIDDLE in
+      // the +z = forward frame: x_c - L/2 (L = rootChord). (Corrected datum; see whitepaper 2.3.)
       const Vector3 off = fins.getCenterMassOffset();
       EXPECT_NEAR(off.x(), 0.0, 1e-15);
       EXPECT_NEAR(off.y(), 0.0, 1e-15);
-      EXPECT_NEAR(off.z(), xc, 1e-15);
+      EXPECT_NEAR(off.z(), xc - EX.cr / 2.0, 1e-15);
       // ... and the independent mesh agrees the set CM is on the axis at that station.
       const MeshResult mesh = finSetMesh(N, EX);
       EXPECT_NEAR(mesh.cm.x(), 0.0, 1e-9);

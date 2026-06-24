@@ -423,9 +423,17 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
       }
    };
 
-   // Depth-first walk. station = accumulated CM-to-CM offsets from the root down to this part.
-   auto walk = [&](auto&& self, const model::part::Part& part, const Vector3& station) -> void
+   // The visualizer consumes the SAME absolute placement the simulator does: resolve every part's
+   // pose once, then translate each geometrically-centered primitive so its FORE plane lands at the
+   // resolved fore-plane origin (the build* primitives are centered about mid-length, half an
+   // axialLength forward of the aft plane). This is the consumer swap that closes the historical
+   // simulator/visualizer divergence (whitepaper 1, 4.4).
+   const std::vector<model::part::Placed> placed =
+      model::part::resolvePlacements(*root, model::part::Pose{});
+
+   for(const model::part::Placed& p : placed)
    {
+      const model::part::Part& part = *p.part;
       Mesh mesh;
       bool hasMesh = false;
 
@@ -451,30 +459,18 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
          mesh = buildSphere(sphere->getOuterRadius());
          hasMesh = true;
       }
-      // else: unknown/Motor/other -> skip geometry, but still recurse into children.
+      // else: unknown/Motor/other -> no geometry.
 
       if(hasMesh)
       {
-         translateMesh(mesh, station);
+         translateMesh(mesh, p.pose.origin + Vector3(0.0, 0.0, -part.axialLength() / 2.0));
          RenderItem item;
          item.mesh = std::move(mesh);
          item.typeName = QString::fromStdString(part.typeName());
          item.name = QString::fromStdString(part.getName());
          items.push_back(std::move(item));
       }
-
-      for(const auto& childPair : part.getChildParts())
-      {
-         const std::shared_ptr<model::part::Part>& child = std::get<0>(childPair);
-         const Vector3& offset = std::get<1>(childPair);
-         if(child)
-         {
-            self(self, *child, station + offset);
-         }
-      }
-   };
-
-   walk(walk, *root, Vector3::Zero());
+   }
 
    return items;
 }

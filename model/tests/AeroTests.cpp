@@ -77,19 +77,22 @@ TEST(AeroTest, CompositeCpIsCNalphaWeighted)
 
    const sim::AeroProfile prof = nose->getCompositeAero(refArea);
 
-   // Hand-assembled CNalpha-weighted CP from the root-CM datum: each part's x_cp is its CM-relative
-   // value (cnAlphaXcp) plus cnAlpha * station. The zero-CNalpha body drops out automatically.
+   // Hand-assembled CNalpha-weighted CP. Each part's x_cp is its CM-relative value (cnAlphaXcp) plus
+   // cnAlpha * station; the zero-CNalpha body drops out automatically. The composite cp is now reported
+   // in the tip datum, so it equals the root-CM-datum value plus the single shift cmLocalZ_root (the
+   // solid nose CM station = -3 L/4).
+   const double cmLocalZRoot    = -3.0 * Lnose / 4.0;
    const double expectedCnAlpha = na.cnAlpha + fa.cnAlpha;
    const double expectedMoment  = (na.cnAlphaXcp + na.cnAlpha * 0.0)
                                 + (fa.cnAlphaXcp + fa.cnAlpha * zFins);
    EXPECT_NEAR(prof.cnAlpha, expectedCnAlpha, 1e-12);
    EXPECT_TRUE(prof.cpValid);
-   EXPECT_NEAR(prof.cp(), expectedMoment / expectedCnAlpha, 1e-12);
+   EXPECT_NEAR(prof.cp(), expectedMoment / expectedCnAlpha + cmLocalZRoot, 1e-12);
 
    // The body must not corrupt the average: dropping its (zero) term changes nothing.
    const double cpWithoutBody = (na.cnAlphaXcp + fa.cnAlphaXcp + fa.cnAlpha * zFins)
                               / (na.cnAlpha + fa.cnAlpha);
-   EXPECT_NEAR(prof.cp(), cpWithoutBody, 1e-12);
+   EXPECT_NEAR(prof.cp(), cpWithoutBody + cmLocalZRoot, 1e-12);
 }
 
 TEST(AeroTest, CompositeCdIsAdditive)
@@ -153,8 +156,10 @@ TEST(AeroTest, AssembledRocketCmMassAndRefArea)
 
    const double mN = nose->getMass(0.0), mB = body->getMass(0.0), mF = fins->getMass(0.0);
 
-   // Place the body using the cone's reported CM offset: the cone base is (Lnose/2 - cmOffset.z) aft
-   // of the cone CM (== Lnose/4 for a solid cone); the body CM is another Lbody/2 aft.
+   // Place the body using the cone's reported CM offset. In the corrected +z = forward frame the cone
+   // CM is at getCenterMassOffset().z() = -Lnose/4 from the middle, so the base (aft, at -Lnose/2) is
+   // Lnose/2 - (-Lnose/4) = 3 Lnose/4 below the CM; the body CM is another Lbody/2 aft. This same
+   // quantity is also the magnitude of cmLocalZ_root (= -coneBaseToCm), the tip-datum shift below.
    const double coneBaseToCm = Lnose / 2.0 - nose->getCenterMassOffset().z();
    const double zBody = coneBaseToCm + Lbody / 2.0;
    // Fins mount at the body's aft end: root LE at body CM + (Lbody/2 - cr), set CM another xc aft.
@@ -166,13 +171,14 @@ TEST(AeroTest, AssembledRocketCmMassAndRefArea)
    // Composite mass = sum of the parts.
    EXPECT_NEAR(nose->getCompositeMass(0.0), mN + mB + mF, 1e-12);
 
-   // Composite CM = independent mass-weighted average of the three on-axis CMs (from the nose CM).
+   // Composite CM = independent mass-weighted average of the three on-axis CMs (from the nose CM),
+   // re-expressed into the tip datum by the single shift cmLocalZ_root = -coneBaseToCm.
    const double zFinsFromRoot = zBody + zFinsFromBody;
    const double expectedCmZ = (mN * 0.0 + mB * zBody + mF * zFinsFromRoot) / (mN + mB + mF);
    const Vector3 cm = nose->getCompositeCm(0.0);
    EXPECT_NEAR(cm.x(), 0.0, 1e-12);
    EXPECT_NEAR(cm.y(), 0.0, 1e-12);
-   EXPECT_NEAR(cm.z(), expectedCmZ, 1e-12);
+   EXPECT_NEAR(cm.z(), expectedCmZ - coneBaseToCm, 1e-12);
 
    // Reference area = the single widest frontal disc (pi R^2); the fins do NOT inflate it to
    // pi (rb+s)^2 even though their tip extent (getMaxRadius) is rb+s.
@@ -245,10 +251,11 @@ TEST(AeroTest, CompositeCpThreadsNestedStations)
 
    const sim::AeroProfile prof = nose->getCompositeAero(refArea);
    const double zFins = zBody + zFinsFromBody; // cumulative station from the root CM
+   const double cmLocalZRoot = -3.0 * 0.10 / 4.0; // solid nose (L = 0.10) CM station: the tip-datum shift
    const double expectedCnAlpha = na.cnAlpha + fa.cnAlpha; // body cnAlpha == 0
    const double expectedMoment  = na.cnAlphaXcp + (fa.cnAlphaXcp + fa.cnAlpha * zFins);
    EXPECT_NEAR(prof.cnAlpha, expectedCnAlpha, 1e-12);
-   EXPECT_NEAR(prof.cp(), expectedMoment / expectedCnAlpha, 1e-12);
+   EXPECT_NEAR(prof.cp(), expectedMoment / expectedCnAlpha + cmLocalZRoot, 1e-12);
 
    // If the recursion wrongly used only the immediate parent offset, the CP would differ measurably.
    const double wrongCp = (na.cnAlphaXcp + fa.cnAlphaXcp + fa.cnAlpha * zFinsFromBody) / expectedCnAlpha;

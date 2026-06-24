@@ -70,9 +70,9 @@ Stack buildXl75()
    s.links[s.coupler] = StationLink{
       .parentStation01 = 1.0, .childStation01 = 0.0, .gap = 0.04, .seat = SeatKind::NestInBore};
 
-   body->addChildPart(fins, Vector3::Zero());     // ignored placeholder offsets
-   body->addChildPart(coupler, Vector3::Zero());
-   nose->addChildPart(body, Vector3::Zero());
+   body->addChildPart(fins, s.links[s.fins]);     // links now live in childParts (Step 6)
+   body->addChildPart(coupler, s.links[s.coupler]);
+   nose->addChildPart(body, s.links[s.body]);
    s.root = nose;
    return s;
 }
@@ -94,7 +94,7 @@ const Placed& placedOf(const std::vector<Placed>& placed, PartId id)
 TEST(ResolverTests, RootPlantedAtRootPose)
 {
    const Stack                 s      = buildXl75();
-   const std::vector<Placed>   placed = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed>   placed = resolvePlacements(*s.root, Pose{});
    const Pose&                 nose   = placedOf(placed, s.nose).pose;
    EXPECT_DOUBLE_EQ(nose.origin.x(), 0.0);
    EXPECT_DOUBLE_EQ(nose.origin.y(), 0.0);
@@ -104,7 +104,7 @@ TEST(ResolverTests, RootPlantedAtRootPose)
 TEST(ResolverTests, AbutDefaultStacksAft)
 {
    const Stack               s      = buildXl75();
-   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{});
    const Placed&             body   = placedOf(placed, s.body);
    EXPECT_DOUBLE_EQ(body.pose.origin.z(), -0.30);  // body fore plane abuts nose aft plane
    // span [-1.20, -0.30]
@@ -114,7 +114,7 @@ TEST(ResolverTests, AbutDefaultStacksAft)
 TEST(ResolverTests, NestInBoreSignsGapAft)
 {
    const Stack               s       = buildXl75();
-   const std::vector<Placed> placed  = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> placed  = resolvePlacements(*s.root, Pose{});
    const Placed&             coupler = placedOf(placed, s.coupler);
    EXPECT_DOUBLE_EQ(coupler.pose.origin.z(), -0.26);  // nested 0.04 aft of the body fore rim
    // span [-0.34, -0.26]
@@ -124,7 +124,7 @@ TEST(ResolverTests, NestInBoreSignsGapAft)
 TEST(ResolverTests, OnSurfaceFinStation)
 {
    const Stack               s      = buildXl75();
-   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{});
    const Placed&             fins   = placedOf(placed, s.fins);
    // fore-plane origin -1.046; the seat (aft plane, childStation 0) lands at -1.146 = body's 0.06
    // station in world (-0.30 + (0.06-1)*0.90).
@@ -135,7 +135,7 @@ TEST(ResolverTests, OnSurfaceFinStation)
 TEST(ResolverTests, ComposeIsTranslationInThreeDof)
 {
    const Stack               s      = buildXl75();
-   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{});
    for(const Placed& p : placed)
    {
       EXPECT_DOUBLE_EQ(p.pose.orient.x(), 0.0);
@@ -150,8 +150,8 @@ TEST(ResolverTests, ComposeIsTranslationInThreeDof)
 TEST(ResolverTests, DeterministicDfsOrder)
 {
    const Stack               s = buildXl75();
-   const std::vector<Placed> a = resolvePlacements(*s.root, Pose{}, s.links);
-   const std::vector<Placed> b = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> a = resolvePlacements(*s.root, Pose{});
+   const std::vector<Placed> b = resolvePlacements(*s.root, Pose{});
    ASSERT_EQ(a.size(), 4u);
    ASSERT_EQ(b.size(), 4u);
    for(std::size_t i = 0; i < a.size(); ++i)
@@ -174,12 +174,10 @@ TEST(ResolverTests, LengthTracksFractionalStation)
       auto         body  = std::make_shared<BodyTube>("B", 0.0376, 0.0395, bodyLen, 1700.0);
       auto         fins  = std::make_shared<FinSet>("F", 6, 0.10, 0.04, 0.06, 0.04, 0.003, 0.0395, 1700.0);
       const PartId finId = fins->getId();
-      std::map<PartId, StationLink> links;
-      links[finId] =
-         StationLink{.parentStation01 = 0.06, .childStation01 = 0.0, .seat = SeatKind::OnSurface};
-      body->addChildPart(fins, Vector3::Zero());
-      nose->addChildPart(body, Vector3::Zero());
-      return placedOf(resolvePlacements(*nose, Pose{}, links), finId).pose.origin.z();
+      body->addChildPart(
+         fins, StationLink{.parentStation01 = 0.06, .childStation01 = 0.0, .seat = SeatKind::OnSurface});
+      nose->addChildPart(body, StationLink{});
+      return placedOf(resolvePlacements(*nose, Pose{}), finId).pose.origin.z();
    };
    EXPECT_LT(finOriginForBodyLen(1.20), finOriginForBodyLen(0.90));  // longer body -> fin further aft
 }
@@ -235,7 +233,7 @@ TEST(SweepTests, Layer1NestInBoreOverWideFlags)
 TEST(SweepTests, CouplerPokesThroughNose)
 {
    const Stack               s      = buildXl75();
-   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{});
    const SolveResult         r      = sweepOverlaps(placed);
 
    ASSERT_FALSE(r.ok);
@@ -253,7 +251,7 @@ TEST(SweepTests, OnSurfaceFinNotFalseDisc)
    // so it must NOT false-collide with the adjacent body tube (regression for the rejected
    // bodyRadius+span disc and for the seat-parent exclusion).
    const Stack               s      = buildXl75();
-   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{}, s.links);
+   const std::vector<Placed> placed = resolvePlacements(*s.root, Pose{});
    const SolveResult         r      = sweepOverlaps(placed);
    for(const model::part::OverlapDiagnostic& d : r.diagnostics)
    {
@@ -269,15 +267,11 @@ TEST(SweepTests, FullyNestedCouplerIsClean)
    auto         nose    = std::make_shared<ConicalNoseCone>("N", 0.0395, 0.30, 0.0, 1700.0, true);
    auto         body    = std::make_shared<BodyTube>("B", 0.0376, 0.0395, 0.90, 1700.0);
    auto         coupler = std::make_shared<BodyTube>("C", 0.036, 0.0376, 0.08, 1700.0);
-   const PartId couplerId = coupler->getId();
-   std::map<PartId, StationLink> links;
-   links[body->getId()] = StationLink{};
-   links[couplerId] = StationLink{
-      .parentStation01 = 1.0, .childStation01 = 0.0, .gap = 0.08, .seat = SeatKind::NestInBore};
-   body->addChildPart(coupler, Vector3::Zero());
-   nose->addChildPart(body, Vector3::Zero());
+   body->addChildPart(coupler, StationLink{
+      .parentStation01 = 1.0, .childStation01 = 0.0, .gap = 0.08, .seat = SeatKind::NestInBore});
+   nose->addChildPart(body, StationLink{});
 
-   const SolveResult r = sweepOverlaps(resolvePlacements(*nose, Pose{}, links));
+   const SolveResult r = sweepOverlaps(resolvePlacements(*nose, Pose{}));
    EXPECT_TRUE(r.ok);
    EXPECT_TRUE(r.diagnostics.empty());
 }

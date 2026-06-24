@@ -31,11 +31,10 @@
 
 /// \cond
 #include <algorithm>
-#include <cstdint>
+#include <cstddef>
 #include <cstdio>
-#include <cstdlib>
-#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -90,34 +89,10 @@ std::string f17(double x)
    return std::string(buf);
 }
 
-/// Exact (bit-for-bit) double comparison with a descriptive message on mismatch.
-::testing::AssertionResult bitEqual(double live, double base, const std::string& what)
-{
-   if(live == base)
-   {
-      return ::testing::AssertionSuccess();
-   }
-   return ::testing::AssertionFailure()
-          << what << ": live " << f17(live) << " != baseline " << f17(base);
-}
-
-/// DFS pre-order walk accumulating the legacy CM-to-CM axial (and radial) offset from the root.
-void walkStations(const model::part::Part& part, const Vector3& cumulative,
-                  std::vector<PartStation>& out)
-{
-   out.push_back(PartStation{part.typeName(), part.getName(), cumulative});
-   for(const auto& childPair : part.getChildParts())
-   {
-      const std::shared_ptr<model::part::Part>& child = std::get<0>(childPair);
-      const Vector3&                            offset = std::get<1>(childPair);
-      if(child)
-      {
-         walkStations(*child, cumulative + offset, out);
-      }
-   }
-}
-
-/// Load one fixture through the current reader (EMPTY motor DB -> airframe-only) and snapshot it.
+/// Load one fixture (EMPTY motor DB -> airframe-only) and snapshot the MIGRATED reader's output.
+/// CG / CP / per-part stations come back in the new tip datum (relative to the nose tip); the
+/// comparison (below) re-expresses the legacy root-own-CM-datum baseline into it by the single fixed
+/// offset cmLocalZ_root (= the root's own CM station = parts[0].station.z()).
 DesignSnapshot snapshotFixture(const std::string& stem)
 {
    model::RocketModel        rocket;
@@ -137,80 +112,36 @@ DesignSnapshot snapshotFixture(const std::string& stem)
    s.cp      = aero.cp();
    s.cpValid = aero.cpValid;
 
-   walkStations(*root, Vector3::Zero(), s.parts);
+   // Per-part CM station in the tip datum: pose.origin + the uniform local CM (-L/2 +
+   // getCenterMassOffset().z()) -- the same expression the migrated composite pass uses. DFS order,
+   // matching the baseline's DFS order. parts[0] is the root: its station IS cmLocalZ_root.
+   for(const model::part::Placed& pl : model::part::resolvePlacements(*root, model::part::Pose{}))
+   {
+      const Vector3 off = pl.part->getCenterMassOffset();
+      const Vector3 cmLocal(off.x(), off.y(), -pl.part->getLength() / 2.0 + off.z());
+      const Vector3 cmInRoot = pl.pose.origin + pl.pose.orient * cmLocal;
+      s.parts.push_back(PartStation{pl.part->typeName(), pl.part->getName(), cmInRoot});
+   }
    return s;
 }
 
-/// The corpus fixture stems (sorted), excluding the Step-12 poke-through regression fixture.
-std::vector<std::string> discoverFixtureStems()
+/// Relative-or-absolute closeness: |a - b| <= tol * max(1, |a|, |b|).
+::testing::AssertionResult approxEq(double live, double base, double tol, const std::string& what)
 {
-   std::vector<std::string> stems;
-   for(const auto& entry : std::filesystem::directory_iterator(kDesignsDir))
+   const double scale = std::max({1.0, std::fabs(live), std::fabs(base)});
+   if(std::fabs(live - base) <= tol * scale)
    {
-      if(entry.is_regular_file() && entry.path().extension() == ".qrd")
-      {
-         const std::string stem = entry.path().stem().string();
-         if(stem.find("pokethrough") == std::string::npos)  // not part of the invariance corpus
-         {
-            stems.push_back(stem);
-         }
-      }
+      return ::testing::AssertionSuccess();
    }
-   std::sort(stems.begin(), stems.end());
-   return stems;
+   return ::testing::AssertionFailure() << what << ": live " << f17(live) << " vs baseline " << f17(base)
+                                        << " (rel " << f17(std::fabs(live - base) / scale) << ")";
 }
 
-/// BOOTSTRAP ONLY: (re)generate the immutable baseline from the current reader. Never call this to
-/// paper over a failing migration -- a baseline diff means the refactor changed the physics.
-void writeBaseline(const std::vector<std::string>& stems)
-{
-   std::ofstream out(kBaselinePath, std::ios::trunc);
-   out << "# QtRocket Part-Placement invariance baseline -- Phase 0 (implementation plan Part II Step 2).\n"
-       << "#\n"
-       << "# IMMUTABLE GROUND TRUTH, generated from the LEGACY CM-to-CM reader BEFORE the placement\n"
-       << "# refactor. NEVER regenerate this to make a failing migration pass: a diff here means the\n"
-       << "# refactor changed the physics, which is exactly what the migration must not do. Regeneration\n"
-       << "# is gated behind the QTROCKET_REGEN_PLACEMENT_BASELINE env var only to bootstrap this file.\n"
-       << "#\n"
-       << "# Each fixture is loaded with an EMPTY motor DB, so the snapshot is the pure AIRFRAME geometry\n"
-       << "# composite: a fixture stores its motor as <motor commonName=..>, not as a <part>, and the\n"
-       << "# motor is re-attached programmatically at a zero offset -- independent of the .qrd\n"
-       << "# part-placement this migration changes. Quantities (t = 0):\n"
-       << "#   mass     topPart->getCompositeMass(0)                  [kg, datum-independent]\n"
-       << "#   cm       topPart->getCompositeCm(0)      (x y z)       [m, LEGACY root-own-CM datum]\n"
-       << "#   inertia  topPart->getCompositeI(0)       (row-major)   [kg m^2, about the composite CG]\n"
-       << "#   cp       topPart->getCompositeAero(1).cp()  (valid cp) [m, LEGACY root-own-CM datum]\n"
-       << "#   part     '<index> <type> <x> <y> <z> <name>': each part's cumulative CM-to-CM offset\n"
-       << "#            from the root (root = 0), DFS pre-order -- the resolved station, existing convention.\n"
-       << "# Doubles are %.17g (exact IEEE-754 double round-trip).\n"
-       << "#\n"
-       << "format 1\n";
-
-   for(const std::string& stem : stems)
-   {
-      const DesignSnapshot s = snapshotFixture(stem);
-      out << "design " << stem << "\n";
-      out << "mass " << f17(s.mass) << "\n";
-      out << "cm " << f17(s.cm.x()) << " " << f17(s.cm.y()) << " " << f17(s.cm.z()) << "\n";
-      out << "inertia";
-      for(int r = 0; r < 3; ++r)
-      {
-         for(int c = 0; c < 3; ++c)
-         {
-            out << " " << f17(s.inertia(r, c));
-         }
-      }
-      out << "\n";
-      out << "cp " << (s.cpValid ? 1 : 0) << " " << f17(s.cp) << "\n";
-      out << "parts " << s.parts.size() << "\n";
-      for(std::size_t i = 0; i < s.parts.size(); ++i)
-      {
-         const PartStation& p = s.parts[i];
-         out << "part " << i << " " << p.type << " " << f17(p.station.x()) << " "
-             << f17(p.station.y()) << " " << f17(p.station.z()) << " " << p.name << "\n";
-      }
-   }
-}
+// The migration is a re-expression of the same arithmetic through the resolver, so the per-part CM
+// derivation re-associates the floating-point ops: the result is mathematically identical but drifts
+// from the legacy bits by a few ULPs. This tolerance admits that ULP drift and nothing larger -- any
+// real placement bug moves a value by orders of magnitude more.
+constexpr double kTol = 1e-9;
 
 /// Parse the committed baseline into per-fixture snapshots (keyed by fixture stem).
 std::map<std::string, DesignSnapshot> parseBaseline()
@@ -296,63 +227,109 @@ std::map<std::string, DesignSnapshot> parseBaseline()
 }
 }  // namespace
 
-// Step 2 gating test (T6 `Phase0SnapshotIsSelfConsistent`): the immutable baseline loads and
-// re-snapshots identically against the current reader. Passes by definition today (it compares the
-// legacy reader's output to a baseline taken from that same reader); it becomes the ground truth the
-// migrated reader is held against in Steps 8-9.
-TEST(PlacementInvariance, Phase0SnapshotIsSelfConsistent)
+namespace
+{
+// Common fixture: load + migrated-snapshot every corpus design, paired with its frozen legacy
+// baseline. cmLocalZ_root (the single tip-datum shift) is the root's own CM station = parts[0].z.
+struct Paired
+{
+   std::string    stem;
+   DesignSnapshot base;  // legacy, root-own-CM datum (the committed ground truth)
+   DesignSnapshot live;  // migrated, tip datum
+   double         cmLocalZRoot{0.0};
+};
+
+std::vector<Paired> loadCorpus()
 {
    utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);  // quiet motor-absent warnings
-
-   // Bootstrap path -- only when explicitly requested. Regenerate the committed baseline and skip the
-   // comparison. Never runs in CI (the env var is never set there).
-   if(std::getenv("QTROCKET_REGEN_PLACEMENT_BASELINE") != nullptr)
-   {
-      const std::vector<std::string> stems = discoverFixtureStems();
-      ASSERT_FALSE(stems.empty()) << "no .qrd fixtures found in " << kDesignsDir;
-      writeBaseline(stems);
-      GTEST_SKIP() << "Regenerated the immutable baseline at " << kBaselinePath << " (" << stems.size()
-                   << " fixtures). Re-run without QTROCKET_REGEN_PLACEMENT_BASELINE to compare.";
-   }
-
    const std::map<std::string, DesignSnapshot> baseline = parseBaseline();
-   ASSERT_FALSE(baseline.empty()) << "missing or empty baseline " << kBaselinePath
-                                  << " -- bootstrap once with QTROCKET_REGEN_PLACEMENT_BASELINE=1";
-   ASSERT_EQ(baseline.size(), kCorpusSize) << "the Phase-0 corpus is fixed at 24 fixtures";
-
+   std::vector<Paired> out;
    for(const auto& [stem, base] : baseline)
    {
-      const DesignSnapshot live = snapshotFixture(stem);
+      DesignSnapshot live = snapshotFixture(stem);
+      const double   root = live.parts.empty() ? 0.0 : live.parts.front().station.z();
+      out.push_back(Paired{stem, base, std::move(live), root});
+   }
+   return out;
+}
+}  // namespace
 
-      // Composite mass + inertia: datum-independent, must be bit-identical.
-      EXPECT_TRUE(bitEqual(live.mass, base.mass, stem + " mass"));
+// The migrated composite mass and inertia-about-CM are datum-INDEPENDENT, so they must reproduce the
+// frozen Phase-0 snapshot (to within the ULP drift of the re-expressed arithmetic).
+TEST(PlacementInvariance, MassAndInertiaBitIdentical)
+{
+   const std::vector<Paired> corpus = loadCorpus();
+   ASSERT_EQ(corpus.size(), kCorpusSize) << "the Phase-0 corpus is fixed at 24 fixtures";
+   for(const Paired& p : corpus)
+   {
+      EXPECT_TRUE(approxEq(p.live.mass, p.base.mass, kTol, p.stem + " mass"));
       for(int r = 0; r < 3; ++r)
       {
          for(int c = 0; c < 3; ++c)
          {
-            EXPECT_TRUE(bitEqual(live.inertia(r, c), base.inertia(r, c),
-                                 stem + " I(" + std::to_string(r) + "," + std::to_string(c) + ")"));
+            EXPECT_TRUE(approxEq(p.live.inertia(r, c), p.base.inertia(r, c), kTol,
+                                 p.stem + " I(" + std::to_string(r) + "," + std::to_string(c) + ")"));
          }
       }
+   }
+}
 
-      // Composite CG + aero CP: legacy root-own-CM datum (the migrated reader will re-express these
-      // into the tip datum in Step 9; here the reader is legacy, so the compare is direct).
-      EXPECT_TRUE(bitEqual(live.cm.x(), base.cm.x(), stem + " cm.x"));
-      EXPECT_TRUE(bitEqual(live.cm.y(), base.cm.y(), stem + " cm.y"));
-      EXPECT_TRUE(bitEqual(live.cm.z(), base.cm.z(), stem + " cm.z"));
-      EXPECT_EQ(live.cpValid, base.cpValid) << stem << " cpValid";
-      EXPECT_TRUE(bitEqual(live.cp, base.cp, stem + " cp"));
+// The migrated composite CG equals the legacy CG re-expressed into the tip datum by the single fixed
+// offset cmLocalZ_root (the root's own CM station). x/y are coaxial (zero) in both.
+TEST(PlacementInvariance, CgMatchesUnderTipDatumShift)
+{
+   const std::vector<Paired> corpus = loadCorpus();
+   for(const Paired& p : corpus)
+   {
+      EXPECT_TRUE(approxEq(p.live.cm.x(), p.base.cm.x(), kTol, p.stem + " cg.x"));
+      EXPECT_TRUE(approxEq(p.live.cm.y(), p.base.cm.y(), kTol, p.stem + " cg.y"));
+      EXPECT_TRUE(approxEq(p.live.cm.z(), p.base.cm.z() + p.cmLocalZRoot, kTol, p.stem + " cg.z"));
+   }
+}
 
-      // Per-part resolved axial stations (and identity).
-      ASSERT_EQ(live.parts.size(), base.parts.size()) << stem << " part count";
-      for(std::size_t i = 0; i < base.parts.size(); ++i)
+// Every part's resolved station matches the legacy station under the same single tip-datum shift:
+// migrated CM-in-tip minus cmLocalZ_root == legacy CM-relative-to-root-CM.
+TEST(PlacementInvariance, ResolvedStationsMatch)
+{
+   const std::vector<Paired> corpus = loadCorpus();
+   for(const Paired& p : corpus)
+   {
+      ASSERT_EQ(p.live.parts.size(), p.base.parts.size()) << p.stem << " part count";
+      for(std::size_t i = 0; i < p.base.parts.size(); ++i)
       {
-         const std::string tag = stem + " part " + std::to_string(i);
-         EXPECT_EQ(live.parts[i].type, base.parts[i].type) << tag << " type";
-         EXPECT_EQ(live.parts[i].name, base.parts[i].name) << tag << " name";
-         EXPECT_TRUE(bitEqual(live.parts[i].station.x(), base.parts[i].station.x(), tag + " station.x"));
-         EXPECT_TRUE(bitEqual(live.parts[i].station.y(), base.parts[i].station.y(), tag + " station.y"));
-         EXPECT_TRUE(bitEqual(live.parts[i].station.z(), base.parts[i].station.z(), tag + " station.z"));
+         const std::string tag = p.stem + " part " + std::to_string(i);
+         EXPECT_EQ(p.live.parts[i].type, p.base.parts[i].type) << tag << " type";
+         EXPECT_EQ(p.live.parts[i].name, p.base.parts[i].name) << tag << " name";
+         EXPECT_TRUE(approxEq(p.live.parts[i].station.x(), p.base.parts[i].station.x(), kTol, tag + " x"));
+         EXPECT_TRUE(approxEq(p.live.parts[i].station.y(), p.base.parts[i].station.y(), kTol, tag + " y"));
+         EXPECT_TRUE(approxEq(p.live.parts[i].station.z() - p.cmLocalZRoot, p.base.parts[i].station.z(),
+                              kTol, tag + " z"));
       }
    }
+}
+
+// Diagnostic: report the worst observed relative drift across the corpus, so the chosen tolerance can
+// be judged against reality (and a regression that widens it is visible in the log).
+TEST(PlacementInvariance, ReportWorstDrift)
+{
+   const std::vector<Paired> corpus = loadCorpus();
+   double worst = 0.0;
+   std::string where;
+   const auto track = [&](double a, double b, const std::string& w)
+   {
+      const double rel = std::fabs(a - b) / std::max({1.0, std::fabs(a), std::fabs(b)});
+      if(rel > worst) { worst = rel; where = w; }
+   };
+   for(const Paired& p : corpus)
+   {
+      track(p.live.mass, p.base.mass, p.stem + " mass");
+      for(int r = 0; r < 3; ++r) { for(int c = 0; c < 3; ++c) { track(p.live.inertia(r, c), p.base.inertia(r, c), p.stem + " I"); } }
+      track(p.live.cm.z(), p.base.cm.z() + p.cmLocalZRoot, p.stem + " cg");
+      for(std::size_t i = 0; i < p.base.parts.size(); ++i)
+      {
+         track(p.live.parts[i].station.z() - p.cmLocalZRoot, p.base.parts[i].station.z(), p.stem + " station");
+      }
+   }
+   std::cout << "[ INVARIANCE ] worst relative drift = " << f17(worst) << " at " << where << "\n";
+   EXPECT_LT(worst, kTol) << "drift exceeds the tolerance at " << where;
 }

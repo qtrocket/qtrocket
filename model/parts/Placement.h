@@ -176,13 +176,9 @@ Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
 
 /// @brief THE resolver: a depth-first walk of the ownership tree from @p rootPose, producing one
 ///        Placed per part in deterministic depth-first (attachment) order. Each non-root part's
-///        StationLink is looked up in @p links by the part's id; a part absent from the map abuts its
-///        parent (the zero-config default). Pure geometry -- no CM, no time, no mass.
-///
-///        NOTE: the @p links map is the Step-5 scaffold. Once StationLink lives in childParts
-///        (Step 6) it is dropped and the link is read from each child pair in storage.
-std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose,
-                                      const std::map<PartId, StationLink>& links);
+///        StationLink is read from its parent's childParts pairing. Pure geometry -- no CM, no time,
+///        no mass.
+std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose);
 
 // --- Diagnostics --------------------------------------------------------------------------------
 

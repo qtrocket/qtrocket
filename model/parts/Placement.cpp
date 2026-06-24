@@ -35,23 +35,18 @@ Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
    return parentPose.compose(childInParent);
 }
 
-std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose,
-                                      const std::map<PartId, StationLink>& links)
+std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose)
 {
    std::vector<Placed> out;
    const auto dfs = [&](auto&& self, const Part& part, const Pose& pose) -> void
    {
       out.push_back(Placed{&part, pose});
-      for(const auto& childPair : part.getChildParts())
+      for(const auto& [child, link] : part.getChildParts())
       {
-         const std::shared_ptr<Part>& child = std::get<0>(childPair);
-         if(!child)
+         if(child)
          {
-            continue;
+            self(self, *child, placeChild(pose, part, *child, link));
          }
-         const auto       it   = links.find(child->getId());
-         const StationLink link = (it != links.end()) ? it->second : StationLink{};  // default: abut
-         self(self, *child, placeChild(pose, part, *child, link));
       }
    };
    dfs(dfs, root, rootPose);
@@ -128,9 +123,8 @@ SolveResult sweepOverlaps(const std::vector<Placed>& placed, double tol)
    std::map<PartId, PartId> parentOf;
    for(const Placed& pl : placed)
    {
-      for(const auto& childPair : pl.part->getChildParts())
+      for(const auto& [c, link] : pl.part->getChildParts())
       {
-         const std::shared_ptr<Part>& c = std::get<0>(childPair);
          if(c)
          {
             parentOf[c->getId()] = pl.part->getId();

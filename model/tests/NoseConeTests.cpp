@@ -69,9 +69,10 @@ TEST(NoseConeTest, SolidCmOffsetIsLOver4FromBase)
 {
    const double R = 0.019, L = 0.10;
    model::part::ConicalNoseCone cone("nose", R, L, 0.0, 2700.0, true);
-   // CM is L/4 from the base => +L/4 from the component middle (base at +L/2).
+   // CM is L/4 forward of the base (the wide, aft end) => -L/4 from the middle in the +z = forward
+   // frame (base at -L/2 aft). (Corrected sign; see whitepaper 2.3.)
    const Vector3 off = cone.getCenterMassOffset();
-   EXPECT_NEAR(off.z(), L / 4.0, 1e-15);
+   EXPECT_NEAR(off.z(), -L / 4.0, 1e-15);
    EXPECT_NEAR(off.x(), 0.0, 1e-15);
    EXPECT_NEAR(off.y(), 0.0, 1e-15);
 }
@@ -105,8 +106,8 @@ TEST(NoseConeTest, ShellMassCmInertiaMatchSurfaceIntegral)
    const double slant = std::sqrt(R * R + L * L);
    EXPECT_NEAR(cone.getMass(0.0), density * t * pi * R * slant, 1e-12);
 
-   // CM is L/3 from the base => +L/2 - L/3 = +L/6 from the component middle.
-   EXPECT_NEAR(cone.getCenterMassOffset().z(), L / 6.0, 1e-15);
+   // CM is L/3 forward of the base => -L/6 from the middle in the +z = forward frame.
+   EXPECT_NEAR(cone.getCenterMassOffset().z(), -L / 6.0, 1e-15);
 
    const double mass = cone.getMass(0.0);
    const Matrix3 I = cone.getCompositeI(0.0);
@@ -127,9 +128,9 @@ TEST(NoseConeTest, AeroConeCNalphaAndCp)
    EXPECT_NEAR(solid.getAero(pi * R * R).cnAlpha, 2.0, 1e-12);
    EXPECT_NEAR(solid.getAero(2.0 * pi * R * R).cnAlpha, 1.0, 1e-12);
 
-   // x_cp reported from the cone's own CM (per the CM-datum decision): hbar - L/3 = -L/12 (solid),
-   // so cnAlphaXcp = 2 * (-L/12) = -L/6 at refArea = pi R^2.
-   EXPECT_NEAR(solid.getAero(pi * R * R).cnAlphaXcp, 2.0 * (-L / 12.0), 1e-12);
+   // x_cp reported from the cone's own CM in the corrected +z = forward frame: L/3 - hbar = +L/12
+   // (solid), so cnAlphaXcp = 2 * (L/12) at refArea = pi R^2.
+   EXPECT_NEAR(solid.getAero(pi * R * R).cnAlphaXcp, 2.0 * (L / 12.0), 1e-12);
    EXPECT_DOUBLE_EQ(solid.getAero(pi * R * R).cd, 0.0);
 
    // For the thin shell the CP coincides with the CM (both 2/3 L from the tip), so x_cp(from CM) = 0.
@@ -137,17 +138,17 @@ TEST(NoseConeTest, AeroConeCNalphaAndCp)
    EXPECT_NEAR(shell.getAero(pi * R * R).cnAlpha, 2.0, 1e-12);
    EXPECT_NEAR(shell.getAero(pi * R * R).cnAlphaXcp, 0.0, 1e-12);
 
-   // Frame-independent anchor: whatever the datum, the cone CP is 2/3 L from the TIP. Reconstruct the
-   // tip station -- x_cp_from_tip = cnAlphaXcp/cnAlpha (CM-relative) + getCenterMassOffset().z()
-   // (CM->middle) + L/2 (middle->tip) -- and confirm it is (2/3)L for BOTH solid and shell,
-   // independent of the -L/12 / 0 CM arithmetic checked above.
+   // Frame-independent anchor: whatever the datum, the cone CP is 2/3 L aft of the TIP. Reconstruct
+   // the station relative to the tip -- x_cp_from_tip = cnAlphaXcp/cnAlpha (CM-relative) +
+   // getCenterMassOffset().z() (CM->middle) - L/2 (middle->tip, tip at +L/2 in the +z = forward frame)
+   // -- and confirm it is -(2/3)L for BOTH solid and shell, independent of the +L/12 / 0 CM arithmetic.
    auto tipStation = [&](const model::part::ConicalNoseCone& c)
    {
       const sim::AeroComponent a = c.getAero(pi * R * R);
-      return a.cnAlphaXcp / a.cnAlpha + c.getCenterMassOffset().z() + L / 2.0;
+      return a.cnAlphaXcp / a.cnAlpha + c.getCenterMassOffset().z() - L / 2.0;
    };
-   EXPECT_NEAR(tipStation(solid), 2.0 / 3.0 * L, 1e-12);
-   EXPECT_NEAR(tipStation(shell), 2.0 / 3.0 * L, 1e-12);
+   EXPECT_NEAR(tipStation(solid), -2.0 / 3.0 * L, 1e-12);
+   EXPECT_NEAR(tipStation(shell), -2.0 / 3.0 * L, 1e-12);
 }
 
 TEST(NoseConeTest, ReducesToShellVsSolidCorrectly)
@@ -158,10 +159,10 @@ TEST(NoseConeTest, ReducesToShellVsSolidCorrectly)
    model::part::ConicalNoseCone solid("s", R, L, 0.001, 2700.0, true);
    model::part::ConicalNoseCone shell("h", R, L, 0.001, 2700.0, false);
 
-   // CM: solid is L/4 from the base (+L/4 from the middle), shell is L/3 from the base (+L/6). Distinct.
-   EXPECT_NEAR(solid.getCenterMassOffset().z(), L / 4.0, 1e-15);
-   EXPECT_NEAR(shell.getCenterMassOffset().z(), L / 6.0, 1e-15);
-   EXPECT_GT(solid.getCenterMassOffset().z(), shell.getCenterMassOffset().z());
+   // CM: solid is L/4 forward of the base (-L/4 from the middle), shell L/3 forward (-L/6). Distinct.
+   EXPECT_NEAR(solid.getCenterMassOffset().z(), -L / 4.0, 1e-15);
+   EXPECT_NEAR(shell.getCenterMassOffset().z(), -L / 6.0, 1e-15);
+   EXPECT_LT(solid.getCenterMassOffset().z(), shell.getCenterMassOffset().z()); // -L/4 < -L/6
 
    // Per-unit-mass tensors differ: shell Izz/m = R^2/2 strictly exceeds solid 3R^2/10; the transverse
    // moments also differ.

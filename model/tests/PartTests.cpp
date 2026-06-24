@@ -180,16 +180,17 @@ std::shared_ptr<model::part::Part> tube(const std::string& name, double ri, doub
 
 TEST(PartCompositionTest, PointMassPairCompositeCmIsMassWeightedMidpoint)
 {
-   // Parent mass at its own CM (origin); child mass offset along +x. The composite CM sits at the
-   // mass-weighted average, expressed relative to the parent's own CM.
+   // Parent mass at its own CM (origin); child mass offset along the axis (-z aft). 3-DOF placement is
+   // coaxial, so the offset is axial; a zero-length point mass has its fore plane at its CM, so there
+   // is no datum shift here. The composite CM is the mass-weighted average.
    const double mp = 2.0, mc = 3.0, L = 4.0;
    auto parent = pointMass("parent", mp);
-   parent->addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
+   parent->addChildPart(pointMass("child", mc), Vector3{0.0, 0.0, L});
 
    const Vector3 cm = parent->getCompositeCm(0.0);
-   EXPECT_NEAR(cm(0), mc * L / (mp + mc), 1e-12); // = 2.4
+   EXPECT_NEAR(cm(0), 0.0, 1e-12);
    EXPECT_NEAR(cm(1), 0.0, 1e-12);
-   EXPECT_NEAR(cm(2), 0.0, 1e-12);
+   EXPECT_NEAR(cm(2), mc * L / (mp + mc), 1e-12); // = 2.4
    EXPECT_NEAR(parent->getCompositeMass(0.0), mp + mc, 1e-12);
 }
 
@@ -200,14 +201,14 @@ TEST(PartCompositionTest, PointMassPairInertiaIsAboutCompositeCmNotParentCm)
    // this about the PARENT's CM (mc*L^2), so this value pins the tensor to the composite CM.
    const double mp = 2.0, mc = 3.0, L = 4.0;
    auto parent = pointMass("parent", mp);
-   parent->addChildPart(pointMass("child", mc), Vector3{L, 0.0, 0.0});
+   parent->addChildPart(pointMass("child", mc), Vector3{0.0, 0.0, L}); // coaxial: joining line is z
 
    const double mu = mp * mc / (mp + mc);
    const double expected = mu * L * L; // 19.2
    const Matrix3 I = parent->getCompositeI(0.0);
-   EXPECT_NEAR(I(0, 0), 0.0, 1e-12);       // along the joining line
+   EXPECT_NEAR(I(2, 2), 0.0, 1e-12);       // along the joining line (z)
+   EXPECT_NEAR(I(0, 0), expected, 1e-12);
    EXPECT_NEAR(I(1, 1), expected, 1e-12);
-   EXPECT_NEAR(I(2, 2), expected, 1e-12);
    EXPECT_NEAR(I(0, 1), 0.0, 1e-12);
    EXPECT_NEAR(I(0, 2), 0.0, 1e-12);
    EXPECT_NEAR(I(1, 2), 0.0, 1e-12);
@@ -223,11 +224,11 @@ TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
    const double a = 1.0, b = 2.0;            // child at a from root; grandchild at b from child
 
    auto child = pointMass("child", mc);
-   child->addChildPart(pointMass("grandchild", mg), Vector3{b, 0.0, 0.0});
+   child->addChildPart(pointMass("grandchild", mg), Vector3{0.0, 0.0, b}); // coaxial (axial chain)
    auto root = pointMass("root", mr);
-   root->addChildPart(child, Vector3{a, 0.0, 0.0});
+   root->addChildPart(child, Vector3{0.0, 0.0, a});
 
-   // Flat reference (masses on the x-axis at 0, a, a+b).
+   // Flat reference (masses on the axis at 0, a, a+b).
    const double x[3] = {0.0, a, a + b};
    const double m[3] = {mr, mc, mg};
    const double M = mr + mc + mg;
@@ -238,12 +239,12 @@ TEST(PartCompositionTest, ThreeMassChainMatchesFlatReferenceDepth2)
    for(int i = 0; i < 3; ++i) transverse += m[i] * (x[i] - xc) * (x[i] - xc);
 
    EXPECT_NEAR(root->getCompositeMass(0.0), M, 1e-12);
-   EXPECT_NEAR(root->getCompositeCm(0.0)(0), xc, 1e-12);
+   EXPECT_NEAR(root->getCompositeCm(0.0)(2), xc, 1e-12); // coaxial chain along z (no datum shift: point root)
 
    const Matrix3 I = root->getCompositeI(0.0);
-   EXPECT_NEAR(I(0, 0), 0.0, 1e-12);
+   EXPECT_NEAR(I(2, 2), 0.0, 1e-12);            // along the joining line (z)
+   EXPECT_NEAR(I(0, 0), transverse, 1e-12);
    EXPECT_NEAR(I(1, 1), transverse, 1e-12);
-   EXPECT_NEAR(I(2, 2), transverse, 1e-12);
 }
 
 TEST(PartCompositionTest, CloneIsADeepIndependentTypePreservingCopy)
@@ -404,15 +405,18 @@ TEST(PartCompositionTest, GetChildPartsExposesChildrenAndAttachPositionsInOrder)
    auto b = pointMass("b", 1.0);
    const auto aId = a->getId();
    const auto bId = b->getId();
-   root->addChildPart(a, Vector3{1.0, 0.0, 0.0});
-   root->addChildPart(b, Vector3{0.0, 2.0, 0.0});
+   root->addChildPart(a, Vector3{0.0, 0.0, -0.3}); // axial: 3-DOF placement is coaxial (radial deferred)
+   root->addChildPart(b, Vector3{0.0, 0.0, -0.5});
 
    const auto& kids = root->getChildParts();
    ASSERT_EQ(kids.size(), 2u);
-   EXPECT_EQ(std::get<0>(kids[0])->getId(), aId);   // attachment order is preserved
-   EXPECT_EQ(std::get<0>(kids[1])->getId(), bId);
-   EXPECT_DOUBLE_EQ(std::get<1>(kids[0]).x(), 1.0); // attach positions round-trip through the view
-   EXPECT_DOUBLE_EQ(std::get<1>(kids[1]).y(), 2.0);
+   EXPECT_EQ(kids[0].first->getId(), aId);   // attachment order is preserved
+   EXPECT_EQ(kids[1].first->getId(), bId);
+   // The legacy CM-to-CM offset is recovered into a StationLink; for these zero-length point masses the
+   // shim stores the axial offset as the gap of an abut link.
+   EXPECT_EQ(kids[0].second.seat, model::part::SeatKind::Abut);
+   EXPECT_DOUBLE_EQ(kids[0].second.gap, -0.3);
+   EXPECT_DOUBLE_EQ(kids[1].second.gap, -0.5);
 }
 
 TEST(PartCompositionTest, RemoveChildByIdDetachesReturnsAndRecomputesComposite)
@@ -421,11 +425,11 @@ TEST(PartCompositionTest, RemoveChildByIdDetachesReturnsAndRecomputesComposite)
    auto parent = pointMass("parent", mp);
    auto child = pointMass("child", mc);
    const auto childId = child->getId();
-   parent->addChildPart(child, Vector3{L, 0.0, 0.0});
+   parent->addChildPart(child, Vector3{0.0, 0.0, L}); // coaxial (axial)
 
    // Cache the composite WITH the child, so the post-removal reads must rebuild to stay correct.
    EXPECT_NEAR(parent->getCompositeMass(0.0), mp + mc, 1e-12);
-   EXPECT_NEAR(parent->getCompositeCm(0.0)(0), mc * L / (mp + mc), 1e-12);
+   EXPECT_NEAR(parent->getCompositeCm(0.0)(2), mc * L / (mp + mc), 1e-12);
 
    auto detached = parent->removeChildById(childId);
    ASSERT_NE(detached, nullptr);
@@ -434,7 +438,7 @@ TEST(PartCompositionTest, RemoveChildByIdDetachesReturnsAndRecomputesComposite)
 
    // Composite recomputed: a lone parent at its own CM.
    EXPECT_NEAR(parent->getCompositeMass(0.0), mp, 1e-12);
-   EXPECT_NEAR(parent->getCompositeCm(0.0)(0), 0.0, 1e-12);
+   EXPECT_NEAR(parent->getCompositeCm(0.0)(2), 0.0, 1e-12);
 
    // A second remove of the now-absent id is a no-op returning nullptr; the root never removes itself.
    EXPECT_EQ(parent->removeChildById(childId), nullptr);

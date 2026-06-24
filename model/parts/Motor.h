@@ -42,7 +42,7 @@ public:
    /// @brief This part's own mass at time @p t: the motor's burn-time-varying mass (kg).
    ///        Pre-ignition = loaded total weight; during burn falls to the casing (empty) mass;
    ///        after burnout stays at the casing mass. @see MotorModel::getMass
-   double getMass(double t) override { return mm.getMass(t); }
+   double getMass(double t) const override { return mm.getMass(t); }
 
    /// @brief Read access to the wrapped motor (e.g. to plot its thrust curve).
    const MotorModel& getMotorModel() const { return mm; }

@@ -49,13 +49,15 @@ double FinSet::computeMass(unsigned int N, double cr, double ct, double s, doubl
    return static_cast<double>(N) * density * (0.5 * (cr + ct) * s) * thk;
 }
 
-// Axial (z) mass centroid of the set from the root LE; the transverse components cancel to the axis
-// for N >= 2 by symmetry. NOTE: this MASS centroid differs from the aero CP (see getAero) -- they are
-// different quantities with different formulas; do not conflate them.
+// Axial (z) mass centroid of the set; the transverse components cancel to the axis for N >= 2 by
+// symmetry. Reported relative to the component MIDDLE in the shared +z = forward frame: the centroid
+// x_c (from the root leading edge) minus L/2 (= rootChord/2). (Previously x_c was reported from the
+// end, not mid -- the same latent reference defect as the cone; see the whitepaper 2.3.) NOTE: this
+// MASS centroid differs from the aero CP (see getAero) -- different quantities, different formulas.
 Vector3 FinSet::finSetCmOffset(double cr, double ct, double sweep)
 {
    const double xcMass = (cr * cr + cr * ct + ct * ct + sweep * (cr + 2.0 * ct)) / (3.0 * (cr + ct));
-   return Vector3{0.0, 0.0, xcMass};
+   return Vector3{0.0, 0.0, xcMass - cr / 2.0};
 }
 
 sim::AeroComponent FinSet::getAero(double refArea) const

@@ -63,7 +63,7 @@ public:
       : Part("ramp", Matrix3::Identity(), start, Vector3::Zero()),
         startMass(start), endMass(end), burnTime(burn) {}
 
-   double getMass(double t) override
+   double getMass(double t) const override
    {
       ++calls;
       if(t <= 0.0)      return startMass;
@@ -71,7 +71,7 @@ public:
       return startMass + (endMass - startMass) * (t / burnTime);
    }
 
-   int calls{0};
+   mutable int calls{0};
 
 private:
    double startMass, endMass, burnTime;
@@ -192,7 +192,11 @@ TEST(MotorInertiaTest, CgConsistentWithTensorWalk)
    const double t = 1.0;
    const Vector3 cg = root->getCompositeCm(t);
    const double mM = motor->getMass(t);
-   const Vector3 expectedCg = (mM * Vector3{0.0, 0.0, -0.2}) / (mB + mM);
+   // Composite CG is reported in the HollowSphere root's fore-plane (tip) datum, i.e. shifted from the
+   // root-own-CM datum by cmLocalZ_root = -outerRadius = -0.05 (the sphere CM sits a radius aft of its
+   // +z pole). The motor's -0.2 CM-to-CM offset is preserved by the shim.
+   const Vector3 expectedCg =
+      (mM * Vector3{0.0, 0.0, -0.2}) / (mB + mM) + Vector3{0.0, 0.0, -0.05};
    EXPECT_TRUE(cg.isApprox(expectedCg, 1e-9)) << "cg=" << cg.transpose();
 }
 

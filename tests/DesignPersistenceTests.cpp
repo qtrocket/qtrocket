@@ -68,19 +68,18 @@ TEST_F(DesignRoundTrip, GeometryRoundTripsMassCgStructureAndMultiChild)
    ASSERT_NE(r2.getTopPart(), nullptr);
    EXPECT_EQ(r2.getTopPart()->typeName(), "NoseCone");
    ASSERT_EQ(r2.getTopPart()->getChildParts().size(), 1u);
-   const auto& body2 = std::get<0>(r2.getTopPart()->getChildParts()[0]);
+   const auto& body2 = r2.getTopPart()->getChildParts()[0].first;
    EXPECT_EQ(body2->typeName(), "BodyTube");
    EXPECT_EQ(body2->getName(), "Body");
    ASSERT_EQ(body2->getChildParts().size(), 2u);
 
-   // Mass exact; CG via EXPECT_NEAR (reload may re-sum children in a different ULP order).
+   // Mass exact; CG via EXPECT_NEAR (reload may re-sum children in a different ULP order). The CG
+   // match is what proves the placement (the body's StationLink) round-tripped faithfully -- the
+   // absolute offset is no longer stored, it is derived by the resolver.
    EXPECT_DOUBLE_EQ(r2.getMass(0.0), r.getMass(0.0));
    const Vector3 cg = r.getTopPart()->getCompositeCm(0.0);
    const Vector3 cg2 = r2.getTopPart()->getCompositeCm(0.0);
    for(int i = 0; i < 3; ++i) { EXPECT_NEAR(cg2(i), cg(i), 1e-9); }
-
-   // And the attach offset of the body round-tripped verbatim (z = -0.13).
-   EXPECT_DOUBLE_EQ(std::get<1>(r2.getTopPart()->getChildParts()[0]).z(), -0.13);
 }
 
 TEST_F(DesignRoundTrip, ReferenceAreaOverrideAndDragRoundTrip)
