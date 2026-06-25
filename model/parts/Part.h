@@ -26,7 +26,8 @@ namespace model::part
  * @brief A node in a rocket's part tree: it owns its mass, geometry-derived inertia, and
  *        center of mass, and aggregates those of all attached child parts.
  *
- * Each Part is simultaneously a single component and the root of a sub-tree of child parts.
+ * Each Part is simultaneously a single component and the root of a sub-tree of child parts, allowing
+ * for a straightforward implementation of assemblies.
  * It therefore tracks two sets of quantities:
  *   - its own mass and inertia (the part by itself), and
  *   - the @em composite mass and inertia of the part together with every descendant.
@@ -41,16 +42,27 @@ namespace model::part
  * tree is structurally dirty or the composite mass changes), so they track a burning motor and
  * freeze once mass is constant. @see getCompositeI()
  *
- * Frame assumption: all parts share the same body-frame orientation, so child @p position offsets
- * are pure translations and tensors combine by addition (no rotation). This holds for a rigid
- * rocket; relative part rotation is not modeled.
+ * Frame assumptions (two distinct ones, with different lifetimes):
+ *   - Rigid body (PERMANENT): the rocket is one rigid body, so parts never move relative to each
+ *     other during flight. This is independent of DOF count -- 6-DOF adds the whole body's three
+ *     rotational DOF, it does not let parts flex or rotate against one another.
+ *   - Single shared orientation (3-DOF SIMPLIFICATION, only partly assumed): every part's body
+ *     frame is currently the identity rotation, so child offsets reduce to pure translations and
+ *     child tensors combine by addition. This is NOT a structural requirement: the placement layer
+ *     already carries a per-part orientation (StationLink::childRot, Pose::orient, Pose::compose),
+ *     and computeCompositeAt already rotates each part's CM by it -- both degenerate to the legacy
+ *     translation-only walk because the quaternions are identity today. The ONE piece still assuming
+ *     identity is the inertia shift: it parallel-axis-shifts each child tensor but does not yet
+ *     rotate it (the R*I*R^T term, identity in 3-DOF; see the TODO in computeCompositeAt). Static
+ *     per-part orientation (fins arrayed at roll angles, canted fins, an angled nozzle) is the case
+ *     that activates it -- a rigid rocket, not a relaxation of rigidity.
  */
 class Part
 {
    /// @brief Test-only friend: grants the composition unit tests access to the private
    ///        parent pointers, child list, and dirty flag so they can verify clone re-parenting and
    ///        upward dirty propagation. Defined in PartTests.cpp
-   friend class PartCompositionAccess;
+   friend class PartCompositionTestAccess;
 
 public:
    /// @brief Type of a Part's stable per-instance identifier. @see getId()
@@ -170,7 +182,7 @@ public:
    sim::AeroProfile getCompositeAero(double refArea) const;
 
    /**
-    * @brief The cached Layer-2 envelope-sweep verdict for this sub-tree (this part planted at the local
+    * @brief The cached Resolver Layer-2 envelope-sweep verdict for this sub-tree (this part planted at the local
     *        origin), resolved once per structural change. @c ok == false means the geometry
     *        self-intersects; @c diagnostics locate each offender. The same verdict the composite gate
     *        throws on, exposed so the visualizer can flag the offending parts in an error colour.
@@ -252,16 +264,20 @@ public:
     * @brief This part's unique identifier (unique within the process run, even across copies and
     *        identical names). Assigned at construction and never changed; a copy receives a NEW id.
     *        Use it -- not the human-facing name, which need not be unique -- to identify a part.
+    *        Note, not saved, and doesn't matter. It's only used during an actual run, and not relevant
+    *        to a design. A loaded design will assign an id to a part for internal use, and subsequent
+    *        saves/loads may assign different IDs for those session, and that's fine because it's only
+    *        for identifying parts in memory.
     */
    Id getId() const { return id; }
 
    /// @brief This part's human-facing name; need NOT be unique (use getId() for identity).
    std::string getName() const { return name; }
 
-   /// @brief Stable type tag for this part ("NoseCone", "BodyTube", ...); the base returns "Part".
-   ///        Non-pure on purpose so test-only and future Part subclasses need not override it. Doubles
-   ///        as the part-factory key, the design-file <part type=...> attribute, and the listparts label.
-   virtual std::string typeName() const { return "Part"; }
+   /// @brief Stable type tag for this part ("NoseCone", "BodyTube", ...). PURE: Part is abstract, so
+   ///        every concrete part defines its own tag -- a bare Part has no meaningful type. Doubles as
+   ///        the part-factory key, the design-file <part type=...> attribute, and the listparts label.
+   virtual std::string typeName() const = 0;
 
    /**
     * @brief Find a part by id within this sub-tree (this part or any descendant).
@@ -281,9 +297,9 @@ public:
    /**
     * @brief Deep-copy this part and its whole sub-tree into a new, independent tree.
     *
-    * Type-preserving (a HollowSphere clones to a HollowSphere -- no slicing) and every cloned node
+    * Type-preserving, and every cloned node
     * receives a fresh unique id. The returned root has no parent. This is the only way to duplicate
-    * a part, so duplication is always explicit: parent->addChildPart(other->clone(), pos).
+    * a part, so duplication is always explicit: parent->addChildPart(other->clone(), link).
     */
    std::shared_ptr<Part> clone() const;
 
@@ -322,9 +338,10 @@ protected:
    ///        external code can neither copy nor slice a Part; subclasses use it in cloneShallow().
    Part(const Part&);
 
-   /// @brief Type-preserving shallow copy of just this node (no children), as a shared_ptr. Override
-   ///        in every subclass so clone() reproduces the correct dynamic type. @see clone()
-   virtual std::shared_ptr<Part> cloneShallow() const;
+   /// @brief Type-preserving shallow copy of just this node (no children), as a shared_ptr. PURE:
+   ///        Part is abstract, so there is no base node to copy -- every concrete subclass must
+   ///        override this so clone() reproduces the correct dynamic type. @see clone()
+   virtual std::shared_ptr<Part> cloneShallow() const = 0;
 
 private:
 

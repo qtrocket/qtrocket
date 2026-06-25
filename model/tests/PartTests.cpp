@@ -9,6 +9,7 @@
 #include "model/parts/Part.h"
 #include "model/InertiaTensors.h"
 #include "model/parts/Parts.h"
+#include "model/tests/TestPart.h"
 
 class PartTest : public testing::Test
 {
@@ -57,7 +58,7 @@ TEST(PartTest, CreationTests)
               0, 1, 0,
               0, 0, 1;
    Vector3 cm{1, 0, 0};
-   model::part::Part testPart("testPart",
+   model::part::TestPart testPart("testPart",
                         inertia,
                         1.0,
                         cm);
@@ -68,7 +69,7 @@ TEST(PartTest, CreationTests)
                0, 0, 1;
    Vector3 cm2{1, 0, 0};
    Vector3 R{2.0, 2.0, 2.0};
-   testPart.addChildPart(std::make_shared<model::part::Part>("testPart2", inertia2, 1.0, cm2),
+   testPart.addChildPart(std::make_shared<model::part::TestPart>("testPart2", inertia2, 1.0, cm2),
                          model::part::abut(R.z()));
 
 
@@ -146,7 +147,7 @@ TEST(PartTest, StoresInertiaPerUnitMassWithMassWeightedComposite)
    // The bare tensor is per-unit-mass; the composite is full (mass * per-mass). With mass = 2.0 and
    // SolidSphere(1.0) = 0.4 on the diagonal, getI() = 0.4 but getCompositeI(0.0) = 0.8 -- this would be
    // 0.4 if Part stored the tensor un-weighted, so it locks the mass multiply in.
-   model::part::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
+   model::part::TestPart part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
    EXPECT_DOUBLE_EQ(part.getI()(0, 0), 0.4);
    EXPECT_DOUBLE_EQ(part.getCompositeI(0.0)(0, 0), 0.8);
 }
@@ -158,7 +159,7 @@ namespace
 // parts are owned through shared_ptr and addChildPart() takes ownership of one.
 std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
 {
-   return std::make_shared<model::part::Part>(name, Matrix3::Zero(), mass, Vector3::Zero());
+   return std::make_shared<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 
 // Mass of a uniform hollow cylinder (tube): density * volume, volume = pi * (ro^2 - ri^2) * length.
@@ -172,7 +173,7 @@ double tubeMass(double ri, double ro, double length, double density)
 std::shared_ptr<model::part::Part> tube(const std::string& name, double ri, double ro, double length,
                                   double density)
 {
-   return std::make_shared<model::part::Part>(name,
+   return std::make_shared<model::part::TestPart>(name,
                                         model::InertiaTensors::Tube(ri, ro, length),
                                         tubeMass(ri, ro, length, density),
                                         Vector3::Zero());
@@ -274,7 +275,7 @@ TEST(PartCompositionTest, SetMassAndSetIInvalidateCompositeCache)
 {
    // setMass() and setI() must flag the composite cache stale; before the fix setI() did not, so a
    // later getCompositeI(0.0) returned a value computed from the old tensor.
-   model::part::Part part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
+   model::part::TestPart part("p", model::InertiaTensors::SolidSphere(1.0), 2.0, Vector3{0.0, 0.0, 0.0});
    EXPECT_DOUBLE_EQ(part.getCompositeI(0.0)(0, 0), 0.8); // 2.0 * 0.4
 
    part.setMass(4.0);
@@ -386,11 +387,9 @@ TEST(PartCompositionTest, FindByIdLocatesAdoptedPartsAndRejectsAbsent)
 
 TEST(PartCompositionTest, TypeNameReportsTheConcreteType)
 {
-   // The base Part reports "Part"; each concrete leaf reports its own stable tag. These strings are
-   // the part-factory keys and the design-file type attribute (P2 persistence), so they are pinned
-   // here. A default MotorModel is unignited, so Motor's eager getMass(0) is a safe 0.
-   model::part::Part base("base", Matrix3::Zero(), 1.0, Vector3::Zero());
-   EXPECT_EQ(base.typeName(), "Part");
+   // Part is abstract (typeName() is pure), so each concrete leaf reports its own stable tag. These
+   // strings are the part-factory keys and the design-file type attribute (P2 persistence), so they are
+   // pinned here. A default MotorModel is unignited, so Motor's eager getMass(0) is a safe 0.
    EXPECT_EQ(model::part::HollowSphere("s", 0.04, 0.05, 2700.0).typeName(), "HollowSphere");
    EXPECT_EQ(model::part::BodyTube("b", 0.0, 0.019, 0.20, 680.0).typeName(), "BodyTube");
    EXPECT_EQ(model::part::ConicalNoseCone("n", 0.019, 0.10, 0.0, 2700.0).typeName(), "NoseCone");
@@ -466,7 +465,7 @@ TEST(PartCompositionTest, RemoveChildByIdFindsADescendantDeepInTheTree)
 
 TEST(PartCompositionTest, GetNameReturnsThePartName)
 {
-   model::part::Part p("AvionicsBay", Matrix3::Zero(), 1.0, Vector3::Zero());
+   model::part::TestPart p("AvionicsBay", Matrix3::Zero(), 1.0, Vector3::Zero());
    EXPECT_EQ(p.getName(), "AvionicsBay");
 }
 
@@ -527,8 +526,8 @@ namespace model::part
 {
 // White-box fixture: grants the re-parenting test access to Part's private parent pointers, child
 // list, and dirty flag. Lives in namespace model::part so the unqualified `friend class
-// PartCompositionAccess;` in Part.h refers to it, and so TEST_F below finds it by name.
-class PartCompositionAccess : public ::testing::Test
+// PartCompositionTestAccess;` in Part.h refers to it, and so TEST_F below finds it by name.
+class PartCompositionTestAccess : public ::testing::Test
 {
 protected:
    static Part* parentOf(const Part& p) { return p.parent; }
@@ -536,11 +535,11 @@ protected:
    static bool isDirty(const Part& p) { return p.needsRecomputing; }
 };
 
-TEST_F(PartCompositionAccess, AdoptedChildIsReparentedAndDirtyPropagates)
+TEST_F(PartCompositionTestAccess, AdoptedChildIsReparentedAndDirtyPropagates)
 {
-   auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
-   auto child = std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
-   auto grandchild = std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto root = std::make_shared<TestPart>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto child = std::make_shared<TestPart>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto grandchild = std::make_shared<TestPart>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
    child->addChildPart(grandchild, model::part::abut());
    root->addChildPart(child, model::part::abut());
 
@@ -556,13 +555,13 @@ TEST_F(PartCompositionAccess, AdoptedChildIsReparentedAndDirtyPropagates)
    EXPECT_TRUE(isDirty(*root));
 }
 
-TEST_F(PartCompositionAccess, CloneReparentsSubtreeWithFreshUniqueIds)
+TEST_F(PartCompositionTestAccess, CloneReparentsSubtreeWithFreshUniqueIds)
 {
-   auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
-   root->addChildPart(std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero()),
+   auto root = std::make_shared<TestPart>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   root->addChildPart(std::make_shared<TestPart>("child", Matrix3::Zero(), 1.0, Vector3::Zero()),
                       model::part::abut());
    childAt(*root, 0).addChildPart(
-      std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero()),
+      std::make_shared<TestPart>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero()),
       model::part::abut());
 
    auto copy = root->clone();
@@ -583,15 +582,15 @@ TEST_F(PartCompositionAccess, CloneReparentsSubtreeWithFreshUniqueIds)
    EXPECT_EQ(copy->findById(copyGrandchild.getId()), &copyGrandchild);
 }
 
-TEST_F(PartCompositionAccess, RemoveChildByIdClearsParentAndDirtiesAncestors)
+TEST_F(PartCompositionTestAccess, RemoveChildByIdClearsParentAndDirtiesAncestors)
 {
    // Mechanism check: removeChildById must clear the detached node's parent pointer and dirty the
    // ex-parent AND every ancestor. The dirty FLAG (not the mass-delta gate) is what drives the
    // rebuild, so a zero-net-mass-change removal still refreshes -- all nodes are mass 1 here; the
    // point is purely the parent-pointer + dirty-flag bookkeeping.
-   auto root = std::make_shared<Part>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
-   auto child = std::make_shared<Part>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
-   auto grandchild = std::make_shared<Part>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto root = std::make_shared<TestPart>("root", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto child = std::make_shared<TestPart>("child", Matrix3::Zero(), 1.0, Vector3::Zero());
+   auto grandchild = std::make_shared<TestPart>("grandchild", Matrix3::Zero(), 1.0, Vector3::Zero());
    const Part::Id gcId = grandchild->getId();
    child->addChildPart(grandchild, model::part::abut());
    root->addChildPart(child, model::part::abut());

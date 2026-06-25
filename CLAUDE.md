@@ -88,3 +88,5 @@ utils/
 - SI units throughout: meters, kilograms, seconds, Newtons; altitude is the z component, ground at z = 0.
 - Quaternions are stored (x, y, z, w).
 - GUI forms are `.ui` files compiled via AUTOUIC; resources via `qtrocket.qrc` (AUTORCC); `Q_OBJECT` classes need AUTOMOC — all already enabled globally.
+
+Don't add explanatory comments unless the logic is non-obvious. No comments that just restate what the code does. Don't narrate changes in comments.

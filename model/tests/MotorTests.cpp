@@ -71,8 +71,14 @@ public:
       if(t >= burnTime) return endMass;
       return startMass + (endMass - startMass) * (t / burnTime);
    }
+   std::string typeName() const override { return "CountingRampPart"; } // Part is abstract; concrete stub
 
    mutable int calls{0};
+
+protected:
+   CountingRampPart(const CountingRampPart&) = default; // uses Part's protected copy ctor (fresh id)
+   std::shared_ptr<Part> cloneShallow() const override
+   { return std::shared_ptr<Part>(new CountingRampPart(*this)); }
 
 private:
    double startMass, endMass, burnTime;

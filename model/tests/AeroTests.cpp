@@ -24,12 +24,19 @@ constexpr double pi = std::numbers::pi;
 
 // A minimal Part whose getAero returns a fixed AeroComponent, to test the composition walk's
 // accumulation/station-threading independently of the real parts' (P2-placeholder) zero cd.
-class AeroStub : public model::part::Part
+class FixedAeroPart : public model::part::Part
 {
 public:
-   AeroStub(const std::string& name, sim::AeroComponent aero)
+   FixedAeroPart(const std::string& name, sim::AeroComponent aero)
       : Part(name, Matrix3::Zero(), 1.0, Vector3::Zero()), aero_(aero) {}
    sim::AeroComponent getAero(double /*refArea*/) const override { return aero_; }
+   std::string typeName() const override { return "FixedAeroPart"; } // Part is abstract; concrete stub
+
+protected:
+   FixedAeroPart(const FixedAeroPart&) = default; // uses Part's protected copy ctor (fresh id)
+   std::shared_ptr<model::part::Part> cloneShallow() const override
+   { return std::shared_ptr<model::part::Part>(new FixedAeroPart(*this)); }
+
 private:
    sim::AeroComponent aero_;
 };
@@ -98,10 +105,10 @@ TEST(AeroTest, CompositeCpIsCNalphaWeighted)
 
 TEST(AeroTest, CompositeCdIsAdditive)
 {
-   auto root = std::make_shared<AeroStub>("root", sim::AeroComponent{0.0, 0.0, 0.10});
-   root->addChildPart(std::make_shared<AeroStub>("c1", sim::AeroComponent{0.5, 0.0, 0.20}),
+   auto root = std::make_shared<FixedAeroPart>("root", sim::AeroComponent{0.0, 0.0, 0.10});
+   root->addChildPart(std::make_shared<FixedAeroPart>("c1", sim::AeroComponent{0.5, 0.0, 0.20}),
                       model::part::abut(0.10));
-   root->addChildPart(std::make_shared<AeroStub>("c2", sim::AeroComponent{0.0, 0.0, 0.30}),
+   root->addChildPart(std::make_shared<FixedAeroPart>("c2", sim::AeroComponent{0.0, 0.0, 0.30}),
                       model::part::abut(0.20));
 
    const sim::AeroProfile prof = root->getCompositeAero(1.0);

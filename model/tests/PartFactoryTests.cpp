@@ -6,6 +6,7 @@
 
 #include "model/parts/PartFactory.h"
 #include "model/parts/Parts.h"
+#include "model/tests/TestPart.h"
 
 namespace
 {
@@ -220,7 +221,7 @@ TEST(PartFactoryTest, ParamsOnMotorOrBasePartReflectsOnlyTheName)
    EXPECT_FALSE(mp.outerRadius.has_value());
    EXPECT_FALSE(mp.finCount.has_value());
 
-   model::part::Part base("B", Matrix3::Zero(), 1.0, Vector3::Zero());
+   model::part::TestPart base("B", Matrix3::Zero(), 1.0, Vector3::Zero());
    const PartParams bp = params(base);
    EXPECT_EQ(bp.name, "B");
    EXPECT_FALSE(bp.density.has_value());

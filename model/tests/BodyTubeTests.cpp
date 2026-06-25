@@ -9,6 +9,7 @@
 #include "model/parts/BodyTube.h"
 #include "model/parts/HollowSphere.h"
 #include "model/parts/Part.h"
+#include "model/tests/TestPart.h"
 
 namespace
 {
@@ -30,7 +31,7 @@ double tubeIxxPerMass(double ri, double ro, double L)
 
 std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
 {
-   return std::make_shared<model::part::Part>(name, Matrix3::Zero(), mass, Vector3::Zero());
+   return std::make_shared<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 } // namespace
 

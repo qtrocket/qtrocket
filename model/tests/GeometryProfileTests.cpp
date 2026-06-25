@@ -15,6 +15,7 @@
 #include "model/parts/HollowSphere.h"
 #include "model/parts/Part.h"
 #include "model/parts/Placement.h"
+#include "model/tests/TestPart.h"
 #include "utils/math/MathTypes.h"
 
 namespace
@@ -141,9 +142,10 @@ TEST(GeometryProfileTests, StationAtClampsAndMaps)
 
 TEST(GeometryProfileTests, ZeroLengthCollapsesToPoint)
 {
-   // A base Part has getLength() == 0 (a geometrically inert node), so every station maps to z = 0 --
-   // the sweep treats it as a single point sample rather than dividing by a zero span.
-   const Part point("Point", Matrix3::Identity(), 1.0, Vector3::Zero());
+   // A bare node has getLength() == 0 (a geometrically inert node), so every station maps to z = 0 --
+   // the sweep treats it as a single point sample rather than dividing by a zero span. TestPart is the
+   // concrete stand-in for the (now abstract) base Part.
+   const model::part::TestPart point("Point", Matrix3::Identity(), 1.0, Vector3::Zero());
    EXPECT_DOUBLE_EQ(point.axialLength(), 0.0);
    EXPECT_DOUBLE_EQ(point.stationAt(0.0).z, 0.0);
    EXPECT_DOUBLE_EQ(point.stationAt(0.5).z, 0.0);

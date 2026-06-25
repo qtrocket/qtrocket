@@ -113,7 +113,7 @@ PartParams params(const Part& part)
       p.outerRadius = h->getOuterRadius();
       p.density     = h->getDensity();
    }
-   // Motor and a bare Part carry no factory geometry: just the name is reflected.
+   // A Motor (and any part not matched above) carries no factory geometry: only the name is reflected.
 
    return p;
 }

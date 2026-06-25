@@ -107,13 +107,6 @@ void Part::addChildPart(std::shared_ptr<Part> child, StationLink link)
    markPlacementDirty();
 }
 
-std::shared_ptr<Part> Part::cloneShallow() const
-{
-   // Protected copy ctor -> shallow, fresh-id copy of THIS node only. shared_ptr<Part>(new ...)
-   // rather than make_shared because the copy ctor is protected (make_shared can't reach it).
-   return std::shared_ptr<Part>(new Part(*this));
-}
-
 std::shared_ptr<Part> Part::clone() const
 {
    std::shared_ptr<Part> copy = cloneShallow(); // this node: correct dynamic type, fresh id, no kids

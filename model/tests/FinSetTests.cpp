@@ -9,6 +9,7 @@
 #include "model/InertiaTensors.h"
 #include "model/parts/FinSet.h"
 #include "model/parts/Part.h"
+#include "model/tests/TestPart.h"
 #include "utils/Logger.h"
 
 namespace
@@ -71,7 +72,7 @@ double axialMassCentroid(const Fin& f)
 
 std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
 {
-   return std::make_shared<model::part::Part>(name, Matrix3::Zero(), mass, Vector3::Zero());
+   return std::make_shared<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 
 model::part::FinSet makeFins(unsigned int N, const Fin& f = EX)
