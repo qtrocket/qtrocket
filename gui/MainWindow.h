@@ -20,13 +20,8 @@ QT_END_NAMESPACE
 class CannonballTab;
 class SimOptionsTab;
 
-/**
- * @brief The MainWindow class
- *
- * The MainWindow class holds the primary GUI window of the application. All user interactions
- * with QtRocket begin with interactions in this window. This window can spawn other windows.
- */
-
+/// @brief The application's primary window: hosts the tab widget and menus, and spawns the
+///        dialogs (About, motor-database save). All user interaction starts here.
 class MainWindow : public QMainWindow
 {
    Q_OBJECT

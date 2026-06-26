@@ -14,8 +14,8 @@ namespace model::part
 
 BodyTube::BodyTube(const std::string& name, double ri, double ro, double L, double density_,
                    const Vector3& cm)
-   // Part stores the inertia tensor per-unit-mass and applies the mass internally, so hand it the
-   // geometric (per-unit-mass) Tube tensor plus the computed mass. CM is the geometric center.
+   // Part stores the tensor per-unit-mass and applies the mass internally, so hand it the geometric
+   // Tube tensor plus the computed mass. CM is the geometric center.
    : Part(name, InertiaTensors::Tube(ri, ro, L), computeMass(ri, ro, L, density_), cm),
      innerRadius(ri), outerRadius(ro), length(L), density(density_)
 {
@@ -37,9 +37,9 @@ double BodyTube::computeMass(double ri, double ro, double L, double density)
 
 sim::AeroComponent BodyTube::getAero(double refArea [[maybe_unused]]) const
 {
-   // Classic Barrowman: a constant-diameter body produces no normal force, so CNalpha = 0 and it
-   // drops out of the composite CP weighted-average automatically (see sim::AeroProfile). cd is left
-   // at 0 here -- the P5 skin-friction build-up over getWettedArea() is its eventual contribution.
+   // Barrowman: a constant-diameter body produces no normal force, so CNalpha = 0 and it drops out of
+   // the composite CP weighted-average (see sim::AeroProfile). cd stays 0 -- skin friction over
+   // getWettedArea() is its eventual contribution.
    return {};
 }
 

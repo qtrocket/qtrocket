@@ -26,12 +26,11 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
 {
    ui->setupUi(this);
 
-   // The Cannonball tab owns the point-mass input panel and its motor/trajectory workflow.
+   // Cannonball tab: point-mass input panel and motor/trajectory workflow.
    cannonballTab = new CannonballTab(qtRocket, this);
    ui->rocketTabWidget->addTab(cannonballTab, tr("Cannonball"));
 
-   // The Simulation Options tab (timestep, atmosphere/gravity/integrator models) sits to the
-   // right of Cannonball and applies its settings live as the user changes them.
+   // Simulation Options tab: timestep, atmosphere/gravity/integrator, applied live.
    simOptionsTab = new SimOptionsTab(qtRocket, this);
    ui->rocketTabWidget->addTab(simOptionsTab, tr("Simulation Options"));
 
@@ -82,8 +81,8 @@ void MainWindow::onMenu_Tools_SaveMotorDatabase()
    if(dbFile.isEmpty())
       return;
 
-   // getSaveFileName does not force the filter's suffix, so add it ourselves when the user typed a
-   // bare name. This keeps saved files discoverable by the *.qmd filter on the load side.
+   // getSaveFileName doesn't force the filter's suffix; add it so the file matches the *.qmd
+   // filter on load.
    if(!dbFile.endsWith(".qmd", Qt::CaseInsensitive))
       dbFile += ".qmd";
 

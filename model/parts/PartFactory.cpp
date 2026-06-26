@@ -12,7 +12,7 @@ namespace model::part
 
 namespace
 {
-/// @brief Extract a required PartParams field or throw a clear, type-named std::invalid_argument.
+/// Extract a required PartParams field or throw a type-named std::invalid_argument.
 template<typename T>
 T requireField(const std::optional<T>& v, const char* key, std::string_view type)
 {
@@ -26,9 +26,9 @@ T requireField(const std::optional<T>& v, const char* key, std::string_view type
 
 std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p)
 {
-   // Each branch supplies the concrete ctor's required fields (requireField throws if absent) and the
-   // documented defaults for the rest; range validation lives in the ctors and propagates. centerMass
-   // is deliberately defaulted to {0,0,0} (placement is the attach offset, not a baked-in CM).
+   // Each branch supplies the ctor's required fields (requireField throws if absent) and defaults for
+   // the rest; range validation lives in the ctors and propagates. centerMass is {0,0,0} (placement
+   // is the attach offset, not a baked-in CM).
    if(type == "BodyTube")
    {
       return std::make_shared<BodyTube>(
@@ -38,7 +38,7 @@ std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p)
          requireField(p.length, "length", type),
          requireField(p.density, "density", type));
    }
-   if(type == "NoseCone") // the factory key is exactly typeName() -- one string, no aliases (spec D2)
+   if(type == "NoseCone") // the factory key is exactly typeName() -- one string, no aliases
    {
       return std::make_shared<ConicalNoseCone>(
          p.name,

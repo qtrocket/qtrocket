@@ -70,10 +70,9 @@ double ThrustCurve::getThrust(double t)
       return thrustCurve.back().second;
    }
 
-   // The interval start is the previous sample -- UNLESS t precedes the first sample (i == begin),
-   // in which case the curve has no (0,0) origin and we ramp from it. Reading std::prev(begin())
-   // here used to walk off the front of the vector (an out-of-bounds heap read whose garbage made
-   // the early-burn thrust, and thus the flight, depend on allocation layout).
+   // Interval start is the previous sample -- unless t precedes the first sample (i == begin), where
+   // the curve has no (0,0) origin and we ramp from it. std::prev(begin()) here would read out of
+   // bounds.
    double tStart = 0.0;
    double thrustStart = 0.0;
    if(i != thrustCurve.cbegin())

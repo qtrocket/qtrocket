@@ -7,18 +7,9 @@ class QtRocket;
 namespace gui
 {
 
-/**
- * @brief Launches the Qt GUI and blocks until the main window is closed.
- *
- * This was previously QtRocket::run()/guiWorker. It lives in the gui layer so
- * that the QtRocket controller carries no Qt dependency and can be linked into
- * the headless CLI (qtrocket-cli).
- *
- * @param qtRocket the application controller singleton
- * @param argc forwarded to QApplication
- * @param argv forwarded to QApplication
- * @return the QApplication exit code
- */
+/// @brief Launch the Qt GUI and block until the main window closes; returns the QApplication exit
+///        code. Lives in the gui layer so the QtRocket controller stays Qt-free and links into the
+///        headless CLI. argc/argv are forwarded to QApplication.
 int run(QtRocket* qtRocket, int argc, char* argv[]);
 
 } // namespace gui

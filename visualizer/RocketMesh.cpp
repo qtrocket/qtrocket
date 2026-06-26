@@ -28,8 +28,8 @@ namespace
 /// @brief 2*pi as a double, for spinning a profile around the longitudinal (z) axis.
 constexpr double kTwoPi = 2.0 * 3.14159265358979323846;
 
-/// @brief Make a Vertex from doubles, narrowing to float exactly once and explicitly so the
-///        brace-init in the builders never trips -Wnarrowing.
+/// @brief Make a Vertex from doubles, narrowing to float explicitly so brace-init never trips
+///        -Wnarrowing.
 Vertex makeVertex(double px, double py, double pz, double nx, double ny, double nz)
 {
    return Vertex{static_cast<float>(px), static_cast<float>(py), static_cast<float>(pz),
@@ -44,9 +44,9 @@ void addTriangle(Mesh& m, unsigned int a, unsigned int b, unsigned int c)
    m.indices.push_back(c);
 }
 
-/// @brief Push a flat-shaded triangle: three positions sharing one face normal computed from the
-///        edge cross product (CCW winding => outward normal). Returns nothing; appends 3 verts + 3
-///        indices. Skips emission when the triangle is degenerate (zero-area) so no NaN normals leak.
+/// @brief Push a flat-shaded triangle: three positions sharing one face normal from the edge cross
+///        product (CCW winding => outward normal). Drops degenerate (zero-area) triangles so no NaN
+///        normals leak.
 void addFlatTriangle(Mesh& m, const Vector3& p0, const Vector3& p1, const Vector3& p2)
 {
    const Vector3 edge1 = p1 - p0;
@@ -426,17 +426,16 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
       }
    };
 
-   // The visualizer consumes the SAME absolute placement the simulator does: resolve every part's
-   // pose once, then translate each geometrically-centered primitive so its FORE plane lands at the
-   // resolved fore-plane origin (the build* primitives are centered about mid-length, half an
-   // axialLength forward of the aft plane). This is the consumer swap that closes the historical
-   // simulator/visualizer divergence (whitepaper 1, 4.4).
+   // Consume the same absolute placement the simulator does: resolve every part's pose once, then
+   // translate each origin-centered primitive so its fore plane lands at the resolved fore-plane
+   // origin (the build* primitives are centered about mid-length, half an axialLength forward of
+   // the aft plane).
    const std::vector<model::part::Placed> placed =
       model::part::resolvePlacements(*root, model::part::Pose{});
 
-   // The diagnostics sweep verdict (cached, computed once per structural resolve): map each offender id
-   // to its located message so the offending RenderItems render in an error color. Surface the failure
-   // on the log too, so a headless / CLI caller sees the same hard signal the simulator throws on.
+   // Diagnostics verdict (cached per structural resolve): map each offender id to its message so
+   // those RenderItems render in an error color. Also log it, so a headless caller sees the same
+   // signal the simulator throws on.
    std::map<model::part::PartId, std::string> offenderMessage;
    const model::part::SolveResult& diag = root->placementDiagnostics();
    if(!diag.ok)

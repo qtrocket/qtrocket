@@ -47,9 +47,7 @@ ThrustCurveMotorSelector::~ThrustCurveMotorSelector()
 
 void ThrustCurveMotorSelector::onButton_getMetadata_clicked()
 {
-   // When the user clicks "Get Metadata", we want to pull in Metadata from thrustcurve.org
-   // and populate the Manufacturer, Diameter, and Impulse Class combo boxes
-
+   // Populate the Diameter, Manufacturer, and Impulse Class combos from thrustcurve.org's facets.
    model::MotorSearchFacets facets =
          QtRocket::getInstance()->getMotorDatabase()->getOnlineSearchFacets();
 
@@ -100,7 +98,6 @@ void ThrustCurveMotorSelector::onButton_setMotor_clicked()
    plot->setInteraction(QCP::iRangeDrag, true);
    plot->setInteraction(QCP::iRangeZoom, true);
 
-   // generate some data:
    QVector<double> tData(res.size());
    QVector<double> fData(res.size());
    for (int i = 0; i < tData.size(); ++i)
@@ -108,14 +105,11 @@ void ThrustCurveMotorSelector::onButton_setMotor_clicked()
      tData[i] = res[i].first;
      fData[i] = res[i].second;
    }
-   // create graph and assign data to it:
    plot->addGraph();
    plot->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 5));
    plot->graph(0)->setData(tData, fData);
-   // give the axes some labels:
    plot->xAxis->setLabel("time");
    plot->yAxis->setLabel("Thrust (N)");
-   // set axes ranges, so we see all data:
    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
    plot->yAxis->setRange(*std::min_element(std::begin(fData), std::end(fData)), *std::max_element(std::begin(fData), std::end(fData)));
    plot->replot();

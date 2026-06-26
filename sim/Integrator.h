@@ -21,18 +21,14 @@
 namespace sim
 {
 
-/**
- * @brief Holds Integrator Model
- * 
- */
+/// Selects the DESolver backend (RK4 or RKF45) at runtime and forwards the ODE step to it.
 class Integrator
 {
 public:
     Integrator()
     {
-        // Seed the available model keys with null solvers. We can't use a brace
-        // initializer list on the member because std::unique_ptr is move-only and
-        // initializer_list always copies its elements.
+        // Seed the keys with null solvers (no brace-init: unique_ptr is move-only, but
+        // initializer_list copies).
         integratorModels.emplace("Runge-Kutta 4th Order", nullptr);
         integratorModels.emplace("Runge-Kutta-Fehlberg", nullptr);
         setIntegratorModel("Runge-Kutta 4th Order");
@@ -66,7 +62,7 @@ public:
             integratorModels[integratorModel].reset(new sim::RK45Solver<Vector3>(odes));
         }
         else {
-            // Unknown name: logged no-op, keeping the current valid model.
+            // unknown name: logged no-op, keep the current valid model
             utils::Logger::getInstance()->error(
                 "Integrator::setIntegratorModel: unknown model '" + model
                 + "'; keeping the current model '" + integratorModel + "'.");

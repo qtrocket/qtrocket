@@ -25,24 +25,15 @@ class QWheelEvent;
 namespace viz
 {
 
-/**
- * @brief An interactive OpenGL viewport that renders a rocket as shaded 3D geometry.
- *
- * Uses the version-agnostic QOpenGLFunctions (the common GL/GLES2 subset) so it runs on whatever
- * context the platform hands back -- a desktop compatibility context or a GLES2 context (see
- * main.cpp for why no specific version/profile is requested). initializeGL() picks GLSL 1.20 or
- * GLSL ES shader source accordingly. There is one lit shader for the rocket components
- * (per-component solid color from the active ColorScheme, a single headlight-style directional
- * light + ambient) and one unlit shader for the ground grid and origin axes. The camera is an
- * orbit/arcball: left-drag rotates, right/middle-drag pans, the wheel zooms; the model is shown
- * nose-up. setRenderItems() uploads geometry to the GPU and auto-frames the camera to fit.
- *
- * Wireframe is drawn as explicit line geometry (GL_LINES), not glPolygonMode, because the latter
- * does not exist on GLES2 / the generic QOpenGLFunctions.
- *
- * GPU resources are created in initializeGL() / setRenderItems() (with the context made current)
- * and released in the destructor and cleanup(); the widget owns everything it allocates.
- */
+/// @brief Interactive OpenGL viewport that renders a rocket as shaded 3D geometry.
+///
+/// Uses the version-agnostic QOpenGLFunctions (common GL/GLES2 subset) so it runs on whatever
+/// context the platform yields (see main.cpp); initializeGL() picks GLSL 1.20 or GLSL ES source.
+/// One lit shader for components (per-component color, one headlight + ambient), one unlit shader
+/// for the grid and axes. Orbit camera: left-drag rotates, right/middle pans, wheel zooms; model
+/// shown nose-up. Wireframe is explicit GL_LINES, not glPolygonMode (unavailable on GLES2). GPU
+/// resources live from initializeGL()/setRenderItems() to the destructor/cleanup(); the widget
+/// owns all it allocates.
 class RocketGLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
    Q_OBJECT

@@ -19,15 +19,14 @@ namespace model::part
 {
 
 /**
- * @brief A straight right circular cone nose cone -- solid (default, "straight cone first") or a thin
- *        conical lateral shell (open base, wall thickness t << R).
+ * @brief A straight right circular cone nose cone -- solid (default) or a thin conical lateral shell
+ *        (open base, wall thickness t << R). All inputs SI meters.
  *
- * Mass and the per-unit-mass inertia tensor are derived from the geometry and density at
- * construction (InertiaTensors::SolidCone / ConicalShell). Unlike the other P2 parts the cone's CM
- * is NOT at its mid-length -- it is L/4 from the base (solid) or L/3 from the base (shell). The
- * stored tensor is centroidal (about that CM); coneCmOffset records where the CM sits relative to
- * the component middle so an assembly attaches it CM-to-CM via addChildPart. All inputs are SI
- * meters.
+ * Mass and the per-unit-mass inertia tensor come from the geometry and density at construction
+ * (InertiaTensors::SolidCone / ConicalShell). The cone's CM is not at mid-length -- it is L/4 from
+ * the base (solid) or L/3 (shell). The stored tensor is centroidal; coneCmOffset records the
+ * CM-vs-middle offset so the composite walk locates it at the right station. Placement is geometric
+ * (StationLink), not CM-based.
  */
 class ConicalNoseCone : public Part
 {

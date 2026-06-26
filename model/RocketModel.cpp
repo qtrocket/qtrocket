@@ -10,8 +10,8 @@ namespace model
 
 namespace
 {
-/// @brief DFS the tree for the first Motor node (the single-motor assumption), or nullptr. Used to
-///        re-borrow the motor handle after a tree edit; the owning shared_ptr stays in the tree.
+/// DFS for the first Motor node (single-motor assumption), or nullptr. Re-borrows the motor handle
+/// after a tree edit; the owning shared_ptr stays in the tree.
 part::Motor* findMotorInTree(part::Part* node)
 {
    if(node == nullptr) { return nullptr; }
@@ -26,9 +26,7 @@ part::Motor* findMotorInTree(part::Part* node)
 
 RocketModel::RocketModel()
     // Placeholder structural body: an aluminum-density hollow sphere (ri=40 mm, ro=50 mm,
-    // rho=2700 kg/m^3) ~ 0.69 kg. Gives a real mass and a correct inertia tensor (consumed by
-    // getInertiaTensor() for future 6-DOF); the GUI may still override the mass via setMass().
-    // The geometry/material will eventually be GUI-driven. See TODO.md P2.
+    // rho=2700 kg/m^3) ~ 0.69 kg. Real mass and inertia tensor; the GUI may override the mass.
     : topPart(std::make_shared<part::HollowSphere>("Body", 0.04, 0.05, 2700.0))
 {
 
@@ -37,30 +35,25 @@ RocketModel::RocketModel()
 
 double RocketModel::getMass(double t)
 {
-    // The motor is now a child Part of topPart, so the composite already includes its time-varying
-    // mass -- no separate motor term to add (and no double-count). setMass() writes only the top
-    // part's OWN (structural/dry) mass; the motor child carries its own mass(t). See TODO.md P2.
+    // The motor is a child Part, so the composite already includes its time-varying mass. setMass()
+    // writes only the top part's own (dry) mass.
     return topPart->getCompositeMass(t);
 }
 
 Matrix3 RocketModel::getCompositeInertiaTensor(double t)
 {
-    return topPart->getCompositeI(t); // time-aware full mass-weighted inertia tensor about the CG at t
+    return topPart->getCompositeI(t);
 }
 
 double RocketModel::deriveReferenceAreaFromGeometry() const
 {
-    // The widest frontal disc in the part tree (max part getReferenceArea()) -- the single-disc
-    // Barrowman/OpenRocket convention, not a sum, and not inflated by fins. The placeholder body has
-    // no frontal disc (returns 0), so this changes nothing until a real airframe is assembled.
     return topPart->maxFrontalReferenceArea();
 }
 
 void RocketModel::writeMassProperties(double t, StateData& st)
 {
-   // Snapshot composite mass/CG/inertia via the GATED accessors, so after burnout this reads the
-   // frozen cache (no recompute). getCompositeMass(t) is the cheap live sum (and the ODE divisor),
-   // so the three are mutually consistent at this t.
+   // Via the gated accessors, so after burnout this reads the frozen cache. The three are mutually
+   // consistent at this t.
    st.mass    = topPart->getCompositeMass(t);
    st.cg      = topPart->getCompositeCm(t);
    st.inertia = topPart->getCompositeI(t);
@@ -74,33 +67,24 @@ bool RocketModel::terminateCondition(double)
 
 Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment)
 {
-    // Get thrust
-    // Assume that thrust is always through the center of mass and in the rocket's Z-axis
+    // Thrust along the rocket's z-axis, assumed through the CM.
     Vector3 forces{0.0, 0.0, motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0};
 
-
-    // Get gravity. Evaluate at the trial position passed by the integrator (not the
-    // stored currentState) so each RK4 stage sees a consistent state.
+    // Evaluate gravity at the integrator's trial position (not currentState) so each RK4 stage sees
+    // a consistent state.
     auto gravityModel = environment.getGravityModel();
 
     Vector3 gravity = gravityModel->getAccel(position)*getMass(t);
 
     forces += gravity;
 
-    // Calculate aero forces.
-    // Drag: F = -1/2 * rho(altitude) * |v| * Cd * A * v, opposing the velocity.
-    // rho comes from the active atmospheric model; with the Vacuum model rho = 0,
-    // so drag vanishes and the model reduces to thrust + gravity. Written with
-    // |v|*v (not v^2 * vhat) so v = 0 gives zero drag with no division.
+    // Drag: F = -1/2 * rho(altitude) * |v| * Cd * A * v, opposing velocity. Written with |v|*v (not
+    // v^2 * vhat) so v = 0 gives zero drag with no division. With the Vacuum model rho = 0.
     auto atmosphere = environment.getAtmosphericModel();
-    // Clamp altitude to >= 0: on descent (and in RK4 trial states crossing z=0) position.z
-    // can dip just below the launch site, which is outside the atmosphere models' domain --
-    // Treat at/below the launch site as launch-level density.
+    // Clamp altitude to >= 0: trial states crossing z=0 fall outside the atmosphere models' domain.
     const double altitude = position[2] > 0.0 ? position[2] : 0.0;
     const double rho = atmosphere->getDensity(altitude);
     const double speed = velocity.norm();
-    // NOTE(P5): consume topPart->getCompositeAero(referenceArea).cd here (manual dragCoefficient
-    // wins); referenceArea will default to deriveReferenceAreaFromGeometry() unless overridden.
     const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
     forces += drag;
 
@@ -130,9 +114,8 @@ void RocketModel::setMotorModel(const model::MotorModel& motor)
    {
       auto mp = std::make_shared<part::Motor>("Motor", motor);
       motorPart = mp.get();                       // borrow before ownership moves into the tree
-      // Place the motor's CM motorOffset.z forward of the airframe root's CM (motorOffset is zero
-      // today): join the two CM stations with that gap. The Motor carries no geometric envelope, so
-      // this never trips the overlap gate, and at zero offset the motor CM coincides with the root CM.
+      // Join the airframe root CM and motor CM stations with a motorOffset.z gap (zero today). The
+      // Motor carries no geometric envelope, so this never trips the overlap gate.
       const auto cmStation = [](const part::Part& p)
       {
          const double L = p.getLength();

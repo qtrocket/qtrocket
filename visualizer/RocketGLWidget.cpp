@@ -168,9 +168,9 @@ QVector3D qcolorToVec3(const QColor& c)
                     static_cast<float>(c.blueF()));
 }
 
-/// @brief The "stand-up" model transform applied to the rocket only: maps the body-frame long axis
-///        (+z, nose) to world up (+Y). The ground grid and axes stay in world space (not rotated),
-///        so any world-space point must be mapped through this to follow the rocket.
+/// @brief Stand-up transform applied to the rocket only: maps body +z (nose) to world up (+Y).
+///        Grid and axes stay in world space, so a world-space point must be mapped through this
+///        to follow the rocket.
 QMatrix4x4 standUpMatrix()
 {
    QMatrix4x4 m;
@@ -178,10 +178,10 @@ QMatrix4x4 standUpMatrix()
    return m;
 }
 
-/// @brief Compile + link a two-stage shader program; qWarning on failure. Returns nullptr on error.
-///        Attribute locations are bound by name (GLSL 1.20 / ES 1.00 have no layout qualifiers) to
-///        the fixed slots the VBO setup uses: aPos -> 0, aNormal -> 1. Binding a name a given shader
-///        does not declare (e.g. aNormal in the line shader) is harmless.
+/// @brief Compile + link a two-stage shader program; qWarning and return nullptr on failure.
+///        Attribute locations are bound by name (no layout qualifiers in GLSL 1.20 / ES 1.00) to
+///        the slots the VBO setup uses: aPos -> 0, aNormal -> 1. Binding a name a shader doesn't
+///        declare (e.g. aNormal in the line shader) is harmless.
 std::unique_ptr<QOpenGLShaderProgram> buildProgram(const char* vertSrc, const char* fragSrc,
                                                    const char* label)
 {
@@ -260,15 +260,13 @@ void RocketGLWidget::setColorScheme(const ColorScheme& newScheme)
 
 void RocketGLWidget::resetCamera()
 {
-   // The rocket is drawn through the stand-up transform, so the orbit target is the rocket's
-   // WORLD-space center (model-space center mapped through that same rotation), not the raw
-   // model-space center -- otherwise the camera aims off to one side.
+   // The rocket is drawn through the stand-up transform, so aim at its world-space center (model
+   // center mapped through that rotation), else the camera aims off to one side.
    camTarget = standUpMatrix().map(bounds.center());
 
-   // Frame the whole scene: pull back far enough that the bounding sphere fits inside the view
-   // frustum, using whichever of the vertical/horizontal half-FOV is tighter (so tall, narrow
-   // rockets fit in a wide window and vice-versa), plus a small margin. Falls back to a square
-   // aspect before the first resize.
+   // Pull back far enough that the bounding sphere fits the frustum, using the tighter of the
+   // vertical/horizontal half-FOV (so tall thin rockets fit a wide window and vice versa), plus a
+   // small margin. Square aspect before the first resize.
    const float halfFovY = qDegreesToRadians(45.0F * 0.5F);
    const float aspect   = (height() > 0) ? static_cast<float>(width()) / static_cast<float>(height())
                                          : 1.0F;
@@ -304,8 +302,7 @@ void RocketGLWidget::initializeGL()
    initializeOpenGLFunctions();
 
    glEnable(GL_DEPTH_TEST);
-   // Culling intentionally disabled: thin double-sided fins and visible tube interiors need both
-   // faces drawn. The lit shader does two-sided shading to compensate.
+   // Culling off: thin fins and visible tube interiors need both faces; the lit shader is two-sided.
    glDisable(GL_CULL_FACE);
    glEnable(GL_MULTISAMPLE);
 
@@ -313,8 +310,7 @@ void RocketGLWidget::initializeGL()
    glClearColor(static_cast<float>(bg.redF()), static_cast<float>(bg.greenF()),
                 static_cast<float>(bg.blueF()), 1.0F);
 
-   // The unconstrained surface format (see main.cpp) may yield either a desktop compatibility
-   // context or a GLES2 context; compile the matching shader dialect for whichever we got.
+   // The context may be desktop or GLES2 (see main.cpp); compile the matching shader dialect.
    const bool gles = context() != nullptr && context()->isOpenGLES();
    litProgram  = buildProgram(gles ? kLitVertEs : kLitVertDesktop,
                               gles ? kLitFragEs : kLitFragDesktop, "lit");
@@ -349,8 +345,8 @@ void RocketGLWidget::paintGL()
                 static_cast<float>(bg.blueF()), 1.0F);
    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-   // Stand the rocket up: body +z -> world +Y. The grid/axes live in world space and are NOT
-   // rotated, so the ground stays flat and the Y axis truly points up.
+   // Stand the rocket up: body +z -> world +Y. Grid/axes stay in world space (unrotated), so the
+   // ground stays flat and +Y points up.
    const QMatrix4x4 model = standUpMatrix();
    const QMatrix4x4 vp    = viewProjection();
    const QMatrix4x4 mvp   = vp * model;
@@ -518,9 +514,9 @@ void RocketGLWidget::uploadMeshes()
       gm->typeName        = item.typeName;
       gm->overlapOffender = item.overlapOffender;
 
-      // Wireframe geometry: expand each triangle into its three edges as an explicit GL_LINES
-      // buffer (positions + normals preserved so the lit shader shades the lines identically). This
-      // replaces glPolygonMode(GL_LINE), which does not exist on GLES2 / the generic functions.
+      // Wireframe: expand each triangle into its three edges as a GL_LINES buffer (positions +
+      // normals preserved so the lit shader shades them identically). Replaces glPolygonMode(GL_LINE),
+      // absent on GLES2 / the generic functions.
       std::vector<Vertex> wireVerts;
       wireVerts.reserve(src.indices.size() * 2U);
       for (std::size_t i = 0; i + 2U < src.indices.size(); i += 3U)
@@ -562,8 +558,8 @@ void RocketGLWidget::buildOverlays()
    const int   divs    = 20;
    const float step    = (extent * 2.0F) / static_cast<float>(divs);
 
-   // Sit the grid at the rocket's base. World up (+Y) is body-frame +z, so the lowest point of the
-   // stood-up rocket is its minimum body-frame z; fall back to the origin when there is no geometry.
+   // Grid sits at the rocket's base. World up (+Y) is body +z, so the lowest stood-up point is the
+   // minimum body-frame z; origin when there's no geometry.
    const float groundY = bounds.valid ? bounds.min.z() : 0.0F;
 
    std::vector<float> gridData;
@@ -620,8 +616,8 @@ void RocketGLWidget::buildOverlays()
 
 void RocketGLWidget::applySchemeColors()
 {
-   // A part the diagnostics sweep flagged as an overlap offender renders in a fixed error red, overriding
-   // its type color, so a self-intersecting design is unmistakable regardless of the active scheme.
+   // An overlap offender renders in a fixed error red overriding its type color, so a
+   // self-intersecting design is unmistakable under any scheme.
    static const QVector3D kErrorColor{0.90F, 0.10F, 0.10F};
    for (const auto& meshPtr : meshes)
       meshPtr->color = meshPtr->overlapOffender ? kErrorColor

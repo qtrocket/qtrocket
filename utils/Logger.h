@@ -14,9 +14,8 @@
 namespace utils
 {
 
-/**
- * @todo write docs
- */
+/// @brief Process-wide singleton logger; writes to stdout and log.txt. Levels are cumulative:
+///        setting a level enables it and every lower one (ERROR is always logged).
 class Logger
 {
 public:

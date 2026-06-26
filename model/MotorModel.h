@@ -20,49 +20,21 @@ namespace model
 {
 
 /**
- * @brief The MotorModel class
- *
- * The MotorModel class defines a structure that holds data relating to a hobby
- * rocket motor such as the manufacturer, burn time, maximum thrust, propellant
- * weight, etc. It also holds a ThrustCurve object that contains thrust sample data
- * for that motor.
- *
- * There are several additional classes defined within the MotorModel class designed
- * to encapsulate and define several pieces of motor related data as well.
+ * @brief Holds a hobby rocket motor's data -- manufacturer, burn time, max thrust, propellant
+ *        weight, etc. -- plus a ThrustCurve of its thrust samples.
  */
 class MotorModel
 {
 public:
-    /**
-    * @brief MotorModel constructor
-    */
    MotorModel();
-    /**
-    * @brief MotorModel copy constructor is defaulted
-    */
    MotorModel(const MotorModel&) = default;
-    /**
-    * @brief MotorModel move constructor is defaulted
-    */
    MotorModel(MotorModel&&) = default;
    ~MotorModel();
 
-   /**
-    * @brief Copy assignment operator is defaulted
-    * @return Copy of MotorModel
-    */
    MotorModel& operator=(const MotorModel&) = default;
-
-   /**
-    * @brief Move assignment operator is defaulted
-    * @return Moved MotorModel
-    */
    MotorModel& operator=(MotorModel&&) = default;
 
-   /**
-    * @brief The AVAILABILITY enum class identifies whether a motor is
-    *        out of production, or still available
-    */
+   /// Whether a motor is out of production or still available.
    enum class AVAILABILITY
    {
       REGULAR,    /// available
@@ -71,10 +43,6 @@ public:
    };
 
 
-   /**
-    * @brief The MOTORMANUFACTURER enum class identifies the motor
-    *        manufacturer
-    */
    enum class MOTORMANUFACTURER
    {
        AEROTECH,
@@ -90,10 +58,7 @@ public:
        UNKNOWN
    };
 
-   /**
-    * @brief The CERTORG enum class identifies the Certification Organization
-    *        that certified the motor
-    */
+   /// Certification organization that certified the motor.
    enum class CERTORG
    {
       AMRS, /// Australian Model Rocket Society
@@ -104,10 +69,7 @@ public:
       UNK  /// Unknown Certification
    };
 
-   /**
-    * @brief The MOTORTYPE enum class identifies the motor type, either
-    *        Single-Use, Reload, or Hybrid
-    */
+   /// Motor type: single-use, reload, or hybrid.
    enum class MOTORTYPE
    {
       SU,
@@ -115,11 +77,7 @@ public:
       HYBRID
    };
 
-   /**
-    * @brief The MotorAvailability struct wraps the AVAILABILITY enum and
-    *        provides a helper function to return a string representation
-    *        of the AVAILABILITY enum.
-    */
+   /// AVAILABILITY plus a string-name round-trip (str/toEnum).
    struct MotorAvailability
    {
       MotorAvailability(const AVAILABILITY& a) : availability(a) {}
@@ -131,10 +89,6 @@ public:
       MotorAvailability& operator=(MotorAvailability&&) = default;
 
       AVAILABILITY availability{AVAILABILITY::REGULAR};
-      /**
-       * @brief str Returns a string representation of AVAILABILITY enum
-       * @return string representation
-       */
       std::string str() const
       {
          if(availability == AVAILABILITY::REGULAR)
@@ -145,11 +99,6 @@ public:
             return std::string("OOP");
       }
 
-      /**
-       * @brief toEnum returns AVAILABILITY enum from string name
-       * @param name Name of enum
-       * @return AVAILABILITY enum corresponding to name
-       */
       static AVAILABILITY toEnum(const std::string& name)
       {
          if(name == "regular")
@@ -161,11 +110,7 @@ public:
       }
    };
 
-   /**
-    * @brief The CertOrg struct wraps the CERTORG enum and
-    *        provides a helper function to return a string representation
-    *        of the CERTORG enum.
-    */
+   /// CERTORG plus a string-name round-trip (str/toEnum).
    struct CertOrg
    {
       CertOrg(const CERTORG& c) : org(c) {}
@@ -177,10 +122,6 @@ public:
       CertOrg& operator=(CertOrg&&) = default;
 
       CERTORG org{CERTORG::UNC};
-      /**
-       * @brief str Returns a string representation of CERTORG enum
-       * @return string representation
-       */
       std::string str() const
       {
          if(org == CERTORG::AMRS)
@@ -197,16 +138,10 @@ public:
             return std::string("Unkown");
       }
 
-      /**
-       * @brief toEnum returns CERTORG enum corresponding to name
-       * @param name Name of enumeration
-       * @return enumeration value corresponding to name
-       */
       static CERTORG toEnum(const std::string& name)
       {
-         // Accept both the short codes and the full names emitted by str(), so a
-         // str()->toEnum() round-trip (e.g. save/load) is lossless. The "Austrialian"
-         // and "Unkown" spellings intentionally match str()'s existing (typo'd) output.
+         // Accept both the short codes and the full names emitted by str(), so a str()->toEnum()
+         // round-trip is lossless. The "Austrialian"/"Unkown" spellings match str()'s typo'd output.
          if(name == "AMRS" || name == "Austrialian Model Rocket Society Inc.")
             return CERTORG::AMRS;
          else if(name == "CAR" || name == "Canadian Association of Rocketry")
@@ -223,11 +158,7 @@ public:
       }
    };
 
-   /**
-    * @brief The MotorType struct wraps the MOTORTYPE enum and
-    *        provides a helper function to return a string representation
-    *        of the MOTORTYPE enum.
-    */
+   /// MOTORTYPE plus a string-name round-trip (str/toEnum).
    struct MotorType
    {
       MotorType(const MOTORTYPE& t) : type(t) {}
@@ -239,10 +170,6 @@ public:
       MotorType& operator=(MotorType&&) = default;
 
       MOTORTYPE type;
-      /**
-       * @brief str Returns a string representation of MOTORTYPE enum
-       * @return string representation
-       */
       std::string str() const
       {
          if(type == MOTORTYPE::SU)
@@ -253,11 +180,6 @@ public:
             return std::string("Hybrid");
       }
 
-      /**
-       * @brief toEnum returns enumeration corresponding to name
-       * @param name Name of enumeration
-       * @return enumeration corresponding to name
-       */
       static MOTORTYPE toEnum(const std::string& name)
       {
          if(name == "SU" ||
@@ -274,11 +196,7 @@ public:
       }
    };
 
-   /**
-    * @brief The MotorManufacturer struct wraps the MOTORMANUFACTURER enum and
-    *        provides a helper function to return a string representation
-    *        of the MOTORMANUFACTURER enum.
-    */
+   /// MOTORMANUFACTURER plus a string-name round-trip (str/toEnum).
    struct MotorManufacturer
    {
       MotorManufacturer(const MOTORMANUFACTURER& m) : manufacturer(m) {}
@@ -290,10 +208,6 @@ public:
       MotorManufacturer& operator=(MotorManufacturer&&) = default;
 
       MOTORMANUFACTURER manufacturer;
-      /**
-       * @brief str Returns a string representation of MOTORMANUFACTURER enum
-       * @return string representation
-       */
       std::string str() const
       {
          switch(manufacturer)
@@ -324,17 +238,10 @@ public:
          }
       }
 
-      /**
-       * @brief toEnum returns MOTORMANUFACTURER enum value corresponding to a name
-       * @param name Name of enumeration
-       * @return enumeration corresponding to name
-       */
       static MOTORMANUFACTURER toEnum(const std::string& name)
       {
-         // Accepts short codes, the full "name" strings thrustcurve.org returns in search
-         // results, and a few legacy variants, so the same helper maps manufacturers coming
-         // from RSE files, thrustcurve.org, and saved databases. Manufacturers outside our
-         // enum fall through to UNKNOWN.
+         // Accepts short codes, the full names thrustcurve.org returns, and a few legacy variants, so
+         // one helper maps RSE, thrustcurve.org, and saved-DB manufacturers. Unknown ones -> UNKNOWN.
          if(name == "AeroTech" ||
              name == "Aerotech")
             return MOTORMANUFACTURER::AEROTECH;
@@ -432,8 +339,7 @@ private:
    double emptyMass{0.0};
    double isp{0.0};
    double ignitionTime{0.0}; /// 0 until startMotor(); read by getThrust's burnout test, so it must
-                             /// never be indeterminate (an uninitialized value made flights depend on
-                             /// stale stack/heap garbage -- a layout-dependent, order-dependent result)
+                             /// be initialized -- garbage here makes the flight depend on stack/heap layout
    ThrustCurve thrust; /// The measured motor thrust curve
 
    std::vector<std::pair<double, double>> massCurve;

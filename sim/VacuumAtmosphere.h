@@ -6,13 +6,8 @@
 
 namespace sim {
 
-/**
- * @brief A vacuum: zero air. Every property returns 0, so any density-driven
- *        aerodynamic force (drag) evaluates to zero. This reduces the flight
- *        model to thrust + gravity (a point mass in vacuum), which is useful as
- *        a baseline -- e.g. for isolating integrator behavior from the
- *        aerodynamic model.
- */
+/// A vacuum: every property is 0, so drag vanishes and the flight reduces to thrust + gravity.
+/// Useful as a baseline, e.g. isolating integrator behavior from the aero model.
 class VacuumAtmosphere : public AtmosphericModel
 {
 public:
@@ -23,8 +18,7 @@ public:
    double getPressure(double) override { return 0.0; }
    double getTemperature(double) override { return 0.0; }
 
-   // No medium -> sound does not propagate. Returns 0; callers that compute a
-   // Mach number must guard against a zero speed of sound (none do today).
+   // No medium -> sound doesn't propagate. Callers computing a Mach number must guard against 0.
    double getSpeedOfSound(double) override { return 0.0; }
 
    double getDynamicViscosity(double) override { return 0.0; }

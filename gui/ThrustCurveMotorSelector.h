@@ -17,9 +17,7 @@ namespace Ui {
 class ThrustCurveMotorSelector;
 }
 
-/**
- * @brief The ThrustCurveMotorSelector class is a Window that provides an interface to Thrustcurve.org
- */
+/// @brief Dialog for searching and selecting a motor from thrustcurve.org.
 class ThrustCurveMotorSelector : public QDialog
 {
    Q_OBJECT

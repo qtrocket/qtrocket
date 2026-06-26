@@ -23,16 +23,13 @@ namespace viz
 
 class RocketGLWidget;
 
-/**
- * @brief The visualizer's main window: a File menu (Open .qrd / Quit), a 3D viewport
- *        (RocketGLWidget), and a side panel for choosing a color-scheme preset and overriding the
- *        per-part-type colors.
- *
- * Owns a headless model::RocketModel + an (empty) model::MotorModelDatabase purely to drive
- * model::DesignSerializer::load() -- the visualizer cares only about geometry, so a missing motor
- * (re-resolved against the empty DB) is a harmless warning. After loading, it walks the part tree
- * into RenderItems (viz::buildRocketMeshes) and hands them to the viewport.
- */
+/// @brief The visualizer's main window: a File menu, a 3D viewport (RocketGLWidget), and a side
+///        panel for the color-scheme preset and per-part-type color overrides.
+///
+/// Owns a headless RocketModel + an empty MotorModelDatabase purely to drive
+/// DesignSerializer::load() -- only geometry matters, so a missing motor (re-resolved against the
+/// empty DB) is a harmless warning. After loading it walks the tree into RenderItems and hands
+/// them to the viewport.
 class VisualizerWindow : public QMainWindow
 {
    Q_OBJECT

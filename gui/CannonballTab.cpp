@@ -31,14 +31,12 @@ CannonballTab::CannonballTab(QtRocket* _qtRocket, QWidget* parent)
 {
    ui->setupUi(this);
 
-   // Launch angle is measured from vertical: 0 = straight up, 90 = horizontal.
-   // Constrain input to that range so the trajectory math (sin/cos of the angle)
-   // always gets a physical value.
+   // Launch angle is from vertical (0 = up, 90 = horizontal); clamp to [0,90] so the
+   // trajectory's sin/cos always gets a physical value.
    auto* angleValidator = new QDoubleValidator(0.0, 90.0, 4, this);
    ui->initialAngle->setValidator(angleValidator);
 
-   // Reference area must be >= 0 (matches the CLI's setarea); RocketModel also
-   // ignores negatives, so a bad value can't reach the drag model either way.
+   // Reference area >= 0 (matches the CLI's setarea); RocketModel ignores negatives anyway.
    auto* areaValidator = new QDoubleValidator(this);
    areaValidator->setBottom(0.0);
    ui->referenceArea->setValidator(areaValidator);
@@ -86,8 +84,7 @@ CannonballTab::~CannonballTab()
 
 void CannonballTab::refreshCalculateTrajectoryEnabled()
 {
-   // Single rule shared by every motor-selection path (RSE "Set Motor", thrustcurve.org, and a
-   // loaded database): the trajectory can be calculated exactly when the rocket has a motor.
+   // The one rule for every motor-selection path: calculable iff the rocket has a motor.
    ui->calculateTrajectory_btn->setDisabled(!qtRocket->getRocket()->isMotorSet());
 }
 
@@ -104,8 +101,7 @@ void CannonballTab::onButton_calculateTrajectory_clicked()
 
    double referenceArea = ui->referenceArea->text().toDouble();
 
-   // Angle is measured from vertical (0 = straight up, 90 = horizontal), so the
-   // vertical (Z) component is the cosine and the downrange (X) component is the sine.
+   // Angle from vertical: vertical (Z) component is the cosine, downrange (X) the sine.
    double initialVelocityX = initialVelocity * std::sin(initialAngle / 57.2958);
    double initialVelocityZ = initialVelocity * std::cos(initialAngle / 57.2958);
    StateData initialState;
@@ -156,8 +152,7 @@ void CannonballTab::onButton_loadRSE_button_clicked()
 
 void CannonballTab::populateEngineSelectorFromDatabase()
 {
-   // Rebuild the selector from the database (the single source of truth). Clearing first keeps the
-   // list correct and duplicate-free when motors are loaded from several files across loads.
+   // Rebuild from the database; clear first so reloads from several files don't duplicate entries.
    ui->engineSelectorComboBox->clear();
    for(const auto& motor : QtRocket::getInstance()->getMotorDatabase()->listMotors())
    {
@@ -171,8 +166,7 @@ void CannonballTab::onButton_getTCMotorData_clicked()
    window.setModal(false);
    window.exec();
 
-   // The selector may have set a motor via the database; re-evaluate so this path enables
-   // "Calculate Trajectory" just like the RSE path.
+   // The selector may have set a motor; re-evaluate the button like the RSE path does.
    refreshCalculateTrajectoryEnabled();
 }
 
@@ -213,8 +207,8 @@ void CannonballTab::onButton_saveMotorDatabase_clicked()
    if(dbFile.isEmpty())
       return;
 
-   // getSaveFileName does not force the filter's suffix, so add it ourselves when the user typed a
-   // bare name. This keeps saved files discoverable by the *.qmd filter on the load side.
+   // getSaveFileName doesn't force the filter's suffix; add it so the file matches the *.qmd
+   // filter on load.
    if(!dbFile.endsWith(".qmd", Qt::CaseInsensitive))
       dbFile += ".qmd";
 
@@ -244,6 +238,5 @@ void CannonballTab::onButton_setMotor_clicked()
 
    QtRocket::getInstance()->getRocket()->setMotorModel(*mm);
 
-   // Enable "Calculate Trajectory" now that a motor is set (shared rule across all paths).
    refreshCalculateTrajectoryEnabled();
 }

@@ -20,10 +20,9 @@
 
 namespace sim
 {
-// Termination thresholds for runUntilTerminate.
-// A flight that has not climbed past noLiftoffAltitude after noLiftoffTime is aborted
-// as NoLiftoff; the maxIterations counter and the settable maxSimTime member (below) are the
-// hard backstops for a flight that never descends or collapses into vanishingly small steps.
+// Termination thresholds for runUntilTerminate. A flight that hasn't climbed past noLiftoffAltitude
+// after noLiftoffTime aborts as NoLiftoff; maxIterations and the settable maxSimTime (below) are the
+// hard backstops against a flight that never descends or collapses into tiny steps.
 static constexpr double noLiftoffTime = 3.0;     // s
 static constexpr double noLiftoffAltitude = 1.0; // m
 static constexpr std::uint64_t maxIterations = 100'000'000;
@@ -31,9 +30,8 @@ static constexpr std::uint64_t maxIterations = 100'000'000;
 class Propagator
 {
 public:
-    /// Why runUntilTerminate stopped. Nominal is the normal end of flight (descent below the
-    /// launch site); the rest are safety aborts that turn a would-be infinite loop into a
-    /// clean, reportable stop.
+    /// Why runUntilTerminate stopped. Nominal is the normal end of flight (descent below the launch
+    /// site); the rest are safety aborts that turn a would-be infinite loop into a reportable stop.
     enum class TerminationReason
     {
         Nominal,
@@ -69,13 +67,9 @@ public:
     void setCurrentTime(double t) { currentTime = t; }
     void setTimeStep(double ts)
     {
-        // Reject dt <= 0 (and NaN, which fails every comparison): a zero or
-        // negative step makes runUntilTerminate advance currentTime by 0
-        // forever -- an infinite loop that grows the state vector without bound.
-        // Guarding at this shared setter covers every front-end (GUI Sim
-        // Options, CLI, tests) at one chokepoint; the previous valid step is
-        // kept on rejection so a bad input degrades to "no change" rather than
-        // a hang.
+        // Reject dt <= 0 and NaN (fails every comparison): a non-positive step makes
+        // runUntilTerminate advance currentTime by 0 forever, an unbounded loop. The previous valid
+        // step is kept, so a bad input degrades to "no change" rather than a hang.
         if(!(ts > 0.0))
         {
             utils::Logger::getInstance()->warn(
@@ -83,10 +77,8 @@ public:
             return;
         }
         timeStep = ts;
-        // Push the step into the integrator too. Previously only this member was
-        // updated, so the RK4 solver kept using its constructor-set dt (0.01 s)
-        // while only the loop's time-axis bookkeeping (currentTime += timeStep)
-        // changed -- the integration step and the recorded times silently diverged.
+        // Push the step into the integrator too, or it keeps stepping at its constructor-set dt while
+        // only the loop's time axis changes -- the integration step and recorded times would diverge.
         if(linearIntegrator)
         {
             linearIntegrator->setTimeStep(ts);
@@ -106,10 +98,8 @@ public:
 private:
 
    std::unique_ptr<sim::Integrator> linearIntegrator;
-   // 6-DOF (P4): the orientation integrator will use the same DESolver<Quaternion> interface. Its ODE
-   // callback takes the same leading time argument as the linear one -- std::pair<Quaternion,
-   // Quaternion>(double t, Quaternion&, Quaternion&) -- so getTorques() can be evaluated at each
-   // stage's node time, just as getForces() now is.
+   // The 6-DOF orientation integrator will use the same DESolver<Quaternion> interface, with a
+   // time-keyed ODE callback so getTorques() can be sampled at each stage's node time like getForces().
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
    std::shared_ptr<model::Propagatable> object;

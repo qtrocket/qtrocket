@@ -15,8 +15,7 @@ namespace utils
 
 Logger* Logger::getInstance()
 {
-   // Function-local static: C++11 guarantees its initialization is thread-safe and
-   // happens exactly once
+   // Function-local static: thread-safe, initialized exactly once.
    static Logger instance;
    return &instance;
 }
@@ -34,8 +33,7 @@ Logger::~Logger()
 void Logger::log(std::string_view msg, const LogLevel& lvl)
 {
    std::lock_guard<std::mutex> lck(mtx);
-   // The fallthrough is intentional. Logging is automatically enabled for
-   // all levels at or lower than the current level.
+   // Intentional fallthrough: each level emits its own message, then falls to the lower levels.
    switch(currentLevel)
    {
       case PERF_:
@@ -66,8 +64,7 @@ void Logger::log(std::string_view msg, const LogLevel& lvl)
              std::cout << "[WARN] " << msg << "\n";
          }
          [[fallthrough]];
-      // Regardless of what level is set, ERROR is always logged, so
-      // rather than explicitly check for the ERROR case, we just use default case
+      // ERROR is always logged, so it's the default rather than its own case.
       default:
          if(lvl == ERROR_)
          {

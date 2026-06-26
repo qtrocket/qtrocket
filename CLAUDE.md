@@ -89,4 +89,30 @@ utils/
 - Quaternions are stored (x, y, z, w).
 - GUI forms are `.ui` files compiled via AUTOUIC; resources via `qtrocket.qrc` (AUTORCC); `Q_OBJECT` classes need AUTOMOC — all already enabled globally.
 
-Don't add explanatory comments unless the logic is non-obvious. No comments that just restate what the code does. Don't narrate changes in comments.
+## Comments
+
+Comment the *why*, not the *what*. Prefer self-documenting names and types over prose. Keep comments
+terse, plain-spoken, and lowercase — no marketing tone, no emphasis-by-capitalization. The goal is code
+that reads like a human wrote it: brief where brief suffices, a couple of dense lines where real
+rationale is needed. Terse exemplars already in the tree: `sim/GravityModel.h`, `utils/math/MathTypes.h`.
+
+Do:
+- Put one short `@brief` (≤2 lines) on non-trivial public API: purpose, units, and any non-obvious
+  contract (ownership, nullability, clamping, who calls it).
+- Keep genuinely non-obvious domain/math notes — the physics the code can't show (e.g. a silhouette
+  formula, Barrowman rationale).
+- Compress architectural rationale to 2-3 dense lines; state the invariant in one plain clause. If it
+  needs more than that, it belongs in `docs/`, not a header.
+- Preserve structural/legal comments: `/// \cond` / `/// \endcond`, license headers, and an
+  include-purpose note only when the reason is non-obvious.
+
+Don't:
+- No Doxygen block on a trivial getter/setter/field whose name and type already say it (`double
+  getLength() const;` needs nothing; at most a trailing `///< units`).
+- No comment that restates the code (`return inertiaTensor; ///< returns the inertia tensor`).
+- No multi-paragraph essays or design-doc prose in headers.
+- No `whitepaper X.Y` / `Step N` / `P5`/`P6` phase-tag pointers as the reason — if a rationale matters,
+  state it in one plain clause instead of pointing elsewhere.
+- No process or past-tense narration ("previously x_c was reported from the end", "lands at Step 6",
+  "this used to…"). Comment the code as it is, not its history, and don't narrate changes.
+- No ALL-CAPS emphasis words; state hard invariants plainly.

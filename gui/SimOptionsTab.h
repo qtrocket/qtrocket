@@ -16,15 +16,9 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class SimOptionsTab; }
 QT_END_NAMESPACE
 
-/**
- * @brief The SimOptionsTab class
- *
- * Self-contained settings panel for the simulation options: timestep, atmosphere model,
- * gravity model, and integrator. Each field applies live the moment it changes (there is no
- * Ok/Apply button), writing directly into QtRocket / its shared Environment. Replaces the old
- * standalone SimOptionsWindow so this form is hosted as a tab in MainWindow's rocketTabWidget,
- * mirroring the CannonballTab pattern.
- */
+/// @brief Settings panel for the simulation options (timestep, atmosphere/gravity/integrator
+///        models). Each field applies live on change (no Ok/Apply), writing into QtRocket / its
+///        shared Environment.
 class SimOptionsTab : public QWidget
 {
    Q_OBJECT

@@ -18,12 +18,11 @@ namespace model::part
 /**
  * @brief Named, type-agnostic geometry parameters for constructing a concrete Part.
  *
- * One struct spans every factory-buildable part; each type reads only the fields it needs. The SAME
- * struct is filled by the CLI's key=value parser, consumed by makePart(), and produced by params()
- * -- so the field vocabulary cannot drift between the front-ends and the on-disk design format.
- * Optional so a missing key is distinguishable from a supplied zero; makePart() throws for a missing
- * REQUIRED field and applies documented defaults for the rest (see makePart). All lengths are SI
- * meters, densities kg/m^3 -- never millimeters (unlike MotorModel).
+ * One struct spans every factory-buildable part; each type reads only the fields it needs. The same
+ * struct is filled by the CLI's key=value parser, consumed by makePart(), and produced by params(),
+ * so the field vocabulary can't drift between the front-ends and the on-disk format. Optional so a
+ * missing key differs from a supplied zero; makePart() throws for a missing required field and
+ * applies documented defaults for the rest. Lengths SI meters, densities kg/m^3 -- never mm.
  */
 struct PartParams
 {
@@ -51,11 +50,8 @@ struct PartParams
  * @brief Construct a concrete leaf Part from a type tag + named parameters.
  *
  * @p type is the part's typeName() ("NoseCone", "BodyTube", "FinSet", "HollowSphere"). Required
- * fields for that type must be present; defaults are applied for innerRadius (0), wallThickness (0),
- * sweep (0), and solid (true). The part is always built with a zero centerMass offset -- placement
- * is the caller's attach offset, never a baked-in CM (the cone's residual centerMass ctor arg has no
- * getter and is intentionally not round-tripped in P2). Concrete-ctor range validation propagates as
- * std::invalid_argument.
+ * fields must be present; defaults apply for innerRadius (0), wallThickness (0), sweep (0), solid
+ * (true). centerMass is always zero -- placement is the caller's attach offset, not a baked-in CM.
  *
  * @throws std::invalid_argument if a required field is missing, the geometry is non-physical, or
  *         @p type is unknown / non-constructible (Motor is attached via RocketModel::setMotorModel,
@@ -64,12 +60,11 @@ struct PartParams
 std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p);
 
 /**
- * @brief Read a part's own geometry back out into a PartParams (the inverse of makePart).
+ * @brief Read a part's own geometry back into a PartParams (the inverse of makePart).
  *
- * Reflects only THIS node's scalars via its public getters, keyed identically to makePart -- the
- * serializer's write side and the factory's read side therefore share one vocabulary, so a
- * params(makePart(p)) round-trip reproduces the geometry. Children are NOT reflected (the caller
- * walks getChildParts()). A Motor or a bare Part yields just the name with no geometry fields set.
+ * Reflects only this node's scalars via its public getters, keyed identically to makePart, so a
+ * params(makePart(p)) round-trip reproduces the geometry. Children are not reflected (the caller
+ * walks getChildParts()). A Motor or bare Part yields just the name.
  */
 PartParams params(const Part& part);
 

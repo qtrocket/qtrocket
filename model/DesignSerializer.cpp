@@ -81,10 +81,8 @@ pt::ptree writeLink(const part::StationLink& link)
 }
 
 // True when a link carries no authored intent beyond the zero-config default (child fore plane abuts
-// parent aft plane, no gap). Such a link is ELIDED on write and recovered as the default by the
-// reader's neither-element branch. childRot is not persisted in 0.2 (the documented additive 6-DOF
-// step), so only the serialized scalar fields and the seat participate; in 3-DOF childRot is always the
-// identity, so the elision loses nothing.
+// parent aft plane, no gap). Such a link is elided on write and recovered as the default on read.
+// childRot is not persisted (6-DOF, identity in 3-DOF), so only the scalar fields and seat compare.
 bool isDefaultLink(const part::StationLink& link)
 {
    const part::StationLink d{};
@@ -93,16 +91,16 @@ bool isDefaultLink(const part::StationLink& link)
 }
 
 // Recursively serialize a (non-Motor) part and its non-Motor descendants. @p link is this part's
-// stored placement intent relative to its parent (a default link for the root, ignored on load). The
-// absolute pose is never serialized -- it is re-derived by the resolver on load (whitepaper 7).
+// placement intent relative to its parent (a default link for the root, ignored on load). Absolute
+// pose is never serialized -- the resolver re-derives it on load.
 pt::ptree writePart(const part::Part& node, const part::StationLink& link)
 {
    pt::ptree pn;
    pn.put("<xmlattr>.type", node.typeName());
    pn.put("<xmlattr>.name", node.getName());
    pn.add_child("params", writeParams(part::params(node)));
-   // Emit <link> only when it carries non-default intent; a default-equal link (zero-config abut) is
-   // elided and recovered as the default by the reader's neither-element branch (whitepaper 7).
+   // Emit <link> only for non-default intent; a default-equal link (zero-config abut) is elided and
+   // recovered as the default on read.
    if(!isDefaultLink(link))
    {
       pn.add_child("link", writeLink(link));
@@ -174,10 +172,9 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
          const std::string childName = child->getName();
          const auto before = node->getChildParts().size();
 
-         // 0.2 is the only supported placement form: a <link> (explicit intent) or NEITHER -- a part
-         // whose default-equal link was elided on write, which attaches by the zero-config abut default.
-         // A legacy 0.1 <offset> (CM-to-CM) is no longer recovered; such a file is rejected with a clear
-         // error rather than silently mis-placed.
+         // 0.2 placement: a <link> (explicit intent) or neither element (an elided default-equal link,
+         // attaches by the zero-config abut default). A legacy 0.1 <offset> (CM-to-CM) is rejected
+         // below rather than silently mis-placed.
          if(childNode.get_child_optional("link"))
          {
             const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
@@ -218,8 +215,8 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
 void DesignSerializer::save(const RocketModel& rocket, const std::string& filename)
 {
    pt::ptree tree;
-   // Format version "major.minor": load accepts any minor within major 0 and rejects other majors.
-   // 0.2 introduces the <link> placement element (0.1 wrote a CM-to-CM <offset>, still read via shim).
+   // Format version "major.minor": load accepts any minor within major 0, rejects other majors. 0.2
+   // uses the <link> placement element (0.1 wrote a CM-to-CM <offset>, no longer supported).
    tree.put("QtRocketDesign.<xmlattr>.version", "0.2");
    tree.put("QtRocketDesign.design.<xmlattr>.name", rocket.getName());
 
@@ -231,8 +228,8 @@ void DesignSerializer::save(const RocketModel& rocket, const std::string& filena
    }
 
    // The <sim> block carries only the RocketModel-owned aero options. Launch/environment options
-   // (velocity, angle, atmosphere, gravity, integrator) are NOT RocketModel state and are not
-   // serialized here -- the CLI manages them as session config (see the spec's §9 follow-ups).
+   // (velocity, angle, atmosphere, gravity, integrator) are not RocketModel state and are not
+   // serialized here -- the CLI manages them as session config.
    tree.put("QtRocketDesign.sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient());
    tree.put("QtRocketDesign.sim.<xmlattr>.referenceArea", rocket.getReferenceArea());
    tree.put("QtRocketDesign.sim.<xmlattr>.referenceAreaOverridden",
@@ -255,13 +252,13 @@ void DesignSerializer::load(RocketModel& rocket, MotorModelDatabase& motors, con
       throw std::runtime_error("DesignSerializer: unsupported design-file version '" + version + "'");
    }
 
-   // Build the whole geometry tree (detached) BEFORE touching the rocket, then install in one shot so
+   // Build the whole geometry tree (detached) before touching the rocket, then install in one shot so
    // a malformed file leaves the existing rocket untouched.
    std::shared_ptr<part::Part> newRoot = buildPart(root.get_child("part"));
    rocket.setRoot(newRoot); // in-place: re-resolves motorPart and resets the ref-area override
    rocket.setName(root.get<std::string>("design.<xmlattr>.name", ""));
 
-   // Apply the sim/aero block AFTER setRoot so a restored manual override wins over setRoot's reset.
+   // Apply the sim/aero block after setRoot so a restored manual override wins over setRoot's reset.
    rocket.setDragCoefficient(root.get<double>("sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient()));
    const bool overridden =
       root.get<std::string>("sim.<xmlattr>.referenceAreaOverridden", "false") == "true";

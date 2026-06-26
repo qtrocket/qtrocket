@@ -10,10 +10,7 @@
 
 // qtrocket headers
 
-/**
- * @brief RocketModelerView shows the current rocket model
- *
- */
+/// @brief Widget that shows the current rocket model.
 class RocketModelerView : public QWidget
 {
    Q_OBJECT

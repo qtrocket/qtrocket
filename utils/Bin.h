@@ -12,16 +12,9 @@
 
 namespace utils {
 
-/**
- * @brief This is a utility class that operates as a map. Instead of a regular map
- *        this one maps a range of key values to a single value. Like a bin, where
- *        each key represents the bottom of the bin, and the next key represents the
- *        bottom of the next bin, etc. When dereferencing the BinMap, it checks for
- *        where the passed in key falls and returns the value in that bin.
- *
- * @todo Make this class behave more like a proper STL container. Templetize it for one
- *
- */
+/// @brief Maps a key to the value of the bin it falls in: each inserted key is a bin's lower bound,
+///        and operator[] returns the value of the bin containing the lookup key.
+/// @todo  Make this behave like a proper STL container; templatize it.
 class Bin
 {
 public:

@@ -16,15 +16,8 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class CannonballTab; }
 QT_END_NAMESPACE
 
-/**
- * @brief The CannonballTab class
- *
- * Self-contained input panel for the simple "cannonball" (point-mass) flight: the initial
- * conditions (velocity, launch angle, mass, drag coefficient, timestep), motor selection
- * (RSE import, thrustcurve.org, motor-database load), and launching the trajectory. Extracted
- * from MainWindow so this workflow is encapsulated in one widget and MainWindow only hosts the
- * tab that contains it.
- */
+/// @brief Input panel for the "cannonball" (point-mass) flight: initial conditions, motor
+///        selection (RSE/RASP import, thrustcurve.org, motor-database load), and launch.
 class CannonballTab : public QWidget
 {
    Q_OBJECT
@@ -48,17 +41,11 @@ private slots:
    void onButton_setMotor_clicked();
 
 private:
-   /**
-    * @brief Rebuild the engine selector combo box from the motor database (the single source of
-    *        truth). Shared by every path that changes the database (RSE import, motor-DB load).
-    */
+   /// Rebuild the engine selector combo from the motor database (the single source of truth).
    void populateEngineSelectorFromDatabase();
 
-   /**
-    * @brief Enable/disable "Calculate Trajectory" from the single "a motor is set" signal
-    *        (RocketModel::isMotorSet()). Call after any motor-selection path so the RSE and
-    *        thrustcurve.org paths share one rule instead of each toggling the button.
-    */
+   /// Enable "Calculate Trajectory" iff a motor is set; call after any motor-selection path so they
+   /// share one rule rather than each toggling the button.
    void refreshCalculateTrajectoryEnabled();
 
    Ui::CannonballTab* ui;

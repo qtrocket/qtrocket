@@ -19,13 +19,11 @@ namespace model::part
 {
 
 /**
- * @brief A uniform-density hollow circular cylinder (a rocket body/airframe tube), longitudinal axis
- *        on z.
+ * @brief A uniform-density hollow circular cylinder (a rocket body/airframe tube), axis on z.
  *
- * Mass and the per-unit-mass inertia tensor are derived from the geometry and density at
- * construction (V = pi (ro^2 - ri^2) L, m = density * V, tensor from InertiaTensors::Tube). The CM
- * is the geometric center, so no CM offset is needed. Reference geometry (radii, length) is the P5
- * Barrowman input; a constant-diameter body contributes zero normal force (CNalpha = 0).
+ * Mass and the per-unit-mass inertia tensor come from the geometry and density at construction
+ * (V = pi (ro^2 - ri^2) L, m = density * V, tensor from InertiaTensors::Tube). CM is the geometric
+ * center, so no CM offset. A constant-diameter body contributes zero normal force (CNalpha = 0).
  */
 class BodyTube : public Part
 {
@@ -50,7 +48,7 @@ public:
    double getOuterRadius()   const { return outerRadius; }
    double getLength()        const override { return length; }
    double getDensity()       const { return density; }
-   double getWettedArea()    const { return 2.0 * std::numbers::pi * outerRadius * length; } ///< P5 skin friction
+   double getWettedArea()    const { return 2.0 * std::numbers::pi * outerRadius * length; } ///< for skin friction
    double getReferenceArea() const override { return std::numbers::pi * outerRadius * outerRadius; } ///< pi*ro^2
    double getMaxRadius()     const { return outerRadius; }
 

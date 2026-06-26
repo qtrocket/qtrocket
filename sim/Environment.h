@@ -24,11 +24,7 @@
 namespace sim
 {
 
-/**
- * @brief Holds simulation environment information, such as the gravity model, atmosphere model,
- *        Geoid model
- * 
- */
+/// Holds the pluggable physics models for a simulation: gravity, atmosphere, and geoid.
 class Environment
 {
 public:
@@ -116,9 +112,8 @@ private:
     std::string gravityModel{"Constant Gravity"}; /// Constant Gravity Model is the default
     std::string atmosphereModel{"Constant Atmosphere"}; /// Constant Atmosphere Model is the default
 
-    /// Supplies the launch-site ground radius the Spherical Gravity model needs to map the
-    /// local launch frame to a geocentric distance. Only one geoid exists today; a
-    /// selector/registry can follow if more are added (see TODO.md P6).
+    /// Supplies the launch-site ground radius the Spherical Gravity model uses to map the local
+    /// launch frame to a geocentric distance. Only one geoid today; a registry can follow if needed.
     std::shared_ptr<sim::GeoidModel> geoidModel{std::make_shared<sim::SphericalGeoidModel>()};
 };
 

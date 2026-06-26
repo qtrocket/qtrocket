@@ -15,10 +15,8 @@ namespace sim
 
 SphericalGravityModel::SphericalGravityModel(std::shared_ptr<GeoidModel> geoidModel)
    : geoid(std::move(geoidModel)),
-     // Cache the launch-site ground radius once: it is constant for a launch site and
-     // getAccel runs on every integrator stage. The spherical geoid ignores lat/lon;
-     // (0, 0) is the placeholder pad location until a real launch site is plumbed in
-     // (see TODO.md P6).
+     // Cache the ground radius once: it's constant for a site and getAccel runs every stage. The
+     // spherical geoid ignores lat/lon; (0, 0) is a placeholder until a real launch site is plumbed in.
      groundLevel(geoid->getGroundLevel(0.0, 0.0))
 {
 }
@@ -29,11 +27,9 @@ SphericalGravityModel::~SphericalGravityModel()
 
 Vector3 SphericalGravityModel::getAccel(double x, double y, double z)
 {
-   // Local launch frame -> geocentric: the pad sits a distance groundLevel from
-   // Earth's center, straight below the origin, so the geocentric position is
-   // (x, y, z + groundLevel). Newtonian inverse-square: a = -GM * rvec / |rvec|^3.
-   // double precision is ample here (GM ~ 3.99e14, r ~ 6.37e6), so there is no need
-   // for the earlier km-scaling. |rvec| >= groundLevel, so it can never be zero.
+   // Local launch frame -> geocentric: the pad sits groundLevel below the origin, so the geocentric
+   // position is (x, y, z + groundLevel). Newtonian inverse-square: a = -GM * rvec / |rvec|^3.
+   // double precision is ample (GM ~ 3.99e14, r ~ 6.37e6), and |rvec| >= groundLevel so it's never 0.
    const double gz = z + groundLevel;
    const double r2 = x * x + y * y + gz * gz;
    const double r = std::sqrt(r2);

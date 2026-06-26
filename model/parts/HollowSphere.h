@@ -20,11 +20,9 @@ namespace model::part
 /**
  * @brief A uniform-density, thick-walled hollow sphere with distinct inner and outer radii.
  *
- * Mass and inertia are derived from the geometry and density at construction:
- *   V = (4/3) pi (ro^3 - ri^3),  m = density * V,
- *   and the (per-unit-mass) inertia tensor (2/5)(ro^5 - ri^5)/(ro^3 - ri^3) * I is handed to the
- *   Part base, which stores it per-unit-mass and exposes the full mass-weighted tensor via
- *   getCompositeI() (ready for 6-DOF). For 3-DOF only the mass is consumed today.
+ * Mass and inertia come from the geometry and density at construction: V = (4/3) pi (ro^3 - ri^3),
+ * m = density * V, per-unit-mass tensor (2/5)(ro^5 - ri^5)/(ro^3 - ri^3) * I. 3-DOF consumes only
+ * the mass today.
  */
 class HollowSphere : public Part
 {
@@ -44,7 +42,6 @@ public:
                 double density,
                 const Vector3& centerMass = {0.0, 0.0, 0.0});
 
-   /// @brief Defaulted; HollowSphere owns no resources beyond the Part base.
    ~HollowSphere() override = default;
 
    std::string typeName() const override { return "HollowSphere"; }
@@ -55,18 +52,15 @@ public:
    double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
    double getVolume()      const { return volume; }      ///< Shell volume (4/3)pi(ro^3 - ri^3) (m^3).
 
-   /// @brief Outer silhouette: sqrt(ro^2 - (z+ro)^2) about the center at z = -ro -- ro at the equator,
-   ///        0 at both poles.
+   /// Outer silhouette sqrt(ro^2 - (z+ro)^2) about the center at z = -ro: ro at the equator, 0 at the poles.
    double radiusOuterAt(double zLocal) const override;
-   /// @brief Inner (shell-cavity) silhouette: ri at the equator, 0 outside the band |z+ro| <= ri.
+   /// Inner (shell-cavity) silhouette: ri at the equator, 0 outside the band |z+ro| <= ri.
    double radiusInnerAt(double zLocal) const override;
    bool   isSolid()        const override { return innerRadius <= 0.0; } ///< a shell when ri > 0
 
 protected:
-   /// @brief Protected copy ctor + cloneShallow() implement clone() for this type (Part is otherwise
-   ///        non-copyable). Defaulted: copies geometry/density and, via Part's protected copy ctor,
-   ///        the base mass properties with a fresh id. Protected, so a HollowSphere can't be
-   ///        value-copied or sliced from outside either.
+   /// Protected copy ctor + cloneShallow() implement clone() (Part is otherwise non-copyable); copies
+   /// geometry and, via Part's copy ctor, the base mass properties with a fresh id.
    HollowSphere(const HollowSphere&) = default;
 
    std::shared_ptr<Part> cloneShallow() const override
@@ -75,29 +69,14 @@ protected:
    }
 
 private:
-   // Static helpers so they can be evaluated in the Part base-class initializer.
+   // Static so they can be evaluated in the Part base-class initializer.
+   static double computeVolume(double innerRadius, double outerRadius);            ///< (4/3) pi (ro^3 - ri^3)
+   static double computeMass(double innerRadius, double outerRadius, double density); ///< density * V
 
-   /**
-    * @brief Shell volume V = (4/3) pi (ro^3 - ri^3).
-    * @param innerRadius inner radius ri (meters)
-    * @param outerRadius outer radius ro (meters)
-    * @return volume (m^3)
-    */
-   static double computeVolume(double innerRadius, double outerRadius);
-
-   /**
-    * @brief Total mass m = density * V derived from the shell geometry and density.
-    * @param innerRadius inner radius ri (meters)
-    * @param outerRadius outer radius ro (meters)
-    * @param density     uniform mass density (kg/m^3)
-    * @return mass (kg)
-    */
-   static double computeMass(double innerRadius, double outerRadius, double density);
-
-   double innerRadius; ///< Inner radius ri (meters).
-   double outerRadius; ///< Outer radius ro (meters).
-   double density;     ///< Uniform mass density (kg/m^3).
-   double volume;      ///< Cached shell volume (m^3).
+   double innerRadius; ///< ri (m)
+   double outerRadius; ///< ro (m)
+   double density;     ///< uniform density (kg/m^3)
+   double volume;      ///< cached shell volume (m^3)
 };
 
 } // namespace model::part

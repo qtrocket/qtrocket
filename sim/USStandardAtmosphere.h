@@ -14,16 +14,8 @@ public:
    USStandardAtmosphere();
    virtual ~USStandardAtmosphere();
 
-   /**
-    * @brief Get the density of the air at a given altitude above mean sea level
-    *        This is overly simplistic and wrong implementation.
-    * 
-    * @todo Fix this implementation. See the 1976 NOAA paper for the right way to
-    *       do it
-    * 
-    * @param altitude the altitude above sea level
-    * @return the density in kg/m^3
-    */
+   /// Air density (kg/m^3) at @p altitude above mean sea level.
+   /// @todo Verify against the 1976 US Standard Atmosphere / NOAA paper.
    double getDensity(double altitude) override;
    double getPressure(double altitude) override;
    double getTemperature(double altitude) override;

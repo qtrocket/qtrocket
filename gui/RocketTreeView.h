@@ -10,13 +10,8 @@
 
 // qtrocket headers
 
-/**
- * @brief RocketTreeView basically just renames QTreeView with a specific
- *        memorable name.
- *
- * The purpose is to provide an exploded view of the components that make up the
- * rocket design, and their relationships.
- */
+/// @brief A QTreeView named for its role: an exploded view of the rocket's components and their
+///        parent/child relationships.
 class RocketTreeView : public QTreeView
 {
    Q_OBJECT

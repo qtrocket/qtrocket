@@ -60,17 +60,13 @@ void MotorModelDatabase::addMotorModels(const std::vector<model::MotorModel>& mo
 
 std::size_t MotorModelDatabase::importRSEFile(const std::string& path)
 {
-   // RSEDatabaseLoader is an implementation detail owned here: GUI/CLI never see it. Constructing
-   // it parses the .rse file into its own motor list; we then copy those motors into our map so that
-   // motor selection goes through this database regardless of where the data came from. This is the
-   // single ingestion point that unifies motor sources behind this database.
+   // RSEDatabaseLoader (owned here, never seen by GUI/CLI) parses the file; copy its motors into our
+   // map so selection goes through this database regardless of source.
    const std::size_t before = motorModelMap.size();
    RSEDatabaseLoader loader(path);
    addMotorModels(loader.getMotors());
-   // Report net new entries, not the raw file count: the map is keyed by common name, so motors
-   // sharing a name (duplicates within the file, or names already loaded from another source)
-   // collapse onto one entry. Returning the size delta keeps the reported count consistent with
-   // size() and makes re-loading the same file correctly report 0 new motors.
+   // Net new entries, not the raw file count: the map is keyed by common name, so same-name motors
+   // collapse onto one entry, and a re-import correctly reports 0.
    return motorModelMap.size() - before;
 }
 

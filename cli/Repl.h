@@ -17,32 +17,18 @@ class QtRocket;
 namespace cli
 {
 
-/**
- * @brief A small read-eval-print loop that drives the QtRocket simulation API.
- *
- * The REPL exposes the same operations the GUI performs (load a motor database,
- * pick a motor, set mass / drag coefficient / initial conditions, launch) as
- * line-oriented text commands, so a simulation can be scripted and its results
- * read back programmatically. Because input is read line by line, the same
- * binary works interactively, from a pipe, or from a redirected script file.
- */
+/// @brief Line-oriented REPL over the QtRocket sim API: the same operations the GUI performs
+///        (load motors, pick a motor, set mass/drag/initial conditions, launch), as text commands.
+///        Reads line by line, so it works interactively, from a pipe, or from a redirected script.
 class Repl
 {
 public:
    explicit Repl(QtRocket* qtRocket);
 
-   /**
-    * @brief Reads and executes commands until EOF or a quit/exit command.
-    * @param in command source (e.g. std::cin)
-    * @param out result sink (e.g. std::cout)
-    * @return a process exit code (0)
-    */
+   /// Read and execute commands until EOF or a quit/exit command. Returns a process exit code (0).
    int run(std::istream& in, std::ostream& out);
 
-   /**
-    * @brief Executes a single command line.
-    * @return false if the REPL should exit, true to keep going.
-    */
+   /// Execute one command line. Returns false to exit the REPL, true to keep going.
    bool execute(const std::string& line, std::ostream& out);
 
 private:

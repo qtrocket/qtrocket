@@ -1,8 +1,3 @@
-/**
- * @file VisualizerWindow.cpp
- * @brief Implementation of viz::VisualizerWindow -- the visualizer's main window.
- */
-
 #include "visualizer/VisualizerWindow.h"
 
 // Qt headers

@@ -36,8 +36,8 @@ constexpr double DEG_PER_RAD = 57.2958; // matches gui/MainWindow.cpp
 
 using StateSeries = std::vector<std::pair<double, StateData>>;
 
-// Human-readable description of why a run stopped, for the launch command's output. The full
-// case list with no default makes adding a future TerminationReason a compile error here.
+// Human-readable reason a run stopped, for the launch output. No default, so a new
+// TerminationReason fails to compile here until handled.
 const char* terminationReasonText(sim::Propagator::TerminationReason r)
 {
    switch(r)
@@ -61,8 +61,7 @@ std::string trim(const std::string& s)
    return s.substr(first, last - first + 1);
 }
 
-// Everything remaining on the line (after the command word), trimmed. Used for
-// arguments that may contain spaces, such as file paths.
+// The rest of the line after the command word, trimmed; for args that may contain spaces (file paths).
 std::string restOfLine(std::istringstream& iss)
 {
    std::string rest;
@@ -78,8 +77,7 @@ std::string lowerExtension(const std::string& path)
    return ext;
 }
 
-// Parse the next whitespace-delimited token as a double. Returns false if there
-// is no token or it is not fully numeric.
+// Parse the next whitespace-delimited token as a double; false if absent or not fully numeric.
 bool parseDouble(std::istringstream& iss, double& out)
 {
    std::string tok;
@@ -100,8 +98,7 @@ bool parseDouble(std::istringstream& iss, double& out)
    }
 }
 
-// Write the state series as CSV (one header + one row per retained sample).
-// stride > 1 keeps only every stride-th sample.
+// Write the state series as CSV (header + one row per sample); stride > 1 keeps every stride-th.
 void writeCsv(std::ostream& os, const StateSeries& states, int stride)
 {
    os << "t,x,y,z,vx,vy,vz,mass,cg_x,cg_y,cg_z,Ixx,Iyy,Izz\n";
@@ -119,8 +116,7 @@ void writeCsv(std::ostream& os, const StateSeries& states, int stride)
    }
 }
 
-// Strict full-string numeric parsers: reject trailing garbage (e.g. "0.5abc") rather than silently
-// truncating it, matching the existing parseDouble's full-consumption check.
+// Strict full-string numeric parsers: reject trailing garbage (e.g. "0.5abc") rather than truncate.
 bool parseDoubleStr(const std::string& s, double& out)
 {
    try { std::size_t pos = 0; out = std::stod(s, &pos); return pos == s.size(); }
@@ -167,9 +163,9 @@ std::optional<double>* doubleFieldFor(const std::string& key, model::part::PartP
    return nullptr;
 }
 
-// Parse remaining "key=value" tokens into a PartParams (geometry keys), the part name ("name"), and
-// the attach offset ("x"/"y"/"z"); only z is used today (the forward standoff of an abut seat). A bad
-// numeric value returns an error string (empty on success); an UNKNOWN key is warned-and-skipped.
+// Parse "key=value" tokens into PartParams (geometry keys), the name, and the attach offset (x/y/z;
+// only z is used, the forward standoff of an abut seat). Returns an error string (empty on success);
+// a bad numeric value errors, an unknown key is warned and skipped.
 std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& p, Vector3& offset)
 {
    std::string tok;
@@ -680,8 +676,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
 
-      // Angle is measured from vertical (0 = straight up, 90 = horizontal), so the
-      // vertical (Z) component is the cosine and the downrange (X) component is the sine.
+      // Angle from vertical (0 = up, 90 = horizontal): vertical (Z) is cosine, downrange (X) is sine.
       const double rad = initialAngleDeg / DEG_PER_RAD;
       const double vx = initialVelocity * std::sin(rad);
       const double vz = initialVelocity * std::cos(rad);
@@ -703,8 +698,8 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
 
-      // Whole-trajectory statistics are tracked live during the run; read them back instead of
-      // re-deriving from the series. Downrange and landing still come from the final sample below.
+      // Trajectory stats are tracked live during the run; read them back rather than re-derive.
+      // Downrange and landing still come from the final sample below.
       const sim::TrajectoryStatistics& stats = qtRocket->getTrajectoryStatistics();
       const double apogee = stats.maxAltitude;
       const double apogeeT = stats.timeOfMaxAltitude;
@@ -873,7 +868,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       }
       const auto childId = child->getId();
       // The child abuts its parent's aft plane with a forward standoff of the parsed z (x/y are coaxial
-      // in 3-DOF and ignored). A richer seat/station grammar can layer on later (whitepaper 8).
+      // in 3-DOF and ignored).
       if(!rocket->addPart(parentId, std::move(child), model::part::abut(offset.z())))
       {
          out << "ERR addpart: no part with id " << parentId << " (or the attach was rejected)\n";
@@ -966,7 +961,7 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          out << "ERR loaddesign: " << e.what() << "\n";
          return true;
       }
-      // Sync staged config from the loaded rocket: load applied drag/refArea and may have re-attached
+      // Sync staged config from the loaded rocket: it set drag/refArea and may have re-attached
       // the motor by common name.
       dragCoeff = rocket->getDragCoefficient();
       referenceArea = rocket->getReferenceArea();

@@ -41,20 +41,18 @@ void AnalysisWindow::onButton_plotAltitude_clicked()
    plot->clearGraphs();
    plot->setInteraction(QCP::iRangeDrag, true);
    plot->setInteraction(QCP::iRangeZoom, true);
-   // generate some data:
+
    QVector<double> tData(res.size()), zData(res.size());
    for (int i = 0; i < tData.size(); ++i)
    {
      tData[i] = res[i].first;
      zData[i] = res[i].second.position[2];
    }
-   // create graph and assign data to it:
    plot->addGraph();
    plot->graph(0)->setData(tData, zData);
-   // give the axes some labels:
    plot->xAxis->setLabel("time");
    plot->yAxis->setLabel("Z");
-   // set axes ranges, so we see all data:
+   // ranges span the data so the whole curve is visible
    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
    plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
    plot->replot();
@@ -69,20 +67,16 @@ void AnalysisWindow::onButton_plotVelocity_clicked()
    plot->setInteraction(QCP::iRangeDrag, true);
    plot->setInteraction(QCP::iRangeZoom, true);
 
-   // generate some data:
    QVector<double> tData(res.size()), zData(res.size());
    for (int i = 0; i < tData.size(); ++i)
    {
      tData[i] = res[i].first;
      zData[i] = res[i].second.velocity[2];
    }
-   // create graph and assign data to it:
    plot->addGraph();
    plot->graph(0)->setData(tData, zData);
-   // give the axes some labels:
    plot->xAxis->setLabel("time");
    plot->yAxis->setLabel("Z Velocity");
-   // set axes ranges, so we see all data:
    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
    plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
    plot->replot();
@@ -102,7 +96,6 @@ void AnalysisWindow::onButton_plotMotorCurve_clicked()
    plot->setInteraction(QCP::iRangeDrag, true);
    plot->setInteraction(QCP::iRangeZoom, true);
 
-   // generate some data:
    QVector<double> tData(res.size());
    QVector<double> fData(res.size());
    for (int i = 0; i < tData.size(); ++i)
@@ -110,14 +103,11 @@ void AnalysisWindow::onButton_plotMotorCurve_clicked()
      tData[i] = res[i].first;
      fData[i] = res[i].second;
    }
-   // create graph and assign data to it:
    plot->addGraph();
    plot->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 5));
    plot->graph(0)->setData(tData, fData);
-   // give the axes some labels:
    plot->xAxis->setLabel("time");
    plot->yAxis->setLabel("Thrust (N)");
-   // set axes ranges, so we see all data:
    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
    plot->yAxis->setRange(*std::min_element(std::begin(fData), std::end(fData)), *std::max_element(std::begin(fData), std::end(fData)));
    plot->replot();

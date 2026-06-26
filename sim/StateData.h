@@ -10,11 +10,8 @@
 // qtrocket headers
 #include "utils/math/MathTypes.h"
 
-/**
- * @brief The StateData class holds physical state data. Things such as position, velocity,
- *        and acceleration of the center of mass, as well as orientation and orientation
- *        change rates.
- */
+/// Physical state at one instant: CM position/velocity, orientation and its rate, plus the composite
+/// mass properties recorded each step.
 class StateData
 {
 public:
@@ -24,9 +21,8 @@ public:
    StateData(const StateData&) = default;
    StateData(StateData&&) = default;
 
-   // Defaulted (memberwise): every member is an Eigen value type / Quaternion, so memberwise copy is
-   // correct -- and new members (mass/cg/inertia below) cannot be silently dropped, which the
-   // previous hand-written, explicit-field-list assignment was prone to.
+   // Defaulted memberwise: every member is an Eigen value type, so memberwise copy is correct and
+   // a new member can't be silently dropped (as an explicit field-list assignment could).
    StateData& operator=(const StateData&) = default;
    StateData& operator=(StateData&&) = default;
 
@@ -58,9 +54,9 @@ public:
    /// roll  - phi
    Vector3 eulerAngles{0.0, 0.0, 0.0};
 
-   // Composite mass properties at this sample's time, recorded each step by the Propagator via
+   // Composite mass properties at this sample's time, recorded each step via
    // Propagatable::writeMassProperties. Not integrated in 3-DOF; they make CG(t)/I(t) observable and
-   // trajectory-testable now, and are the seam the 6-DOF rotational ODE will read.
+   // are the seam the 6-DOF rotational ODE will read.
    double  mass{0.0};                 ///< composite mass at this time (kg)
    Vector3 cg{0.0, 0.0, 0.0};         ///< composite center of mass (== CG), body frame
    Matrix3 inertia{Matrix3::Zero()};  ///< full composite inertia tensor (kg*m^2) about cg

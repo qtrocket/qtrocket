@@ -4,12 +4,7 @@
 namespace sim
 {
 
-/**
- * @brief The GeoidModel represents the physical ellipsoid of the earth. It is used
- *        to determin the distance of the local ground level from the center of mass
- *        of the earth.
- * 
- */
+/// Earth's reference ellipsoid: gives the ground level's distance from Earth's center.
 class GeoidModel
 {
 public:

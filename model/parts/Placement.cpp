@@ -23,12 +23,12 @@ Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
    const Station p = parent.stationAt(link.parentStation01);  // landmark on the parent
    const Station c = child.stationAt(link.childStation01);    // landmark on the child
 
-   // signedGap encodes the seat direction in +z = forward: NestInBore inserts AFT (-z, gap is depth);
-   // Abut/OnSurface stand off FORWARD (+z). The author always writes a non-negative number.
+   // signedGap encodes seat direction in +z = forward: NestInBore inserts aft (-z, gap is depth),
+   // Abut/OnSurface stand off forward (+z). The author always writes a non-negative number.
    const double signedGap = (link.seat == SeatKind::NestInBore) ? -link.gap : link.gap;
 
-   // Line the child's chosen station up with the parent's, then displace by the gap. The pose locates
-   // the child's FORE plane, which sits c.z from its chosen station -- hence the `- c.z`.
+   // Line the child's station up with the parent's, then displace by the gap. The pose locates the
+   // child's fore plane, which sits c.z from its chosen station -- hence the `- c.z`.
    const double childOriginZ = p.z + signedGap - c.z;
 
    const Pose childInParent{Vector3(0.0, 0.0, childOriginZ), link.childRot};  // coaxial in 3-DOF
@@ -189,12 +189,11 @@ SolveResult sweepOverlaps(const std::vector<Placed>& placed, double tol)
          const double rOff = off.part->radiusOuterAt(zWorld - off.originZ);
          const double cap  = host->part->innerCapacityAt(zWorld - host->originZ);
 
-         // A hollow host's bore capacity gates only an offender NESTED within the host's outer envelope.
-         // When the offender's outer radius reaches the host's outer skin (rOff >= hostOuter), it sits ON
-         // or OUTSIDE that skin -- e.g. a fin set's body disc lying on a co-radial aft coupler, or any
-         // part sharing the outer mould line -- so a bore "intrusion" is a modelling artifact, not a
-         // collision. A SOLID host keeps the poke-through test unchanged: there cap == hostOuter, so this
-         // guard never trips and exceeding the surface still flags (the xl75 coupler-through-nose case).
+         // A hollow host's bore capacity gates only an offender nested within its outer envelope. Once
+         // the offender's outer radius reaches the host skin (rOff >= hostOuter) it sits on or outside
+         // that skin -- e.g. a fin set's body disc on a co-radial aft coupler -- so a bore "intrusion"
+         // there is a modelling artifact, not a collision. A solid host has cap == hostOuter, so this
+         // guard never trips and poke-through still flags.
          const double hostOuter = host->part->radiusOuterAt(zWorld - host->originZ);
          const bool   boreHost  = cap < hostOuter - tol;        // hollow: capacity is the bore, not the skin
          if(boreHost && rOff >= hostOuter - tol) { continue; }  // offender lies on/outside the host skin

@@ -26,21 +26,15 @@ namespace sim
 /**
  * @brief Runge-Kutta-Fehlberg (RKF45) adaptive coupled ODE solver.
  *
- * Implements DESolver for a second-order system split into a coupled (state, rate) pair -- the
- * same formulation RK4Solver uses, so the two are interchangeable behind DESolver. Unlike RK4,
- * the step size is chosen dynamically to keep the local error estimate at or below a target
- * tolerance: setTimeStep() only seeds the INITIAL step guess, and each step() adapts from there.
- * step() reports the step it actually took via StepResult::stepSize, so the caller advances its
- * clock accordingly.
+ * Same coupled (state, rate) formulation as RK4Solver, so the two are interchangeable behind
+ * DESolver. The step size is chosen to hold the local error estimate at or below tol: setTimeStep()
+ * only seeds the initial guess, each step() adapts from there and reports the step it took.
  *
- * @note The ODE callback receives each stage's evaluation time (t + cᵢ·h), so a time-varying force
- *       such as the motor thrust curve is sampled at the correct instant. This is what lets the
- *       embedded error estimate *see* a thrust transient: across a sharp burn the 4th- and 5th-order
- *       estimates diverge, err rises, and the stepper shrinks h to resolve it -- the whole point of
- *       adaptivity. (Freezing the force at the step's start, as an earlier version did, hid the
- *       transient from the estimator and let it take a coarse step straight through the burn.) The
- *       local-error estimate combines the state and rate differences as a single absolute norm
- *       (matching the reference algorithm); a scaled/relative norm is a possible future refinement.
+ * @note Each stage evaluates at its node time t + c_i*h, so a time-varying force (motor thrust) is
+ *       sampled at the right instant. That lets the embedded estimate see a thrust transient: across
+ *       a sharp burn the 4th- and 5th-order estimates diverge, err rises, and the stepper shrinks h
+ *       to resolve it. The error is a single absolute norm over state and rate (matching the
+ *       reference algorithm); a scaled/relative norm is a possible refinement.
  *
  * @tparam T the state/rate type (Vector3 or Quaternion)
  */
@@ -53,7 +47,7 @@ public:
       : odes(func),
         tol(desiredError)
    {
-      // This only works for Eigen Vector types (mirrors RK4Solver).
+      // Eigen Vector types only (mirrors RK4Solver).
       static_assert(std::is_same<T, Vector3>::value
                     || std::is_same<T, Quaternion>::value,
                     "You can only use Vector3 or Quaternion valued functions in RK45Solver");
@@ -66,9 +60,9 @@ public:
 
    void setFunction(std::function<std::pair<T, T>(double, T&, T&)> func) override { odes = std::move(func); }
 
-   /// Seeds the INITIAL step-size guess AND sets the maximum step to maxStepFactor*inTs. RKF45 adapts
-   /// the step from the guess to hold the error tolerance, but never grows it past hMax -- see the
-   /// hMax note below for why an upper bound is mandatory, not just a nicety.
+   /// Seeds the initial step-size guess and sets the max step to maxStepFactor*inTs. The stepper
+   /// adapts from the guess but never grows past hMax (see the hMax clamp below for why that bound
+   /// is mandatory).
    void setTimeStep(double inTs) override { h = inTs; hMax = maxStepFactor * inTs; }
 
    /// Override the absolute maximum step size (defaults to maxStepFactor x the seeded timestep).
@@ -89,9 +83,9 @@ public:
                "RK45Solver step size underflow: cannot meet the requested error tolerance");
          }
 
-         // Six Fehlberg stages over the coupled (state, rate) system. Each stage is the ODE
-         // derivative at an intermediate (state, rate) built from the previous stages, evaluated
-         // at that stage's node time t + Cn*h so a time-varying force is sampled at the right instant.
+         // Six Fehlberg stages: each is the ODE derivative at an intermediate (state, rate) built
+         // from the previous stages, evaluated at node time t + Cn*h so a time-varying force samples
+         // at the right instant.
          T s1, r1, s2, r2, s3, r3, s4, r4, s5, r5, s6, r6; // stage derivatives
          T ts, tr;                                         // trial (state, rate) fed to the ODE
 
@@ -147,10 +141,9 @@ public:
             h *= (scale > 5.0) ? 5.0 : scale;
          }
 
-         // Clamp the next-step guess to hMax. Without this, a trajectory whose within-step dynamics
-         // are polynomial -- constant-acceleration coasting in vacuum -- yields err < epsilon every
-         // step, so the branch above would grow h by 5x indefinitely and the integrator would leap
-         // past apogee and the ground in a handful of giant steps.
+         // Clamp the next-step guess to hMax. Without it, near-polynomial dynamics (constant-
+         // acceleration coasting in vacuum) give err < epsilon every step, so h grows 5x indefinitely
+         // and the integrator leaps past apogee and the ground in a few giant steps.
          if(h > hMax)
             h = hMax;
 

@@ -12,15 +12,9 @@
 class ThrustCurve
 {
 public:
-   /**
-    * Constructor takes a vector of pairs. The first item a timestamp,
-    * the second the thrust in newtons.
-   */
+   /// @brief Build from (time seconds, thrust Newtons) samples.
    ThrustCurve(std::vector<std::pair<double, double>>& tc);
-   /**
-    * Default constructor. Will create an empty thrustcurve, always returning 0.0
-    * for all requested times.
-   */
+   /// @brief Empty curve: getThrust() returns 0 for all times.
    ThrustCurve();
    ThrustCurve(const ThrustCurve&) = default;
    ThrustCurve(ThrustCurve&&) = default;
@@ -30,13 +24,8 @@ public:
 
    ThrustCurve& operator=(ThrustCurve&& rhs) = default;
 
-   /**
-    * Assuming that the thrust is one dimensional. Seems reasonable, but just
-    * documenting that for the record. For timesteps between known points the thrust
-    * is interpolated linearly
-    * @param t The time in seconds. For t > burntime or < 0, this will return 0.0
-    * @return Thrust in Newtons
-   */
+   /// @brief Thrust (Newtons) at time @p t (seconds), linearly interpolated between samples. 0 for
+   ///        t < 0 or t > burn time.
    double getThrust(double t);
 
    void setIgnitionTime(double t);

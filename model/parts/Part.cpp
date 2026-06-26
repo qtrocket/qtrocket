@@ -16,17 +16,15 @@ namespace model::part
 
 namespace
 {
-/// @brief Parallel-axis "displacement" tensor f(d) = (d.d) I3 - d d^T. Multiplied by a body's mass
-///        and added to its CM inertia tensor, it shifts the tensor to a parallel axis offset by d.
-///        Even in d, so it does not matter whether d points toward or away from the reference point.
+/// Parallel-axis displacement tensor f(d) = (d.d) I3 - d d^T. Times a body's mass and added to its CM
+/// tensor, it shifts the tensor to a parallel axis offset by d. Even in d, so the sign of d is irrelevant.
 Matrix3 parallelAxisTerm(const Vector3& d)
 {
    return d.dot(d) * Matrix3::Identity() - d * d.transpose();
 }
 
-/// @brief Process-wide source of unique Part ids. Atomic so concurrent construction stays unique;
-///        relaxed ordering suffices since we only need uniqueness, not synchronization with other
-///        memory. Starts at 1, leaving 0 as a reserved "none/invalid" id.
+/// Process-wide source of unique Part ids. Atomic for concurrent construction (relaxed: we need only
+/// uniqueness, not synchronization). Starts at 1, reserving 0 as "none/invalid".
 std::atomic<Part::Id> nextPartId{1};
 Part::Id makePartId() { return nextPartId.fetch_add(1, std::memory_order_relaxed); }
 
@@ -40,8 +38,7 @@ Part::Part(const std::string& n,
      id(makePartId()),
      name(n),
      inertiaTensor(I),
-     // inertiaTensor is stored per-unit-mass (geometric, units m^2); the composite tensor is the
-     // full, mass-weighted one (kg*m^2). Multiply by the parameter m here
+     // inertiaTensor is per-unit-mass (m^2); the composite is the full mass-weighted tensor (kg*m^2).
      compositeInertiaTensor(m * I),
      mass(m),
      compositeMass(m),
@@ -56,9 +53,8 @@ Part::~Part()
 {}
 
 Part::Part(const Part& orig)
-   // Shallow node copy used only by clone(): this part's own mass properties, a FRESH id (a clone is
-   // a distinct, separately identifiable object), no parent, and NO children -- clone() deep-copies
-   // the sub-tree itself. See the class doc on copy/clone semantics.
+   // Shallow node copy used only by clone(): own mass properties, a fresh id, no parent, no children
+   // (clone() deep-copies the sub-tree). See the class doc on copy/clone semantics.
    : parent(nullptr),
      id(makePartId()),
      name(orig.name),
@@ -101,8 +97,8 @@ void Part::addChildPart(std::shared_ptr<Part> child, StationLink link)
    child->parent = this;
    childParts.emplace_back(std::move(child), std::move(link));
 
-   // A structural edit invalidates BOTH caches up the tree: the composite mass/CM/inertia (rebuilt by
-   // computeCompositeAt) and the resolved placement (rebuilt by ensurePlacementCache).
+   // A structural edit invalidates both caches up the tree: composite mass/CM/inertia and the resolved
+   // placement.
    markAsNeedsRecomputing();
    markPlacementDirty();
 }
@@ -121,8 +117,8 @@ std::shared_ptr<Part> Part::clone() const
 
 double Part::getCompositeMass(double t)
 {
-   // Cheap, LIVE mass-only sum: this node plus every descendant. The ODE divisor AND the gate key
-   // for getCompositeI(t); deliberately does no tensor work.
+   // Cheap live mass-only sum: this node plus every descendant. The ODE divisor and the gate key for
+   // getCompositeI(t); does no tensor work.
    double m = getMass(t);
    for(const auto& [child, link] : childParts)
    {
@@ -133,11 +129,10 @@ double Part::getCompositeMass(double t)
 
 void Part::ensureCompositeCache(double t)
 {
-   // Mass-delta gate. needsRecomputing (a structural edit: addChildPart/setMass/setI) is checked
-   // first and always rebuilds. Otherwise rebuild only when the composite mass moved since the cache
-   // was last built -- so the tensor and CM recompute every step while a motor burns and FREEZE once
-   // mass is constant (post-burnout getMass returns the bit-identical empty mass, so mNow ==
-   // builtAtCompositeMass exactly). The NaN sentinel makes the very first call always build.
+   // Mass-delta gate. A structural edit (needsRecomputing) always rebuilds. Otherwise rebuild only when
+   // the composite mass moved since the last build, so the tensor and CM recompute every step while a
+   // motor burns and freeze once mass is constant (post-burnout getMass returns the bit-identical empty
+   // mass, so mNow == builtAtCompositeMass exactly). The NaN sentinel forces the first call to build.
    const double mNow = getCompositeMass(t);
    if(needsRecomputing || mNow != builtAtCompositeMass)
    {
@@ -164,15 +159,14 @@ Matrix3 Part::getCompositeI(double t)
 
 void Part::ensurePlacementCache() const
 {
-   // Structural gate: re-resolve this sub-tree's geometry only when a part was added/removed or a
-   // length changed (placementDirty), NEVER on a mass change -- geometry is invariant under a burn.
+   // Structural gate: re-resolve this sub-tree's geometry only when a part was added/removed or a length
+   // changed (placementDirty), never on a mass change -- geometry is invariant under a burn.
    if(placementDirty)
    {
       resolvedCache = resolvePlacements(*this, Pose{}); // this part planted at the local origin
-      // Diagnostics gate: run the Layer-2 envelope sweep ONCE here, alongside the resolve, and cache the
-      // verdict. Both consumers read this cached SolveResult -- computeCompositeAt refuses a failed solve
-      // and the visualizer flags the offender -- so the check costs nothing per ODE step (whitepaper 4.5,
-      // 6). Geometry (hence overlaps) is invariant under a burn, so it is gated by placementDirty alone.
+      // Run the Layer-2 envelope sweep once here and cache the verdict. Both consumers read it --
+      // computeCompositeAt refuses a failed solve, the visualizer flags the offender -- so it costs
+      // nothing per ODE step. Overlaps are invariant under a burn, so placementDirty alone gates it.
       resolvedDiagnostics = sweepOverlaps(resolvedCache);
       placementDirty = false;
    }
@@ -180,14 +174,13 @@ void Part::ensurePlacementCache() const
 
 Part::CompositeProperties Part::computeCompositeAt(double t)
 {
-   // Geometry is resolved ONCE per structural change (placement gate); here we re-weight that fixed
-   // geometry by getMass(t). Each part's CM in the sub-tree-root frame is its resolved fore-plane
-   // origin plus the uniform local-CM station (-L/2 + getCenterMassOffset().z()); +z = forward.
+   // Geometry is resolved once per structural change (placement gate); here we re-weight it by
+   // getMass(t). Each part's CM in the sub-tree-root frame is its resolved fore-plane origin plus the
+   // local CM station (-L/2 + getCenterMassOffset().z()); +z = forward.
    ensurePlacementCache();
 
-   // Diagnostics gate: a self-intersecting design is a hard, located failure -- never a silently-wrong
-   // mass/inertia. The verdict is cached (computed once per structural resolve), so this is a flag read,
-   // not a re-sweep, on every burn step (the GateDoesNotReFirePerStepDuringBurn guarantee).
+   // A self-intersecting design is a hard, located failure, never a silently-wrong mass/inertia. The
+   // verdict is cached (computed once per structural resolve), so this is a flag read, not a re-sweep.
    if(!resolvedDiagnostics.ok)
    {
       const std::string detail = resolvedDiagnostics.diagnostics.empty()
@@ -221,14 +214,10 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
       temp_cm = weighted / m;
    }
 
-   // Pass 2: inertia about the composite CM. Shift each part's own (mass-weighted) tensor to temp_cm
-   // via the parallel-axis theorem. (6-DOF would first rotate the tensor by pl.pose.orient -- the one
-   // new line of whitepaper 9.2; identity today, so it is omitted to stay bit-stable.)
-   // TODO(6-DOF, whitepaper 9.2): when that R*I*R^T rotation is added here, write the deferred test
-   // PlacementTypesTests.TensorRotationIsIdentityUnderIdentityR in the SAME change -- it pins that the
-   // new term reduces to identity in 3-DOF (a no-op on existing flights). Deferred deliberately (plan
-   // T8): there is no production rotation to guard until this line exists, so a test written now could
-   // only assert an Eigen identity, not QtRocket behavior.
+   // Pass 2: inertia about the composite CM. Shift each part's own mass-weighted tensor to temp_cm via
+   // the parallel-axis theorem. 6-DOF would first rotate the tensor by pl.pose.orient (the R*I*R^T term,
+   // identity today, omitted to stay bit-stable).
+   // TODO(6-DOF): when that rotation is added, add a test pinning that it reduces to identity in 3-DOF.
    Matrix3 I = Matrix3::Zero();
    for(const Contribution& c : parts)
    {
@@ -241,17 +230,11 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
 
 sim::AeroProfile Part::getCompositeAero(double refArea) const
 {
-   // Both consumers read the same resolved geometry: re-express every part's x_cp (reported from its
-   // OWN CM) onto the shared sub-tree-root (tip) datum -- the part's CM station = pose.origin.z +
-   // (-L/2 + getCenterMassOffset().z()). Adding cmStation back exactly CANCELS the part's own CM that
-   // cnAlphaXcp carried, so the composite cp is independent of mass distribution -- a CP depends on
-   // external shape only (pinned by NoseConeTest.CompositeCpIsCmIndependentSolidVsShell). cp() and cg()
-   // then share the tip datum, so cp() - cg() (the static margin) is datum-independent within the
-   // resolved tree (whitepaper 4.4).
-   // NOTE: this is NOT bit-stable against the LEGACY reader. The legacy aero walk omitted this cancelling
-   // term, leaking each part's CM into cp, so the migration CORRECTS the static margin by ~0.1-2% on the
-   // corpus (the migrated cp is the physically correct one). 3-DOF flight is unaffected -- cp is unused
-   // until 6-DOF. (Mass/inertia/CG/stations DO remain bit-invariant; see PlacementInvarianceTests.)
+   // Re-express every part's x_cp (reported from its own CM) onto the shared sub-tree-root (tip) datum:
+   // the part's CM station = pose.origin.z + (-L/2 + getCenterMassOffset().z()). Adding cmStation back
+   // cancels the part's own CM that cnAlphaXcp carried, so the composite cp depends on external shape
+   // only, not mass distribution. cp() and cg() then share the tip datum, so cp() - cg() (the static
+   // margin) is datum-independent.
    ensurePlacementCache();
    sim::AeroProfile profile;
    profile.refArea = refArea;
@@ -293,10 +276,9 @@ Part* Part::findById(Id targetId)
 
 std::shared_ptr<Part> Part::removeChildById(Id targetId)
 {
-   // Symmetric with findById/addChildPart. Scan THIS node's direct children first: on a hit, move
-   // the owning shared_ptr out, erase the (child, link) pair, clear the detached node's parent, and
-   // mark this part (the ex-parent) and every ancestor dirty -- BOTH the mass/inertia cache (so even a
-   // zero-mass sub-tree refreshes) and the placement cache (the resolved tree shrank). Otherwise
+   // Symmetric with findById/addChildPart. Scan this node's direct children first: on a hit, move the
+   // owning shared_ptr out, erase the (child, link) pair, clear the detached node's parent, and mark
+   // this part and every ancestor dirty (both caches, so even a zero-mass sub-tree refreshes). Otherwise
    // recurse into the children.
    for(auto it = childParts.begin(); it != childParts.end(); ++it)
    {

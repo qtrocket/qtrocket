@@ -26,12 +26,9 @@ class ThrustCurveClient;
 class MotorModelDatabaseTestAccess;
 
 /**
- * @brief MotorQuery is a source-agnostic filter for selecting motors. Every field is optional; an
- *        unset field does not constrain the result, so a default-constructed MotorQuery matches
- *        everything. This is the unified replacement for per-source query notions: it folds in the
- *        old findMotorsByManufacturer / findMotorsByImpulseClass intent, and its fields map cleanly
- *        onto thrustcurve.org's SearchCriteria for when that source is added. Clients build a
- *        MotorQuery without knowing where the motors originated.
+ * @brief Source-agnostic filter for selecting motors. Every field is optional; an unset field does
+ *        not constrain, so a default-constructed MotorQuery matches everything. Its fields map onto
+ *        thrustcurve.org's SearchCriteria.
  */
 struct MotorQuery
 {
@@ -42,11 +39,9 @@ struct MotorQuery
 };
 
 /**
- * @brief MotorSummary is a lightweight, copyable description of a motor, sufficient to populate a
- *        list or combo box WITHOUT carrying the (potentially large, possibly not-yet-downloaded)
- *        thrust curve. Call getMotorModel(commonName) to obtain the complete model once a motor is
- *        actually selected. Splitting "list" from "fetch the full model" keeps listing cheap and
- *        lets a future remote source defer downloading the thrust curve until selection.
+ * @brief Lightweight, copyable description of a motor for populating a list, without the
+ *        (potentially large, not-yet-downloaded) thrust curve. Call getMotorModel(commonName) for
+ *        the full model on selection -- which lets a remote source defer the download until then.
  */
 struct MotorSummary
 {
@@ -59,8 +54,8 @@ struct MotorSummary
 };
 
 /**
- * @brief MotorSearchFacets enumerates the values an online search can be filtered by (the choices a
- *        UI would present). Source-agnostic; currently populated from thrustcurve.org metadata.
+ * @brief The values an online search can be filtered by (the choices a UI presents). Currently
+ *        populated from thrustcurve.org metadata.
  */
 struct MotorSearchFacets
 {
@@ -69,11 +64,7 @@ struct MotorSearchFacets
    std::vector<std::string> impulseClasses;/// motor letters, e.g. "A", "J"
 };
 
-/**
- * @brief MotorModelDatabase is a simple storage, search, and retrieval mechanism for Model Rocket
- *        motors.
- *
- */
+/// @brief Storage, search, and retrieval of model rocket motors; the single ingest/selection surface.
 class MotorModelDatabase
 {
 public:
@@ -87,83 +78,43 @@ public:
    MotorModelDatabase& operator=(MotorModelDatabase&&) = delete;
 
 
-   /**
-    * @brief importRSEFile parses a RockSim .rse engine file and adds every motor it contains to
-    *        this database. This is the supported way to ingest RSE motors: callers (GUI, CLI) do
-    *        not construct an RSEDatabaseLoader themselves and stay unaware of the file format.
-    *
-    * @param path filesystem path to a .rse file
-    * @return the number of net new motors added to the database (motors whose common name was
-    *         already present are replaced, not counted, so re-importing a file returns 0)
-    * @throws std::exception (from the underlying XML parser) if the file cannot be read or parsed
-    */
+   /// Parse a RockSim .rse file and add its motors. The supported RSE ingest path; callers stay
+   /// unaware of the file format.
+   /// @return net new motors added (same-name entries are replaced, not counted, so a re-import is 0)
+   /// @throws std::exception (from the XML parser) if the file can't be read or parsed
    std::size_t importRSEFile(const std::string& path);
 
-   /**
-    * @brief importRASPFile parses a RASP .eng engine file and adds every motor it contains to
-    *        this database. This mirrors importRSEFile while keeping the text format parser hidden
-    *        behind the database ingestion surface.
-    *
-    * @param path filesystem path to a .eng file
-    * @return the number of net new motors added to the database (motors whose common name was
-    *         already present are replaced, not counted, so re-importing a file returns 0)
-    * @throws std::exception if the file cannot be read or parsed
-    */
+   /// Parse a RASP .eng file and add its motors; mirrors importRSEFile.
+   /// @return net new motors added (see importRSEFile)
+   /// @throws std::exception if the file can't be read or parsed
    std::size_t importRASPFile(const std::string& path);
 
-   /**
-    * @brief Get the Motor Model by Common Name
-    *
-    * @param name Motor Common name
-    * @return std::optional<model::MotorModel>
-    */
+   /// The motor model with this common name, or nullopt if absent.
    std::optional<model::MotorModel> getMotorModel(const std::string& name);
 
-   /**
-    * @brief listMotors returns a lightweight summary of every motor matching the query. Iteration
-    *        order follows the underlying map, so results are sorted by common name. Pass a
-    *        default-constructed MotorQuery (the default argument) to list everything. This is the
-    *        source-agnostic selection surface that subsumes findMotorsByManufacturer /
-    *        findMotorsByImpulseClass.
-    *
-    * @param q source-agnostic filter; unset fields do not constrain the result
-    * @return summaries of the matching motors, sorted by common name
-    */
+   /// Summaries of every motor matching @p q, sorted by common name (default-constructed q lists
+   /// everything). The source-agnostic selection surface.
    std::vector<MotorSummary> listMotors(const MotorQuery& q = {}) const;
 
-   /**
-    * @brief getOnlineSearchFacets returns the manufacturers / diameters / impulse classes that an
-    *        online (thrustcurve.org) search can be filtered by. Performs a network request.
-    * @return the available search facets (empty if the request fails)
-    */
+   /// The facets an online (thrustcurve.org) search can filter by. Performs a network request;
+   /// empty if it fails.
    MotorSearchFacets getOnlineSearchFacets();
 
-   /**
-    * @brief searchOnline queries thrustcurve.org for motors matching the query, merges the results
-    *        into this database (so getMotorModel()/listMotors() then see them) and returns their
-    *        summaries. Performs network requests; clients never touch ThrustCurveClient directly.
-    * @param q source-agnostic filter (manufacturer / impulseClass / diameter; nameContains ignored)
-    * @return summaries of the matching motors (empty if the request fails or matches nothing)
-    */
+   /// Query thrustcurve.org, merge the results into this database (so getMotorModel()/listMotors()
+   /// see them), and return their summaries. Network request; @p q.nameContains is ignored here.
    std::vector<MotorSummary> searchOnline(const MotorQuery& q);
 
-   /**
-    * @brief size reports how many motors are currently stored, across every source ingested so far.
-    * @return number of motors in the database
-    */
+   /// Number of motors stored across every ingested source.
    std::size_t size() const { return motorModelMap.size(); }
 
    void saveMotorDatabase(const std::string& filename);
    void loadMotorDatabase(const std::string& filename);
 private:
-   // Private test seam only: MotorModelDatabaseTestAccess injects a fake remote source so the
-   // online wrapper methods can be unit-tested without network calls. Production code uses the
-   // public default constructor and lazily gets a real ThrustCurveClient.
+   // Test seam: injects a fake remote source so the online wrappers can be tested without network.
    explicit MotorModelDatabase(std::unique_ptr<ThrustCurveAPI> thrustCurveApi);
    friend class MotorModelDatabaseTestAccess;
 
-   // Ingestion is internal: motors enter the database through importRSEFile (and future sources),
-   // not by client code adding MotorModels directly. Adds replace any entry with the same common name.
+   // Internal ingestion (not client-facing). Adds replace any entry with the same common name.
    void addMotorModel(const model::MotorModel& m);
    void addMotorModels(const std::vector<model::MotorModel>& models);
 

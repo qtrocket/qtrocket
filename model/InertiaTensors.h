@@ -8,19 +8,12 @@
 namespace model
 {
 
-/**
- * @brief The InertiaTensors class provides a collection of methods to
- *        deliver some common inertia tensors centered about the center of mass
- */
+/// @brief Common inertia tensors, each about the body's center of mass.
 class InertiaTensors
 {
 public:
 
-/**
- * @brief SolidSphere
- * @param radius (meters)
- * @return
- */
+/// @brief Solid sphere of @p radius (meters).
 static Matrix3 SolidSphere(double radius)
 {
     double xx = 0.4*radius*radius;
@@ -31,11 +24,7 @@ static Matrix3 SolidSphere(double radius)
                    {0, 0, zz}};
 }
 
-/**
- * @brief HollowSphere (thin shell, negligible thickness)
- * @param radius (meters)
- * @return
- */
+/// @brief Thin-shell hollow sphere of @p radius (meters), negligible thickness.
 static Matrix3 HollowSphere(double radius)
 {
     double xx = (2.0/3.0)*radius*radius;
@@ -47,12 +36,11 @@ static Matrix3 HollowSphere(double radius)
 }
 
 /**
- * @brief HollowSphere (thick-walled, uniform density), PER UNIT MASS.
+ * @brief Thick-walled hollow sphere, uniform density, per unit mass.
  *        I/m = (2/5) * (ro^5 - ri^5) / (ro^3 - ri^3) on each axis. Reduces to SolidSphere as
  *        innerRadius -> 0 and to the thin-shell HollowSphere(radius) as innerRadius -> outerRadius.
  * @param innerRadius (meters)
  * @param outerRadius (meters), must be > innerRadius so the denominator is non-zero
- * @return
  */
 static Matrix3 HollowSphere(double innerRadius, double outerRadius)
 {
@@ -67,12 +55,10 @@ static Matrix3 HollowSphere(double innerRadius, double outerRadius)
 }
 
 /**
- * @brief Tube - The longitudinal axis is the z-axis. Can also be used for a solid cylinder
- *        when innerRadius = 0.0
+ * @brief Tube about the z (longitudinal) axis. Also a solid cylinder when innerRadius = 0.
  * @param innerRadius (meters)
  * @param outerRadius (meters)
  * @param length (meters)
- * @return
  */
 static Matrix3 Tube(double innerRadius, double outerRadius, double length)
 {
@@ -86,9 +72,8 @@ static Matrix3 Tube(double innerRadius, double outerRadius, double length)
 }
 
 /**
- * @brief Solid right circular cone, PER UNIT MASS, about the cone's own CM (at L/4 from the base,
- *        3L/4 from the apex). z is the symmetry/longitudinal axis.
- *        Izz/m = (3/10) R^2 ; Ixx/m = Iyy/m = (3/20) R^2 + (3/80) L^2.
+ * @brief Solid right circular cone, per unit mass, about its own CM (at L/4 from the base). z is the
+ *        symmetry axis. Izz/m = (3/10) R^2 ; Ixx/m = Iyy/m = (3/20) R^2 + (3/80) L^2.
  * @param R base radius (meters)
  * @param L axial height tip-to-base (meters)
  */
@@ -103,10 +88,9 @@ static Matrix3 SolidCone(double R, double L)
 }
 
 /**
- * @brief Thin conical lateral shell (open base, uniform areal density, t << R), PER UNIT MASS,
- *        about the shell's own CM (at L/3 from the base, 2L/3 from the apex).
- *        Izz/m = (1/2) R^2 ; Ixx/m = Iyy/m = (1/4) R^2 + (1/18) L^2.
- *        (Verified exact; do NOT treat the (1/18)L^2 term as uncertain.)
+ * @brief Thin conical lateral shell (open base, uniform areal density, t << R), per unit mass, about
+ *        its own CM (at L/3 from the base). Izz/m = (1/2) R^2 ; Ixx/m = Iyy/m = (1/4) R^2 + (1/18) L^2.
+ *        The (1/18)L^2 term is verified exact.
  * @param R base radius (meters)
  * @param L axial height tip-to-base (meters)
  */
@@ -121,19 +105,16 @@ static Matrix3 ConicalShell(double R, double L)
 }
 
 /**
- * @brief N identical symmetric trapezoidal flat-plate fins arrayed about the z-axis, PER UNIT
- *        (total set) MASS, about the SET CM (which lies ON the z-axis for N >= 2). Assembled by
- *        rotate-and-sum of one fin's centroidal lamina tensor + a radial parallel-axis shift to the
- *        body axis; the long algebra is pinned by an independent numeric oracle (InertiaTensorsTests
- *        / FinSetTests), so this helper is NOT trusted on faith.
+ * @brief N identical symmetric trapezoidal flat-plate fins arrayed about the z-axis, per unit (total
+ *        set) mass, about the set CM (on the z-axis for N >= 2). Built by rotate-and-sum of one fin's
+ *        centroidal lamina tensor plus a radial parallel-axis shift; the algebra is pinned by a numeric
+ *        oracle (InertiaTensorsTests / FinSetTests).
  *
- *        Assumes N >= 3 (the supported, forced domain): the azimuthal sum is then transversely
- *        isotropic (Ixx = Iyy, off-diagonals == 0) and is returned diagonal. N < 3 is genuinely
- *        anisotropic and is NOT modeled for now -- this helper still returns the N >= 3 isotropic
- *        tensor (an approximation for N < 3) and FinSet's ctor logs a warning rather than throwing.
- *        True anisotropic N < 3 support waits on per-part tensor rotation in the Part tree (P6).
+ *        Assumes N >= 3: the azimuthal sum is then transversely isotropic (Ixx = Iyy, off-diagonals
+ *        zero) and returned diagonal. N < 3 is genuinely anisotropic but reuses this isotropic tensor
+ *        as an approximation (FinSet's ctor warns); true N < 3 support needs per-part tensor rotation.
  *
- * @param N       fin count (>= 3 supported; N < 3 warns and uses the N >= 3 isotropic approximation)
+ * @param N       fin count (>= 3 supported; N < 3 warns and uses the isotropic approximation)
  * @param cr      root chord (m, along z at the body surface)
  * @param ct      tip chord (m)
  * @param s       semi-span / fin height (m, radial, body surface to tip)

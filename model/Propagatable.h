@@ -32,9 +32,8 @@ public:
    virtual double getMass(double t) = 0;
    virtual Matrix3 getCompositeInertiaTensor(double t) = 0;
 
-   /// @brief Fill st.mass/cg/inertia with the body's composite mass properties at time t. Intended to be called by
-   ///        the Propagator once per recorded step (before appendState), so the trajectory carries
-   ///        mass/CG/I(t).
+   /// Fill st.mass/cg/inertia with the body's composite mass properties at @p t. Called by the
+   /// Propagator once per recorded step (before appendState).
    virtual void writeMassProperties(double t, StateData& st) = 0;
 
    virtual bool terminateCondition(double t) = 0;
@@ -51,10 +50,8 @@ public:
 
    void clearStates() { states.clear(); }
 
-   /// Running whole-trajectory statistics (max altitude/speed, time to apogee, total flight
-   /// time). The Propagator updates these every step during runUntilTerminate -- independently
-   /// of the state history above, so the summary and hang detection work even when state
-   /// saving is off.
+   /// Running whole-trajectory statistics (max altitude/speed, time to apogee, flight time). Updated
+   /// every step, independently of the state history, so they work even when state saving is off.
    void updateTrajectoryStatistics(double t, const StateData& st) { stats.update(t, st); }
    void resetTrajectoryStatistics() { stats.reset(); }
    const sim::TrajectoryStatistics& getTrajectoryStatistics() const { return stats; }

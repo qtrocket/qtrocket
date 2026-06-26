@@ -61,12 +61,9 @@ public:
 };
 
 /**
- * Internal remote-motor-source interface used by MotorModelDatabase.
- *
- * Application code should not traffic in this interface directly: MotorModelDatabase creates the
- * production ThrustCurveClient internally. This abstraction exists so MotorModelDatabase's online
- * wrapper behavior can be unit-tested with a fake source, without making tests depend on
- * thrustcurve.org. The injection point is deliberately private/friend-only in MotorModelDatabase.
+ * @brief Internal remote-motor-source interface used by MotorModelDatabase. Exists so the online
+ *        wrappers can be tested with a fake source; the injection point is private/friend-only in
+ *        MotorModelDatabase, so application code never uses this directly.
  */
 class ThrustCurveAPI
 {
@@ -93,25 +90,18 @@ struct SearchResponse
 // logged and yields empty-but-valid results.
 std::optional<SearchResponse> parseSearchResponse(const std::string& json);
 std::optional<ThrustcurveMetadata> parseMetadataResponse(const std::string& json);
-/// Selects ONE simfile's samples: the first RASP entry with samples, else the
-/// first entry of any format with samples. Never concatenates simfiles.
+/// Selects one simfile's samples: the first RASP entry with samples, else the first entry of any
+/// format with samples. Never concatenates simfiles.
 std::optional<std::vector<std::pair<double, double>>>
 parseDownloadResponse(const std::string& json);
 
-/**
- * @brief Production thrustcurve.org HTTP client used by MotorModelDatabase.
- *
- */
+/// @brief Production thrustcurve.org HTTP client used by MotorModelDatabase.
 class ThrustCurveClient
    : public ThrustCurveAPI
 {
 public:
    ThrustCurveClient();
    ~ThrustCurveClient();
-
-   /**
- * @brief getMetaData
- */
 
    ThrustcurveMetadata getMetadata() override;
 

@@ -19,32 +19,30 @@ namespace model::part
 {
 
 /**
- * @brief A set of N >= 3 identical symmetric trapezoidal flat-plate fins, modeled as ONE analytic
- *        leaf (NOT N child parts).
+ * @brief A set of N >= 3 identical symmetric trapezoidal flat-plate fins, modeled as one analytic
+ *        leaf, not N child parts. All geometry SI meters.
  *
- * The Part tree shares a single body-frame orientation and never rotates child tensors (Part.h), so
- * an azimuthally-arrayed component cannot be N children at different angles -- each fin's tensor
- * would need an Rz rotation the tree won't apply. A FinSet therefore bakes the full N-fin
- * rotate-and-sum into its own per-unit-mass tensor (InertiaTensors::TrapezoidalFinSet) and presents
- * as one leaf. For N >= 3 the result is transversely isotropic; N < 3 is genuinely anisotropic and
- * is NOT modeled for now -- the ctor logs a warning and uses the N >= 3 isotropic approximation
- * rather than throwing (true N < 3 support waits on per-part tensor rotation in the tree, P6).
+ * The Part tree shares one body-frame orientation and never rotates child tensors (Part.h), so an
+ * azimuthally-arrayed component can't be N children at different angles -- each fin's tensor would
+ * need an Rz rotation the tree won't apply. A FinSet instead bakes the N-fin rotate-and-sum into its
+ * own per-unit-mass tensor (InertiaTensors::TrapezoidalFinSet) and presents as one leaf. For N >= 3
+ * the result is transversely isotropic; N < 3 is anisotropic and unsupported -- the ctor warns and
+ * falls back to the N >= 3 approximation rather than throwing.
  *
- * All geometry is SI meters. The CM lies on the z-axis at the fin-set's axial mass centroid; the
- * stored tensor is centroidal (about that CM), and finSetCmOffset records the CM-vs-middle offset so
- * an assembly attaches it CM-to-CM. Geometry getters expose the P5 Barrowman inputs.
+ * The CM lies on the z-axis at the axial mass centroid; the stored tensor is centroidal, and
+ * finSetCmOffset records the CM-vs-middle offset so the composite walk locates it at the right
+ * station. Placement is geometric (StationLink), not CM-based.
  */
 class FinSet : public Part
 {
 public:
    /**
     * @param name      part name
-    * @param finCount  N (>= 3 supported/forced; N < 3 logs a warning and uses the N >= 3 isotropic
-    *                  approximation, does NOT throw)
+    * @param finCount  N (>= 3 supported; N < 3 warns and uses the N >= 3 approximation, does not throw)
     * @param rootChord cr (m), chord at the body surface, along z
     * @param tipChord  ct (m), chord at the tip (>= 0; ct == 0 is an allowed triangular fin)
     * @param span      s  (m), semi-span / radial fin height (body surface to tip)
-    * @param sweep     Xt (m), leading-edge sweep LENGTH (axial tip-LE offset aft of root LE) -- NOT an angle
+    * @param sweep     Xt (m), leading-edge sweep length (axial tip-LE offset aft of root LE), not an angle
     * @param thickness thk (m), flat-plate thickness
     * @param bodyRadius rb (m), outer radius of the tube the fins mount on
     * @param density   rho (kg/m^3)
@@ -68,13 +66,13 @@ public:
    double getBodyRadius()      const { return bodyRadius; }
    double getDensity()         const { return density; }
    double getSingleFinArea()   const { return 0.5 * (rootChord + tipChord) * span; }
-   double getTotalFinArea()    const { return finCount * getSingleFinArea(); }      ///< P5 fin CNalpha normalization
-   double getWettedArea()      const { return 2.0 * getTotalFinArea(); }            ///< both faces, P5 skin friction
-   double getReferenceArea()   const override { return std::numbers::pi * bodyRadius * bodyRadius; } ///< body disc -- fins do NOT inflate the rocket reference area
+   double getTotalFinArea()    const { return finCount * getSingleFinArea(); }
+   double getWettedArea()      const { return 2.0 * getTotalFinArea(); }            ///< both faces
+   double getReferenceArea()   const override { return std::numbers::pi * bodyRadius * bodyRadius; } ///< body disc; fins don't inflate the reference area
    double getMaxRadius()       const { return bodyRadius + span; }                  ///< fin tip radius (extent only)
-   double radiusOuterAt(double) const override { return bodyRadius; }               ///< body disc only -- NOT bodyRadius+span (see whitepaper 6.3)
+   double radiusOuterAt(double) const override { return bodyRadius; }               ///< body disc only, not bodyRadius+span
 
-   sim::AeroComponent getAero(double refArea) const override; ///< Barrowman fin-set term; see .cpp
+   sim::AeroComponent getAero(double refArea) const override; ///< Barrowman fin-set term
 
 protected:
    FinSet(const FinSet&) = default;

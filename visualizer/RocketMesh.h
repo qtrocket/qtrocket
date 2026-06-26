@@ -38,21 +38,17 @@ struct Mesh
    void append(const Mesh& other);
 };
 
-/**
- * @brief One renderable rocket component: its positioned geometry plus the tags the renderer uses
- *        to color and label it. The mesh is already placed in the rocket body frame (the part's
- *        geometric center sits at its accumulated CM-to-CM position -- see buildRocketMeshes), so
- *        the renderer needs only a single shared transform.
- */
+/// @brief One renderable rocket component: its positioned geometry plus the tags the renderer uses
+///        to color and label it. The mesh is already placed in the rocket body frame at the part's
+///        resolved pose (see buildRocketMeshes), so the renderer needs only one shared transform.
 struct RenderItem
 {
    Mesh    mesh;
    QString typeName; ///< Part::typeName() -- the ColorScheme lookup key
    QString name;     ///< Part::getName() -- for UI / picking / tooltips
 
-   /// @brief True when the diagnostics sweep flagged this part as an overlap offender. The renderer
-   ///        overrides the type color with an error color so a self-intersecting design reads at a
-   ///        glance; @ref overlapMessage carries the located reason for a tooltip / status line.
+   /// An overlap offender per the diagnostics sweep: the renderer overrides its type color with an
+   /// error color; @ref overlapMessage carries the located reason for a tooltip / status line.
    bool    overlapOffender{false};
    QString overlapMessage; ///< located diagnostic for this offender (empty when not an offender)
 };
@@ -71,10 +67,9 @@ struct Bounds
 };
 
 // ---- Primitive builders -----------------------------------------------------------------------
-// Convention: z is the longitudinal axis (+z = forward/nose). Each primitive is built in LOCAL
-// coordinates centered on the origin, per the placement rules in SPEC.md, so buildRocketMeshes can
-// position a part by a pure translation of its accumulated CM-to-CM station onto the geometric
-// center. radialSegments controls the tessellation around the z axis.
+// Convention: z is the longitudinal axis (+z = forward/nose). Each primitive is built in local
+// coordinates centered on the origin, so buildRocketMeshes can position a part by a pure
+// translation of its resolved pose. radialSegments controls the tessellation around z.
 
 /// @brief Solid right circular cone: tip at +length/2, base (radius @p baseRadius) at -length/2.
 Mesh buildCone(double baseRadius, double length, int radialSegments = 64);
@@ -87,23 +82,19 @@ Mesh buildTube(double innerRadius, double outerRadius, double length, int radial
 /// @brief UV sphere centered on the origin (used for the placeholder HollowSphere body).
 Mesh buildSphere(double radius, int rings = 24, int sectors = 48);
 
-/// @brief @p finCount identical trapezoidal flat-plate fins arrayed evenly around the z axis,
-///        mounted at @p bodyRadius and extruded by @p thickness. The ROOT chord is centered on
-///        z = 0 (root LE at +rootChord/2, root TE at -rootChord/2); @p sweep shifts the tip aft.
+/// @brief @p finCount identical trapezoidal flat-plate fins arrayed evenly around z, mounted at
+///        @p bodyRadius and extruded by @p thickness. The root chord is centered on z = 0 (LE at
+///        +rootChord/2, TE at -rootChord/2); @p sweep shifts the tip aft.
 Mesh buildFinSet(unsigned int finCount, double rootChord, double tipChord, double span,
                  double sweep, double thickness, double bodyRadius);
 
 // ---- Tree walk --------------------------------------------------------------------------------
 
-/**
- * @brief Convert a loaded rocket's part tree into a flat list of positioned RenderItems.
- *
- * Walks @p rocket.getTopPart() depth-first. Each part's accumulated body-frame station is the sum
- * of the CM-to-CM @c offset values from the root down to it; the part's geometry (centered on the
- * origin by the builders above) is translated so its geometric center lands on that station. This
- * reproduces the design's authored "geometric-center to geometric-center" stacking, so parts join
- * cleanly. Each concrete part type is dispatched by typeName() / dynamic_cast to read its geometry.
- */
+/// @brief Convert a loaded rocket's part tree into a flat list of positioned RenderItems.
+///        Resolves placements once via model::part::resolvePlacements -- the same poses the
+///        simulator consumes, so the two can't diverge -- then translates each origin-centered
+///        primitive so its center lands half an axialLength aft of the resolved fore-plane origin.
+///        Concrete part types are dispatched by dynamic_cast to read their geometry.
 std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket);
 
 /// @brief Axis-aligned bounds over @p items (invalid Bounds for an empty list).

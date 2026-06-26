@@ -20,13 +20,8 @@
 namespace sim {
 
 /**
- * @brief Runge-Kutta 4th order coupled ODE solver.
- * @note This was written outside of the context of QtRocket, and it is very generic. There are
- *       some features of this solver that are note used by QtRocket, for example, it can solve
- *       and arbitrarily large system of coupled ODEs, but QtRocket only makes use of a system
- *       of size 6 (x, y, z, xDot, yDot, zDot) at a time. 
- * 
- * @tparam Ts 
+ * @brief Runge-Kutta 4th order coupled ODE solver (fixed step).
+ * @tparam T the state/rate type (Vector3 or Quaternion)
  */
 template<typename T>
 class RK4Solver : public DESolver<T>
@@ -35,9 +30,7 @@ public:
 
    RK4Solver(std::function<std::pair<T, T>(double, T&, T&)> func = nullptr)
    {
-      // This only works for Eigen Vector types.
-      // TODO: Figure out how to make this slightly more generic, but for now
-      // we're only using this for Vector3 and Quaternion types
+      // Eigen Vector types only.
       static_assert(std::is_same<T, Vector3>::value
                     || std::is_same<T, Quaternion>::value,
                     "You can only use Vector3 or Quaternion valued functions in RK4Solver");
@@ -51,20 +44,18 @@ public:
 
    StepResult<T> step(double t, T& state, T& rate) override
    {
-      // dt defaults to NaN until setTimeStep() is called. Use std::isnan: a direct
-      // `dt == quiet_NaN()` is always false (NaN compares unequal to everything, itself
-      // included), so the original guard never fired.
+      // dt is NaN until setTimeStep() is called. Use std::isnan: `dt == quiet_NaN()` is always
+      // false (NaN compares unequal to everything, itself included).
       if(std::isnan(dt))
       {
          utils::Logger::getInstance()->error("Calling RK4Solver without setting dt first is an error");
          return StepResult<T>{};
       }
 
-      // RK4 nodes are at t, t+dt/2, t+dt/2, t+dt. Passing the node time lets the ODE evaluate a
-      // time-varying force (motor thrust, mass) at the correct instant instead of freezing it at t.
+      // RK4 nodes at t, t+dt/2, t+dt/2, t+dt. Passing the node time lets the ODE sample a
+      // time-varying force (motor thrust, mass) at the right instant instead of freezing it at t.
       std::tie(k1State, k1Rate) = odes(t, state, rate);
-      // compute k2 values. This involves stepping the current values forward a half-step
-      // based on k1, so we do the stepping first
+      // k2: step the current values forward a half-step on k1, then evaluate.
       std::tie(tempState, tempRate) = std::make_pair(state + k1State*halfDT, rate + k1Rate*halfDT);
       std::tie(k2State, k2Rate) = odes(t + halfDT, tempState, tempRate);
 

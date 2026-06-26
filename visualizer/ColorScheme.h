@@ -12,15 +12,9 @@
 namespace viz
 {
 
-/**
- * @brief A named mapping from a Part's typeName() ("NoseCone", "BodyTube", "FinSet",
- *        "HollowSphere", ...) to the color used to render it, plus a viewport background.
- *
- * The visualizer colors each rendered component purely by its part type, so a scheme is just a
- * small lookup table with a fallback. Unknown / unmapped types render in @ref defaultColor. The
- * user can switch between the built-in @ref presets or override any individual type color at
- * runtime (the per-type color pickers in the UI call @ref setColor).
- */
+/// @brief Named lookup from a Part's typeName() to its render color, plus a viewport background.
+///        Components are colored purely by type; unmapped types fall back to @ref defaultColor.
+///        Switch @ref presets or override one type at runtime via @ref setColor.
 struct ColorScheme
 {
    QString                   name;                       ///< human-facing scheme name

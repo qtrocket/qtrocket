@@ -8,11 +8,10 @@ namespace sim
 {
 
 /**
- * @brief Running summary of a single propagation: the extrema and duration of the flight.
+ * @brief Running summary of a single propagation: flight extrema and duration.
  *
- * The Propagator feeds every recorded step to update() during runUntilTerminate(), so these
- * values are available without re-scanning the state history -- and even when state saving is
- * disabled. The running maxAltitude also drives the Propagator's no-liftoff hang guard.
+ * The Propagator folds every recorded step into update(), so these are available without scanning
+ * the state history and even when state saving is off. maxAltitude also drives the no-liftoff guard.
  */
 struct TrajectoryStatistics
 {
@@ -22,13 +21,8 @@ struct TrajectoryStatistics
    double timeOfMaxSpeed{0.0};    ///< Time of maxSpeed (s).
    double totalFlightTime{0.0};   ///< Time of the last recorded sample (s); matches getStates().back().first.
 
-   /**
-    * @brief Fold one (time, state) sample into the running statistics.
-    *
-    * The strict `>` comparisons record the FIRST time each maximum is attained (matching the
-    * CLI's historical summary) and are NaN-safe: a non-finite sample leaves the running maxima
-    * untouched, because `NaN > x` is false.
-    */
+   /// Fold one (time, state) sample into the running statistics. The strict `>` records the first
+   /// time each maximum is attained and is NaN-safe (`NaN > x` is false, so a bad sample is ignored).
    void update(double t, const StateData& s)
    {
       const double z = s.position[2];

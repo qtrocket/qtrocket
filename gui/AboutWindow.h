@@ -14,12 +14,7 @@ namespace Ui {
 class AboutWindow;
 }
 
-/**
- * @brief The AboutWindow class
- *
- * The AboutWindow just displays some copyright information.
- *
- */
+/// @brief Modal dialog showing copyright info, with a single OK button.
 class AboutWindow : public QDialog
 {
    Q_OBJECT

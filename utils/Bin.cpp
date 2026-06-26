@@ -48,17 +48,13 @@ void Bin::insert(const std::pair<double, double>& toInsert)
 double Bin::operator[](double key)
 {
    auto iter = bins.begin();
-   // If the key is less than the lowest bin value, then it is out of range
-   // This should be an error. It's also possible to interpret this as simply
-   // the lowest bin, but I think that invites a logic error so we'll throw
-   // instead
+   // Below the lowest bin is out of range; throw rather than silently clamp to the first bin.
    if(key < iter->first)
    {
       throw std::out_of_range(
          std::format("{} less than lower bound {} of BinMap", key, iter->first));
    }
-   // Increment it and start searching If we reach the end without finding an existing key
-   // greater than our search term, then we've just hit the last bin and return that
+   // Walk until a bin base exceeds key; falling off the end means key is in the last bin.
    iter++;
    double retVal = bins.back().second;
    while(iter !=  bins.end())
@@ -76,17 +72,13 @@ double Bin::operator[](double key)
 double Bin::getBinBase(double key)
 {
    auto iter = bins.begin();
-   // If the key is less than the lowest bin value, then it is out of range
-   // This should be an error. It's also possible to interpret this as simply
-   // the lowest bin, but I think that invites a logic error so we'll throw
-   // instead
+   // Below the lowest bin is out of range; throw rather than silently clamp to the first bin.
    if(key < iter->first)
    {
       throw std::out_of_range(
          std::format("{} less than lower bound {} of BinMap", key, iter->first));
    }
-   // Increment it and start searching If we reach the end without finding an existing key
-   // greater than our search term, then we've just hit the last bin and return that
+   // Walk until a bin base exceeds key; falling off the end means key is in the last bin.
    iter++;
    double retVal = bins.back().first;
    while(iter !=  bins.end())

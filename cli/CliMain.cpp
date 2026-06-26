@@ -12,9 +12,8 @@
 
 int main(int /*argc*/, char* /*argv*/[])
 {
-   // Keep stdout clean for machine-readable output: the Logger writes to stdout
-   // as well as log.txt, so run at ERROR. Errors still appear (prefixed
-   // "[ERROR]"), distinguishable from the CLI's own "OK"/"ERR"/"CSV" lines.
+   // Logger shares stdout with the CLI's machine-readable output, so run at ERROR. The "[ERROR]"
+   // prefix keeps those lines distinct from the CLI's own "OK"/"ERR"/"CSV".
    utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
 
    QtRocket* qtRocket = QtRocket::getInstance();

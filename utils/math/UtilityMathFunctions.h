@@ -14,19 +14,9 @@ namespace utils
 namespace math
 {
 
-/**
- * @brief doublesEqual compares two doubles for equality, using a value for number of smallest
- *        places to ignore
- *
- * This is derived from the example on cppreference.com: https://en.cppreference.com/w/cpp/types/numeric_limits/epsilon
- * The default ulp of 4 with a numeric_limits<double>::epsilon() of ~2e-16, so ulp of 4 yields 12
- * significant figures. A ulp of 10 yields 6 significant figures.
- * @param a the first double to compare
- * @param b the second double to compare
- * @param ulp number of smallest decimal places to ignore
- * @return
- */
-
+/// @brief Compare two floats within @p ulp units in the last place (epsilon-scaled, subnormal-safe).
+///        ulp 4 gives ~12 significant figures for double, ulp 10 gives ~6.
+/// From the cppreference epsilon example: https://en.cppreference.com/w/cpp/types/numeric_limits/epsilon
 template<typename T>
 bool floatingPointEqual(T a, T b, int ulp = 4)
 {

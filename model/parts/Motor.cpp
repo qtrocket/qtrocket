@@ -7,8 +7,8 @@ namespace model::part
 {
 
 Motor::Motor(const std::string& name, const MotorModel& motor)
-   // Part stores the inertia tensor per-unit-mass and applies the mass internally. Seed the base
-   // mass with the motor's pre-ignition total weight; the time-varying truth comes via getMass(t).
+   // Part stores the tensor per-unit-mass and applies the mass internally. Seed the base mass with the
+   // motor's pre-ignition total weight; the time-varying truth comes via getMass(t).
    : Part(name, motorTensor(motor), motor.getMass(0.0), Vector3::Zero()),
      mm(motor)
 { }

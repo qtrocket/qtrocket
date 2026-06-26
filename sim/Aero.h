@@ -15,19 +15,19 @@ namespace sim
 {
 
 /**
- * @brief One part's Barrowman contribution, all referenced to a SHARED rocket reference area so the
- *        pieces are directly additive. Stores the CNalpha-WEIGHTED moment (cnAlphaXcp) rather than a
- *        raw x_cp, so composing CP is literal field addition and a zero-lift body (CNalpha == 0)
- *        drops out of the CP weighted-average automatically with no special case.
+ * @brief One part's Barrowman contribution, referenced to a shared rocket reference area so the
+ *        pieces are directly additive. Stores the CNalpha-weighted moment (cnAlphaXcp) rather than a
+ *        raw x_cp, so composing CP is field addition and a zero-lift body (CNalpha == 0) drops out of
+ *        the weighted average with no special case.
  *
- * Datum: x_cp is measured from the PART'S OWN CM along +z. The composite walk
- * (Part::getCompositeAero) re-expresses every part onto one shared datum -- the root part's CM,
- * the same datum as Part::getCompositeCm -- so the composite cp() and cg() are directly comparable
- * (P5 static margin = cp() - cg()). The per-part Barrowman x_cp formulas (cone CP 2/3 L from the
- * tip, fin CP from the root LE) are converted to this CM datum inside each getAero override.
+ * Datum: x_cp is measured from the part's own CM along +z. The composite walk
+ * (Part::getCompositeAero) re-expresses every part onto the root part's CM -- the same datum as
+ * Part::getCompositeCm -- so composite cp() and cg() are comparable (static margin = cp() - cg()).
+ * The per-part Barrowman x_cp formulas (cone CP 2/3 L from the tip, fin CP from the root LE) are
+ * converted to this CM datum inside each getAero override.
  *
- * NOTE(P6): roll/pitch/yaw moment coefficients (Cl/Cm/Cn) are intentionally NOT modeled here yet;
- * they are derived at P6 from CNalpha and the CP-CG lever, not stored per part.
+ * Roll/pitch/yaw moment coefficients (Cl/Cm/Cn) are not modeled here; they derive from CNalpha and
+ * the CP-CG lever rather than being stored per part.
  */
 struct AeroComponent
 {

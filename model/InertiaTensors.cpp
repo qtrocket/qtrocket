@@ -12,18 +12,14 @@ Matrix3 InertiaTensors::TrapezoidalFinSet([[maybe_unused]] unsigned int N,
                                           double cr, double ct, double s,
                                           double sweep, double thk, double rb)
 {
-   // Per-unit-(set)-mass tensor about the set CM, z = longitudinal/spin axis. Verified symbolically
-   // and against the brute-force prism mesh oracle in InertiaTensorsTests -- that mesh, not this
-   // closed form, is the acceptance gate.
+   // Per-unit-(set)-mass tensor about the set CM, z = longitudinal/spin axis. The mesh oracle in
+   // InertiaTensorsTests, not this closed form, is the acceptance gate.
    //
-   // Model: one fin is a uniform trapezoidal plate lying in a meridian plane (the plane containing
-   // the z-axis); the plate thickness `thk` is the circumferential (out-of-plane) direction. The set
-   // tensor PER UNIT SET MASS equals the azimuthal average of one fin's tensor (taken about the set
-   // CM) over the N mounting angles 2*pi*k/N. For N >= 3 that average is transversely isotropic
-   // (Ixx == Iyy, off-diagonals == 0) and, notably, INDEPENDENT of N -- which is exactly why N is
-   // not consumed below. N < 3 deliberately reuses this same isotropic tensor as the documented
-   // approximation (see the header); true anisotropic N < 3 needs per-part rotation in the Part tree
-   // (P6).
+   // Model: one fin is a uniform trapezoidal plate in a meridian plane (containing the z-axis), with
+   // thickness `thk` circumferential. The set tensor is the azimuthal average of one fin's tensor
+   // (about the set CM) over the N mounting angles 2*pi*k/N. For N >= 3 that average is transversely
+   // isotropic (Ixx == Iyy, off-diagonals zero) and independent of N -- hence N is not used below.
+   // N < 3 reuses this same tensor as the documented approximation.
    const double sum = cr + ct; // > 0, guaranteed by FinSet's ctor validation
 
    // Radial mass centroid of one fin from the root (body surface), and its distance from the z-axis.

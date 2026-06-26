@@ -15,7 +15,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/parts/Placement.h"   // Station (returned by stationAt); StationLink lands in childParts at Step 6
+#include "model/parts/Placement.h"   // Station (returned by stationAt), StationLink (used in childParts)
 #include "sim/Aero.h"
 #include "utils/math/MathTypes.h"
 
@@ -23,94 +23,67 @@ namespace model::part
 {
 
 /**
- * @brief A node in a rocket's part tree: it owns its mass, geometry-derived inertia, and
- *        center of mass, and aggregates those of all attached child parts.
+ * @brief A node in a rocket's part tree: owns its mass, geometry-derived inertia, and CM, and
+ *        aggregates those of all child parts. Each node is both one component and the root of a
+ *        sub-tree, so it tracks its own mass/inertia and the composite of itself plus every descendant.
  *
- * Each Part is simultaneously a single component and the root of a sub-tree of child parts, allowing
- * for a straightforward implementation of assemblies.
- * It therefore tracks two sets of quantities:
- *   - its own mass and inertia (the part by itself), and
- *   - the @em composite mass and inertia of the part together with every descendant.
+ * The bare tensor (getI/setI) is per-unit-mass (geometric, m^2) for this part only; the composite
+ * tensor (getCompositeI) is the full mass-weighted tensor (kg*m^2) of the sub-tree about the composite
+ * CM, formed by shifting each child's tensor there via the parallel-axis theorem. Composite mass, CM,
+ * and inertia come from one time-aware walk (computeCompositeAt) and are cached behind a mass-delta
+ * gate, so they track a burning motor and freeze once mass is constant.
  *
- * Inertia tensor convention: the bare inertia tensor (getI(), setI()) is stored PER UNIT MASS
- * (geometric, units m^2) for this part only (not children). The composite tensor (getCompositeI())
- * is the FULL, mass-weighted tensor (kg*m^2) of this part plus every descendant, taken about the
- * COMPOSITE center of mass (getCompositeCm()) -- not about this part's own CM. It is formed by
- * shifting this part's own tensor and each child's composite tensor to the composite CM via the
- * parallel-axis theorem. Composite quantities (mass, CM, inertia) are produced by one time-aware
- * walk (computeCompositeAt()); the CM/inertia are cached behind a mass-delta gate (rebuilt when the
- * tree is structurally dirty or the composite mass changes), so they track a burning motor and
- * freeze once mass is constant. @see getCompositeI()
- *
- * Frame assumptions (two distinct ones, with different lifetimes):
- *   - Rigid body (PERMANENT): the rocket is one rigid body, so parts never move relative to each
- *     other during flight. This is independent of DOF count -- 6-DOF adds the whole body's three
- *     rotational DOF, it does not let parts flex or rotate against one another.
- *   - Single shared orientation (3-DOF SIMPLIFICATION, only partly assumed): every part's body
- *     frame is currently the identity rotation, so child offsets reduce to pure translations and
- *     child tensors combine by addition. This is NOT a structural requirement: the placement layer
- *     already carries a per-part orientation (StationLink::childRot, Pose::orient, Pose::compose),
- *     and computeCompositeAt already rotates each part's CM by it -- both degenerate to the legacy
- *     translation-only walk because the quaternions are identity today. The ONE piece still assuming
- *     identity is the inertia shift: it parallel-axis-shifts each child tensor but does not yet
- *     rotate it (the R*I*R^T term, identity in 3-DOF; see the TODO in computeCompositeAt). Static
- *     per-part orientation (fins arrayed at roll angles, canted fins, an angled nozzle) is the case
- *     that activates it -- a rigid rocket, not a relaxation of rigidity.
+ * The rocket is one rigid body -- parts never move relative to each other. In 3-DOF every part's body
+ * frame is the identity, so child offsets are pure translations and tensors add; the placement layer
+ * already carries a per-part orientation (StationLink::childRot, Pose::orient) for 6-DOF, identity
+ * today. The one piece still assuming identity is the inertia shift, which parallel-axis-shifts each
+ * child tensor without yet rotating it (the R*I*R^T term, identity in 3-DOF; see computeCompositeAt).
  */
 class Part
 {
-   /// @brief Test-only friend: grants the composition unit tests access to the private
-   ///        parent pointers, child list, and dirty flag so they can verify clone re-parenting and
-   ///        upward dirty propagation. Defined in PartTests.cpp
+   /// Test-only: lets the composition tests reach the parent pointers, child list, and dirty flag to
+   /// verify clone re-parenting and upward dirty propagation. Defined in PartTests.cpp.
    friend class PartCompositionTestAccess;
 
 public:
-   /// @brief Type of a Part's stable per-instance identifier. @see getId()
+   /// Stable per-instance identifier type. @see getId()
    using Id = std::uint64_t;
 
    /**
     * @brief Construct a leaf part from its mass properties.
-    * @param name       part name (used to identify child parts within a tree)
+    * @param name       part name (identifies child parts within a tree)
     * @param I          per-unit-mass (geometric) inertia tensor about the part's CM (m^2)
     * @param m          part mass (kg)
-    * @param centerMass center of mass w.r.t. the middle of the component (stored as `cm`, not yet
-    *                   consumed by the composition math -- see the `cm` member)
+    * @param centerMass CM relative to the component middle (stored as `cm`)
     */
    Part(const std::string& name,
         const Matrix3& I,
         double m,
         const Vector3& centerMass);
 
-   /// @brief Virtual so Part can be deleted polymorphically through a base-class pointer.
    virtual ~Part();
 
    // ---- Non-copyable / non-movable at the value level ---------------------------------------
-   // A part lives at exactly one place in one tree: it is attached by transferring ownership into
-   // addChildPart(), and duplicated only via the explicit, type-preserving clone(). Deleting value
-   // assignment also rules out silently slicing a subclass down to a base Part. The copy
-   // constructor is declared *protected* (see below) so only clone() can make node copies; that
-   // user-declared copy ctor also suppresses the implicit move ctor, so a Part can't be moved either.
+   // A part lives at one place in one tree: attached by moving ownership into addChildPart(),
+   // duplicated only via clone(). Deleting assignment also prevents slicing a subclass to a base Part;
+   // the protected copy ctor (below) suppresses the implicit move, so a Part can't be moved either.
    Part& operator=(const Part&) = delete;
    Part& operator=(Part&&)      = delete;
 
-   /// @brief Set this part's own mass (kg). Flags this part and every ancestor for recompute.
+   /// Set this part's own mass (kg); flags this part and all ancestors for recompute.
    virtual void setMass(double m) { mass = m; markAsNeedsRecomputing(); }
 
-   /// @brief Set the per-unit-mass (geometric) inertia tensor about this part's CM (m^2).
-   ///        Flags this part and every ancestor for recompute.
+   /// Set the per-unit-mass (geometric) inertia tensor about this part's CM (m^2); flags for recompute.
    virtual void setI(const Matrix3& I) { inertiaTensor = I; markAsNeedsRecomputing(); }
-   /// @brief Get the per-unit-mass (geometric) inertia tensor (m^2). @see getCompositeI()
+   /// Per-unit-mass (geometric) inertia tensor (m^2). @see getCompositeI()
    virtual Matrix3 getI() const { return inertiaTensor; }
 
-   /// @brief This part's center of mass relative to the middle of the component (the `cm` member).
-   ///        Zero for the centrally-symmetric parts; non-zero for a cone (its CM is L/4 or L/3 from
-   ///        the base, not at mid-length). NOT consumed by the composition math -- child positions
-   ///        are CM-to-CM -- but exposed so an assembler/GUI can place an off-center part correctly.
+   /// CM relative to the component middle. Zero for symmetric parts, non-zero for a cone (CM at L/4 or
+   /// L/3 from the base). Consumed by the composite walk as `-L/2 + getCenterMassOffset().z()`.
    Vector3 getCenterMassOffset() const { return cm; }
 
-   /// @brief The composite mass, CM (== CG), and full inertia tensor of a sub-tree at one instant,
-   ///        produced together by one walk (they are only meaningful together: the CM is the point
-   ///        the inertia tensor is taken about).
+   /// The composite mass, CM (== CG), and full inertia tensor of a sub-tree at one instant -- only
+   /// meaningful together, since the CM is the point the tensor is taken about.
    struct CompositeProperties
    {
       double  mass{0.0};                 ///< composite mass at t (kg)
@@ -118,315 +91,200 @@ public:
       Matrix3 inertia{Matrix3::Zero()};  ///< full mass-weighted tensor (kg*m^2) about that CM
    };
 
-   /**
-    * @brief This part's own mass at simulation time @p t (kg).
-    * @param t simulation time (seconds); lets overrides model time-varying mass (e.g. a motor)
-    */
+   /// This part's own mass at simulation time @p t (kg). Lets overrides model time-varying mass (e.g. a motor).
    virtual double getMass(double t [[maybe_unused]]) const
    {
       return mass;
    }
 
-   /**
-    * @brief Composite mass of this part plus all attached child parts at time @p t (kg).
-    *
-    * A cheap, LIVE mass-only sum (this node's getMass(t) plus each child's composite mass) -- both
-    * the ODE divisor and the gate key for getCompositeI(t), so it is kept cheap (no tensor work).
-    * Reflects a time-varying override such as Motor.
-    * @param t simulation time (seconds)
-    */
+   /// Composite mass of this part plus all children at @p t (kg): a cheap live mass-only sum (no tensor
+   /// work). Both the ODE divisor and the cache gate key for getCompositeI(t); reflects a Motor.
    virtual double getCompositeMass(double t);
 
-   /**
-    * @brief Composite center of mass (== center of gravity) at @p t, relative to this part's own CM
-    *        (the zero vector for a childless part).
-    *
-    * This is the point getCompositeI(t) is taken about; as a child's mass changes (a burning motor)
-    * this CG(t) shifts. Served from the same mass-delta-gated cache as getCompositeI(t).
-    */
+   /// Composite CM (== CG) at @p t, relative to this part's own CM (zero for a leaf). The point
+   /// getCompositeI(t) is taken about; shifts as a child's mass changes. Same cache as getCompositeI(t).
    virtual Vector3 getCompositeCm(double t);
 
-   /**
-    * @brief Full, mass-weighted composite inertia tensor (kg*m^2) about the composite CM at @p t.
-    *
-    * Rebuilt only when the tree is structurally dirty OR the composite mass changed since the cache
-    * was last built (the mass-delta gate): recomputes every step while a child's mass varies (a
-    * burning motor) and FREEZES once mass is constant (post-burnout getMass returns the bit-identical
-    * empty mass, so the composite mass matches builtAtCompositeMass). Keying on mass -- a pure
-    * function of t -- makes the cache immune to the integrator's non-monotonic / repeated / rejected
-    * stage-time queries. CG (getCompositeCm) and this tensor come from one walk and never disagree.
-    */
+   /// Full mass-weighted composite inertia tensor (kg*m^2) about the composite CM at @p t. Rebuilt only
+   /// when the tree is structurally dirty or the composite mass changed since the last build (the
+   /// mass-delta gate), so it recomputes during a burn and freezes once mass is constant. Keying on
+   /// mass keeps the cache immune to the integrator's repeated/rejected stage-time queries.
    virtual Matrix3 getCompositeI(double t);
 
-   /**
-    * @brief This part's Barrowman aero contribution, normalized to the shared rocket reference area
-    *        @p refArea. Default = aerodynamically inert (HollowSphere, Motor, BodyTube need no
-    *        override beyond CNalpha=0). x_cp is reported from this part's OWN CM (see
-    *        sim::AeroComponent); the composite walk shares one datum from there. Pure function of
-    *        geometry; NOT stored (no staleness, no -Werror field).
-    */
+   /// This part's Barrowman aero contribution, normalized to the shared reference area @p refArea.
+   /// Default is aerodynamically inert (CNalpha = 0). x_cp is reported from this part's own CM (see
+   /// sim::AeroComponent). Pure function of geometry; not stored.
    virtual sim::AeroComponent getAero(double refArea [[maybe_unused]]) const { return {}; }
 
-   /**
-    * @brief Assemble the composite Barrowman profile over this sub-tree, normalized to @p refArea.
-    *        Folds each part's getAero(refArea) by the additive AeroComponent rule (CNalpha and the
-    *        CNalpha-weighted moment add; Cd adds), threading each part's axial station (cumulative
-    *        z from child @p position offsets, which are CM-to-CM) so every x_cp shares ONE datum:
-    *        this root part's CM -- the same datum as getCompositeCm(), so the composite cp() and
-    *        cg() are directly comparable (P5 static margin = cp() - cg()).
-    *
-    *        A SEPARATE pass from computeCompositeAt(t): it does NOT touch the mass-delta-gated
-    *        inertia cache (aero invalidation is Mach/Re, not t) and reads no time-varying state.
-    *        NOTE(P5): RocketModel::getForces will consume this; nothing consumes it in P2.
-    */
+   /// Assemble the composite Barrowman profile over this sub-tree, normalized to @p refArea, by folding
+   /// each part's getAero(refArea) additively. Threads each part's resolved axial station so every x_cp
+   /// shares the sub-tree-root (tip) datum -- the same datum as getCompositeCm(), so cp() - cg() is the
+   /// static margin. A separate pass from computeCompositeAt: it reads no time-varying state.
    sim::AeroProfile getCompositeAero(double refArea) const;
 
-   /**
-    * @brief The cached Resolver Layer-2 envelope-sweep verdict for this sub-tree (this part planted at the local
-    *        origin), resolved once per structural change. @c ok == false means the geometry
-    *        self-intersects; @c diagnostics locate each offender. The same verdict the composite gate
-    *        throws on, exposed so the visualizer can flag the offending parts in an error colour.
-    */
+   /// Cached envelope-sweep verdict for this sub-tree (resolved once per structural change). @c ok ==
+   /// false means the geometry self-intersects and @c diagnostics locate each offender -- the same
+   /// verdict the composite gate throws on, exposed so the visualizer can flag offenders.
    const SolveResult& placementDiagnostics() const { ensurePlacementCache(); return resolvedDiagnostics; }
 
-   /**
-    * @brief This part's axial length L (m) along the longitudinal axis: the extent it occupies,
-    *        z in [-L, 0] in the +z = forward local frame. Promoted to a base virtual so the shared
-    *        placement machinery (stationAt / axialLength) can read it polymorphically; every concrete
-    *        geometry type overrides it. The base default is 0 -- a geometrically inert / zero-length
-    *        node (the test-only base Part, or a Motor, which v1 gives no geometry profile) -- which the
-    *        placement code treats as a point sample.
-    */
+   /// This part's axial length L (m): it occupies z in [-L, 0], +z = forward. Base is 0 (a
+   /// geometrically inert / zero-length node, e.g. the test-only base Part or a Motor); every concrete
+   /// geometry type overrides it.
    virtual double getLength() const { return 0.0; }
 
-   /**
-    * @brief Outer radius (m) of this part's silhouette at local axial station @p zLocal (z in
-    *        [-length, 0], +z = forward). Closed-form per part type; the base is a geometrically inert
-    *        part (0). A cone tapers linearly, a tube is constant, a sphere bulges. The overlap sweep
-    *        samples it across a span, so it must be callable independently of stationAt().
-    */
+   /// Outer radius (m) of this part's silhouette at local station @p zLocal (z in [-length, 0]). Base
+   /// is 0; concrete types give the closed-form profile (cone tapers, tube is constant, sphere bulges).
+   /// Callable independently of stationAt() -- the overlap sweep samples it across a span.
    virtual double radiusOuterAt(double zLocal [[maybe_unused]]) const { return 0.0; }
 
-   /**
-    * @brief Inner (bore) radius (m) at local axial station @p zLocal; 0 for a solid part. The base is
-    *        0 (no bore); a BodyTube returns its constant inner wall, a HollowSphere its shell cavity.
-    */
+   /// Inner (bore) radius (m) at local station @p zLocal; 0 for a solid part. A BodyTube returns its
+   /// constant inner wall, a HollowSphere its shell cavity.
    virtual double radiusInnerAt(double zLocal [[maybe_unused]]) const { return 0.0; }
 
-   /**
-    * @brief This part's axial span length (m): the part occupies z in [-axialLength(), 0]. Defaults to
-    *        getLength(), the natural override point for a part whose envelope span differs from its
-    *        nominal length.
-    */
+   /// This part's axial span (m): it occupies z in [-axialLength(), 0]. Defaults to getLength(); the
+   /// override point for a part whose envelope span differs from its nominal length.
    virtual double axialLength() const { return getLength(); }
 
-   /**
-    * @brief Whether this part is solid (no bore). The base infers it from the absence of a bore at the
-    *        fore plane (radiusInnerAt(0) <= 0) -- correct for a solid cone or rod. Parts whose bore is
-    *        zero at z = 0 but nonzero elsewhere (a HollowSphere shell, whose cavity vanishes at the
-    *        poles), or whose solidity is an authored property (a shell ConicalNoseCone), override it so
-    *        innerCapacityAt() routes through the right boundary.
-    */
+   /// Whether this part is solid (no bore). Base infers it from the absence of a bore at the fore plane
+   /// (radiusInnerAt(0) <= 0). Parts whose bore vanishes only at the poles (a HollowSphere shell) or
+   /// whose solidity is authored (a shell cone) override it so innerCapacityAt() picks the right edge.
    virtual bool isSolid() const { return radiusInnerAt(0.0) <= 0.0; }
 
-   /**
-    * @brief A resolved axial landmark (z and radii) at fractional station @p station01 (0 = aft plane,
-    *        1 = fore plane), in this part's +z = forward local frame. @p station01 is clamped to [0,1]
-    *        (degenerate guard). Maps the fraction to z = (station01 - 1) * getLength() and reads the
-    *        radius profile there; symmetric parts need no override.
-    */
+   /// Resolved axial landmark (z and radii) at fractional station @p station01 (0 = aft plane, 1 = fore
+   /// plane), in this part's +z = forward frame. Clamped to [0,1]; maps to z = (station01 - 1) *
+   /// getLength() and reads the radius profile there. Symmetric parts need no override.
    virtual Station stationAt(double station01) const;
 
-   /**
-    * @brief The radius (m) a host occupies at local station @p zLocal -- the solid-host rule: the bore
-    *        (radiusInnerAt) for a bored part, the outer skin (radiusOuterAt) for a solid one. An
-    *        offender of outer radius r fits iff r <= innerCapacityAt(z) + tol. Non-virtual: it branches
-    *        on isSolid() so the overlap sweep never has to.
-    */
+   /// Radius (m) a host occupies at local station @p zLocal -- the solid-host rule: the bore for a
+   /// bored part, the outer skin for a solid one. An offender of outer radius r fits iff r <= this + tol.
    double innerCapacityAt(double zLocal) const;
 
-   /**
-    * @brief This part's own aerodynamic reference (frontal) area (m^2); 0 for a part that presents
-    *        no frontal disc (the default). Overridden by parts with a real cross-section.
-    *        @see maxFrontalReferenceArea
-    */
+   /// This part's own aerodynamic reference (frontal) area (m^2); 0 for a part with no frontal disc.
+   /// @see maxFrontalReferenceArea
    virtual double getReferenceArea() const { return 0.0; }
 
-   /**
-    * @brief The single largest getReferenceArea() over this part and all descendants (m^2) -- the
-    *        widest frontal disc in the sub-tree. This is the Barrowman/OpenRocket rocket reference
-    *        area: the max frontal disc, NOT a sum (which would multiply-count one silhouette) and NOT
-    *        inflated by fins (a FinSet reports the body disc, not its rb+s tip extent).
-    */
+   /// The largest getReferenceArea() over this part and all descendants (m^2) -- the widest frontal
+   /// disc. The Barrowman/OpenRocket reference area: the max disc, not a sum, and not inflated by fins
+   /// (a FinSet reports the body disc, not its tip extent).
    double maxFrontalReferenceArea() const;
 
-   /**
-    * @brief This part's unique identifier (unique within the process run, even across copies and
-    *        identical names). Assigned at construction and never changed; a copy receives a NEW id.
-    *        Use it -- not the human-facing name, which need not be unique -- to identify a part.
-    *        Note, not saved, and doesn't matter. It's only used during an actual run, and not relevant
-    *        to a design. A loaded design will assign an id to a part for internal use, and subsequent
-    *        saves/loads may assign different IDs for those session, and that's fine because it's only
-    *        for identifying parts in memory.
-    */
+   /// This part's unique id (per process run, even across copies and identical names). Assigned at
+   /// construction and never changed; a copy gets a new id. Use it, not the name, to identify a part.
+   /// Not serialized -- ids are only meaningful within a single run.
    Id getId() const { return id; }
 
-   /// @brief This part's human-facing name; need NOT be unique (use getId() for identity).
+   /// This part's human-facing name; need not be unique (use getId() for identity).
    std::string getName() const { return name; }
 
-   /// @brief Stable type tag for this part ("NoseCone", "BodyTube", ...). PURE: Part is abstract, so
-   ///        every concrete part defines its own tag -- a bare Part has no meaningful type. Doubles as
-   ///        the part-factory key, the design-file <part type=...> attribute, and the listparts label.
+   /// Stable type tag ("NoseCone", "BodyTube", ...). Pure: every concrete part defines its own. Doubles
+   /// as the part-factory key, the design-file <part type=...> attribute, and the listparts label.
    virtual std::string typeName() const = 0;
 
-   /**
-    * @brief Find a part by id within this sub-tree (this part or any descendant).
-    * @param targetId id to search for
-    * @return borrowed pointer to the matching part (valid while the tree lives), or nullptr if no
-    *         part in this sub-tree has @p targetId. Call on the root to search a whole rocket.
-    */
+   /// Find a part by @p targetId within this sub-tree (this part or any descendant). Returns a borrowed
+   /// pointer (valid while the tree lives), or nullptr if no match. Call on the root to search a rocket.
    Part* findById(Id targetId);
 
-   /// @brief Read-only view of this part's direct children paired with their StationLink (the stored
-   ///        placement intent), in attachment order. Lets an assembler / serializer / CLI walk the
-   ///        tree without owning or mutating it. Absolute placement is DERIVED by resolvePlacements,
-   ///        never stored. @see addChildPart.
+   /// Read-only view of this part's direct children paired with their StationLink (placement intent),
+   /// in attachment order. Absolute placement is derived by resolvePlacements, never stored. @see addChildPart.
    const std::vector<std::pair<std::shared_ptr<Part>, StationLink>>& getChildParts() const
    { return childParts; }
 
-   /**
-    * @brief Deep-copy this part and its whole sub-tree into a new, independent tree.
-    *
-    * Type-preserving, and every cloned node
-    * receives a fresh unique id. The returned root has no parent. This is the only way to duplicate
-    * a part, so duplication is always explicit: parent->addChildPart(other->clone(), link).
-    */
+   /// Deep-copy this part and its whole sub-tree into a new, independent tree. Type-preserving; every
+   /// cloned node gets a fresh id and the returned root has no parent. The only way to duplicate a part.
    std::shared_ptr<Part> clone() const;
 
    /**
-    * @brief Attach an existing part as a child of this part by TRANSFERRING OWNERSHIP.
-    *
-    * The tree adopts @p child as-is -- no copy, so its dynamic type and id are preserved -- and
-    * re-parents it. This part and every ancestor are flagged dirty (mass AND placement); the composite
-    * mass/CM/inertia and the resolved placement are rebuilt lazily on the next read. Logged no-op if
-    * @p child is null, already has a parent, or is this part or one of its ancestors (a cycle).
-    *
-    * The relationship is physical INTENT: a default-constructed StationLink abuts the child's fore
-    * plane to the parent's aft plane, so the trivial nose->body->... stack costs zero authored numbers.
-    *
+    * @brief Attach an existing part as a child by transferring ownership (no copy, so dynamic type and
+    *        id are preserved). Flags this part and all ancestors dirty (mass and placement). Logged
+    *        no-op if @p child is null, already parented, or would form a cycle.
     * @param child part to adopt; the shared_ptr is moved from
-    * @param link  the station-pair placement intent (default: abut aft)
+    * @param link  station-pair placement intent; the default abuts child fore plane to parent aft plane
     */
    virtual void addChildPart(std::shared_ptr<Part> child, StationLink link = {});
 
-   /**
-    * @brief Detach the descendant with @p targetId from its owning parent and return it.
-    *
-    * Searches this sub-tree (this part's direct children first, then recursively). On a hit it
-    * unlinks the child from its parent's child list, clears the detached node's parent pointer, and
-    * flags the ex-parent and every ancestor for composite recompute -- so the next composite read
-    * rebuilds even when the removed sub-tree's mass was zero (which the mass-delta cache gate alone
-    * would miss). Returns the now-rootless sub-tree (the caller owns it and may drop it), or nullptr
-    * if no descendant has @p targetId. The root itself has no parent and is never removed by this
-    * call -- replacing the root is the design lifecycle's job (a future RocketModel::setRoot).
-    */
+   /// Detach the descendant with @p targetId and return it (the caller owns the now-rootless sub-tree),
+   /// or nullptr if absent. Flags the ex-parent and all ancestors for recompute, so the next read
+   /// rebuilds even when the removed sub-tree's mass was zero. The root has no parent and is never removed here.
    std::shared_ptr<Part> removeChildById(Id targetId);
 
 protected:
-   /// @brief Shallow node copy for clone()/cloneShallow() ONLY: copies this part's own mass
-   ///        properties (NOT its children) and assigns a FRESH id, with no parent. Protected so
-   ///        external code can neither copy nor slice a Part; subclasses use it in cloneShallow().
+   /// Shallow node copy for clone()/cloneShallow() only: copies this part's own mass properties (not
+   /// children) and assigns a fresh id, with no parent. Protected so external code can't copy or slice.
    Part(const Part&);
 
-   /// @brief Type-preserving shallow copy of just this node (no children), as a shared_ptr. PURE:
-   ///        Part is abstract, so there is no base node to copy -- every concrete subclass must
-   ///        override this so clone() reproduces the correct dynamic type. @see clone()
+   /// Type-preserving shallow copy of just this node (no children). Pure: each concrete subclass
+   /// overrides it so clone() reproduces the right dynamic type. @see clone()
    virtual std::shared_ptr<Part> cloneShallow() const = 0;
 
 private:
 
-   /// @brief Non-owning pointer to the parent part, if any. Used to propagate "needs recompute"
-   ///        notifications up the tree when this part's mass or inertia changes.
+   /// Non-owning pointer to the parent, if any. Used to propagate recompute flags up the tree.
    Part* parent{nullptr};
 
-   /// @brief Unique per-instance id (see getId()). Assigned a fresh value in every constructor --
-   ///        including the copy constructor, so a copy is a distinct, separately identifiable object
-   ///        -- and deliberately left untouched by the assignment operators so a part keeps its
-   ///        identity when its contents are overwritten.
+   /// Unique per-instance id (see getId()). Assigned fresh in every constructor, including the copy
+   /// ctor, and left untouched by assignment so a part keeps its identity when overwritten.
    Id id;
 
-   std::string name; ///< Human-facing label; need NOT be unique. Use id to identify a part.
+   std::string name; ///< human-facing label; need not be unique. Use id to identify a part.
 
-   /// @brief THE single time-aware walk behind every composite accessor. Pass 1 accumulates the
-   ///        composite mass and CM from getMass(t); pass 2 sums the parallel-axis-shifted child
-   ///        tensors about that CM. CG and the tensor therefore come from ONE walk.
+   /// The single time-aware walk behind every composite accessor. Pass 1 accumulates composite mass and
+   /// CM from getMass(t); pass 2 sums the parallel-axis-shifted child tensors about that CM.
    CompositeProperties computeCompositeAt(double t);
 
-   /// @brief Mass-delta gate: (re)build the cached compositeCm/compositeInertiaTensor via
-   ///        computeCompositeAt(t) iff structurally dirty OR the composite mass moved since the last
-   ///        build; then record builtAtCompositeMass and clear the dirty flag. No-op otherwise.
+   /// Mass-delta gate: rebuild the cached compositeCm/compositeInertiaTensor via computeCompositeAt(t)
+   /// iff structurally dirty or the composite mass moved since the last build, then clear the flag.
    void ensureCompositeCache(double t);
 
-   /// @brief Flag this part, and every ancestor, as needing a composite recompute.
+   /// Flag this part and every ancestor as needing a composite recompute.
    void markAsNeedsRecomputing()
    { needsRecomputing = true; if(parent) { parent->markAsNeedsRecomputing(); }}
 
-   // A part is both a single component and the composite of itself with all its children, so it
-   // stores both its own inertia tensor (without children) and the composite one (with them).
-   Matrix3 inertiaTensor;          ///< PER-UNIT-MASS (geometric) tensor about this part's CM (m^2).
-   Matrix3 compositeInertiaTensor; ///< FULL mass-weighted tensor of this part + children (kg*m^2).
-   double mass;          ///< This part's own mass (kg).
-   double compositeMass; ///< Mass of this part plus all attached child parts (kg).
+   // A part stores both its own inertia tensor (without children) and the composite one (with them).
+   Matrix3 inertiaTensor;          ///< per-unit-mass (geometric) tensor about this part's CM (m^2)
+   Matrix3 compositeInertiaTensor; ///< full mass-weighted tensor of this part + children (kg*m^2)
+   double mass;          ///< this part's own mass (kg)
+   double compositeMass; ///< mass of this part plus all children (kg)
 
-   /// @brief Composite mass the cached CM/tensor were last built at; the mass-delta gate key. NaN
-   ///        sentinel forces the first build (mNow != NaN is always true). Compared with exact ==
-   ///        against getCompositeMass(t): post-burnout that value repeats bit-for-bit so the cache
-   ///        freezes; during a burn it differs every step.
+   /// Composite mass the cached CM/tensor were last built at -- the mass-delta gate key. NaN sentinel
+   /// forces the first build. Compared exact == against getCompositeMass(t): post-burnout that value
+   /// repeats bit-for-bit so the cache freezes; during a burn it differs every step.
    double builtAtCompositeMass{std::numeric_limits<double>::quiet_NaN()};
 
-   /// @brief Center of mass w.r.t. the middle of the component. NOT CURRENTLY CONSUMED: the inertia
-   ///        tensor is defined about the CM and child @p position offsets are CM-to-CM, so the
-   ///        composition math never needs the CM-vs-middle offset. Set once at construction (these
-   ///        rigid parts don't move their CM afterward); kept as the natural home for that offset
-   ///        once asymmetric parts or 6-DOF force application (locating the CM in the body frame)
-   ///        need it.
+   /// CM relative to the component middle. Consumed by the composite walk as `-L/2 +
+   /// getCenterMassOffset().z()` (computeCompositeAt / getCompositeAero); placement itself is geometric
+   /// (StationLink), not CM-based. Set once at construction; radial components await 6-DOF force application.
    Vector3 cm;
 
-   /// @brief Composite CM of this part plus all descendants, expressed relative to this part's own
-   ///        CM (zero for a leaf). The point getCompositeI()/compositeInertiaTensor is taken about.
+   /// Composite CM of this part plus all descendants, relative to this part's own CM (zero for a leaf).
+   /// The point getCompositeI()/compositeInertiaTensor is taken about.
    Vector3 compositeCm;
 
-   bool needsRecomputing{false}; ///< True when the cached composite quantities are stale.
+   bool needsRecomputing{false}; ///< true when the cached composite quantities are stale
 
-   /// @brief True when the resolved placement cache (resolvedCache) is stale. Set by a STRUCTURAL or
-   ///        geometry edit (addChildPart/removeChildById) and propagated UP the ownership chain like
-   ///        needsRecomputing; deliberately NOT set by a pure mass/inertia edit (setMass/setI), since
-   ///        geometry is unchanged then. Starts true so the first composite read resolves once.
-   ///        mutable so the const composite/aero readers (getCompositeAero) can memoize through it.
+   /// True when the resolved placement cache is stale. Set by a structural/geometry edit
+   /// (addChildPart/removeChildById) and propagated up the tree; not set by a pure mass/inertia edit.
+   /// Starts true so the first read resolves once. mutable so const readers can memoize through it.
    mutable bool placementDirty{true};
 
-   /// @brief Cached resolver output for this sub-tree (this part planted at the local origin), rebuilt
-   ///        by ensurePlacementCache only when placementDirty. computeCompositeAt re-weights it by
-   ///        getMass(t) every step, so geometry resolves once per structural change while mass tracks
-   ///        a burning motor every step (the two gates of whitepaper 4.5). mutable: it is a memoized
-   ///        derivation, rebuilt by const readers.
+   /// Cached resolver output for this sub-tree (this part at the local origin), rebuilt by
+   /// ensurePlacementCache only when placementDirty. computeCompositeAt re-weights it by getMass(t)
+   /// every step, so geometry resolves once per structural change while mass tracks a burn every step.
    mutable std::vector<Placed> resolvedCache;
 
-   /// @brief Cached Layer-2 envelope-sweep verdict for resolvedCache, rebuilt alongside it by
-   ///        ensurePlacementCache (once per structural resolve, NOT per ODE step). ok == false means the
-   ///        sub-tree self-intersects: computeCompositeAt refuses it and the visualizer flags the
-   ///        offender, so the two consumers cannot disagree about validity (whitepaper 6).
+   /// Cached envelope-sweep verdict for resolvedCache, rebuilt alongside it (once per structural
+   /// resolve). ok == false means the sub-tree self-intersects: computeCompositeAt refuses it and the
+   /// visualizer flags the offender, so the two consumers can't disagree.
    mutable SolveResult resolvedDiagnostics;
 
-   /// @brief Resolve this sub-tree's placements into resolvedCache iff placementDirty, then clear it.
+   /// Resolve this sub-tree's placements into resolvedCache iff placementDirty, then clear the flag.
    void ensurePlacementCache() const;
 
-   /// @brief Flag this part, and every ancestor, as needing a placement re-resolve.
+   /// Flag this part and every ancestor as needing a placement re-resolve.
    void markPlacementDirty()
    { placementDirty = true; if(parent) { parent->markPlacementDirty(); }}
 
-   /// @brief  child parts paired with their stored placement intent (StationLink). The absolute pose
-   ///         is DERIVED by resolvePlacements, never stored here.
+   /// Child parts paired with their stored placement intent (StationLink). Absolute pose is derived by
+   /// resolvePlacements, never stored here.
    std::vector<std::pair<std::shared_ptr<Part>, StationLink>> childParts;
 };
 

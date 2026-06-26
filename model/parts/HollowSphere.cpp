@@ -19,8 +19,8 @@ HollowSphere::HollowSphere(const std::string& name,
                            double outerRadius_,
                            double density_,
                            const Vector3& centerMass)
-   // Part stores the inertia tensor per-unit-mass and applies the mass internally, so hand it the
-   // geometric (per-unit-mass) tensor straight from InertiaTensors plus the computed mass.
+   // Part stores the tensor per-unit-mass and applies the mass internally, so hand it the geometric
+   // tensor from InertiaTensors plus the computed mass.
    : Part(name,
           InertiaTensors::HollowSphere(innerRadius_, outerRadius_),
           computeMass(innerRadius_, outerRadius_, density_),
@@ -52,8 +52,8 @@ double HollowSphere::computeMass(double innerRadius, double outerRadius, double 
 
 double HollowSphere::radiusOuterAt(double zLocal) const
 {
-   // Sphere centered at z = -outerRadius (the +z pole at z = 0, the -z pole at z = -2 ro). The outer
-   // silhouette is sqrt(ro^2 - dz^2): ro at the equator, 0 at both poles. max() guards the band edges.
+   // Sphere centered at z = -outerRadius (+z pole at 0, -z pole at -2 ro). Silhouette sqrt(ro^2 - dz^2):
+   // ro at the equator, 0 at the poles. max() guards the band edges.
    const double dz = zLocal + outerRadius;
    return std::sqrt(std::max(0.0, outerRadius * outerRadius - dz * dz));
 }

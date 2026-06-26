@@ -7,12 +7,7 @@
 namespace sim
 {
 
-/**
- * @brief The SphericalGeoidModel returns the average of the polar radius and equatorial
- *        radius of the Earth, based on WGS84
- * 
- */
-
+/// Mean-radius geoid: returns the WGS84 mean of Earth's polar and equatorial radii.
 class SphericalGeoidModel : public GeoidModel
 {
 public:
