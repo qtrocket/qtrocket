@@ -26,6 +26,10 @@ MainWindow::MainWindow(QtRocket* _qtRocket, QWidget *parent)
 {
    ui->setupUi(this);
 
+   // Left-hand part tree: bind it to the rocket so it shows the part structure and refreshes itself
+   // whenever a part is added/removed (including the motor-set path).
+   ui->rocketTreeView->setRocketModel(qtRocket->getRocket().get());
+
    // Cannonball tab: point-mass input panel and motor/trajectory workflow.
    cannonballTab = new CannonballTab(qtRocket, this);
    ui->rocketTabWidget->addTab(cannonballTab, tr("Cannonball"));

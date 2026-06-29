@@ -129,6 +129,7 @@ void RocketModel::setMotorModel(const model::MotorModel& motor)
    {
       motorPart->setMotorModel(motor);            // in-place swap (keeps the borrowed motorPart valid)
    }
+   notifyStructureChanged(); // first call adds the Motor node; a swap changes its displayed mass
 }
 
 MotorModel RocketModel::getMotorModel() const
@@ -153,6 +154,7 @@ void RocketModel::setRoot(std::shared_ptr<part::Part> root)
    topPart = std::move(root);
    reresolveMotorPart();            // the old motorPart belonged to the replaced tree
    referenceAreaOverridden = false; // a freshly-installed airframe must not inherit a manual area
+   notifyStructureChanged();        // also covers clearDesign(), which routes through here
 }
 
 void RocketModel::clearDesign()
@@ -170,7 +172,7 @@ bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> c
    const auto before = parent->getChildParts().size();
    parent->addChildPart(std::move(child), link);
    const bool attached = parent->getChildParts().size() == before + 1;
-   if(attached) { reresolveMotorPart(); } // a Motor sub-tree could have been attached
+   if(attached) { reresolveMotorPart(); notifyStructureChanged(); } // a Motor sub-tree could have been attached
    return attached;
 }
 
@@ -178,7 +180,7 @@ std::shared_ptr<part::Part> RocketModel::removePart(part::Part::Id id)
 {
    if(!topPart || id == topPart->getId()) { return nullptr; } // the root is never removed here
    std::shared_ptr<part::Part> detached = topPart->removeChildById(id);
-   if(detached) { reresolveMotorPart(); } // the motor may have lived in the removed sub-tree
+   if(detached) { reresolveMotorPart(); notifyStructureChanged(); } // the motor may have lived in the removed sub-tree
    return detached;
 }
 
