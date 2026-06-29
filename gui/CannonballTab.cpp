@@ -88,6 +88,18 @@ void CannonballTab::refreshCalculateTrajectoryEnabled()
    ui->calculateTrajectory_btn->setDisabled(!qtRocket->getRocket()->isMotorSet());
 }
 
+void CannonballTab::refreshFromModel()
+{
+   // These fields are write-back inputs: Calculate pushes them into the rocket, so after a design is
+   // loaded elsewhere they must mirror the model or they silently overwrite the loaded values. Mass is
+   // the top part's own (dry) mass -- the quantity setMass() writes -- not the motor-inclusive composite.
+   auto rocket = qtRocket->getRocket();
+   ui->mass->setText(QString::number(rocket->getTopPart()->getMass(0.0)));
+   ui->dragCoeff->setText(QString::number(rocket->getDragCoefficient()));
+   ui->referenceArea->setText(QString::number(rocket->getReferenceArea()));
+   refreshCalculateTrajectoryEnabled();
+}
+
 void CannonballTab::onButton_calculateTrajectory_clicked()
 {
     // Get the initial conditions

@@ -26,6 +26,10 @@ public:
    explicit CannonballTab(QtRocket* qtRocket, QWidget* parent = nullptr);
    ~CannonballTab();
 
+   /// Re-sync controls that depend on rocket state (e.g. after a design is loaded elsewhere). Today
+   /// just the motor-gated "Calculate Trajectory" button.
+   void refreshFromModel();
+
 private slots:
 
    void onButton_calculateTrajectory_clicked();
