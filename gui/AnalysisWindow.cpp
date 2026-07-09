@@ -1,7 +1,7 @@
 #include "AnalysisWindow.h"
 #include "ui_AnalysisWindow.h"
 
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "model/MotorModel.h"
 #include "model/ThrustCurve.h"
 

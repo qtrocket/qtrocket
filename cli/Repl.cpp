@@ -18,7 +18,7 @@
 
 // qtrocket headers
 #include "cli/Repl.h"
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "model/MotorModel.h"
 #include "model/RocketModel.h"
 #include "sim/Integrator.h"

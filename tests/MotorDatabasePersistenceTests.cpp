@@ -13,7 +13,7 @@
 
 #include <gtest/gtest.h>
 
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "model/MotorModel.h"
 #include "utils/Logger.h"
 #include "model/MotorModelDatabase.h"

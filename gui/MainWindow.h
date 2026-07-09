@@ -10,7 +10,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 
 
 QT_BEGIN_NAMESPACE

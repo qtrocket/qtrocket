@@ -6,7 +6,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "utils/Logger.h"
 #include <memory>
 

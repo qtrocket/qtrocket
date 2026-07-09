@@ -15,7 +15,7 @@
 
 // qtrocket headers
 #include "gui/GuiRunner.h"
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "gui/MainWindow.h"
 #include "utils/Logger.h"
 

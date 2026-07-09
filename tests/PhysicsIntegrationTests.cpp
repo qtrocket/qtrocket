@@ -11,7 +11,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "model/RocketModel.h"
 #include "sim/Environment.h"
 #include "sim/Propagator.h"

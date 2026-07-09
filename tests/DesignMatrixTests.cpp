@@ -26,7 +26,7 @@
 
 #include <gtest/gtest.h>
 
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "cli/Repl.h"
 #include "utils/Logger.h"
 

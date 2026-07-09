@@ -4,7 +4,7 @@
 // 3rd party headers
 /// \endcond
 
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "gui/GuiRunner.h"
 #include "utils/Logger.h"
 

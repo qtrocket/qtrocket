@@ -8,7 +8,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(QTROCKET_ENABLE_COVERAGE "Enable LLVM source-based coverage for project/test targets" OFF)
 
-
 include(FetchContent)
 
 # Google Test framework
@@ -218,18 +217,19 @@ qtrocket_enable_coverage(qtrocket)
 add_subdirectory(utils)
 add_subdirectory(sim)
 add_subdirectory(model)
+add_subdirectory(core)
 
 # Application controller shared by the GUI, the CLI, and the
 # integration tests.
-add_library(qtrocket_core STATIC
-   QtRocket.cpp
-   QtRocket.h)
-qtrocket_enable_coverage(qtrocket_core)
+#add_library(qtrocket_core STATIC
+#   QtRocket.cpp
+#   QtRocket.h)
+#qtrocket_enable_coverage(qtrocket_core)
 
-target_link_libraries(qtrocket_core PUBLIC
-   model
-   sim
-   utils)
+#target_link_libraries(qtrocket_core PUBLIC
+#   model
+#   sim
+#   utils)
 
 # The CLI/REPL driver as a static lib, so both qtrocket-cli and the integration tests can drive it.
 add_library(cli STATIC

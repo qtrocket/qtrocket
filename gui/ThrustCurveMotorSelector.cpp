@@ -10,7 +10,7 @@
 // qtrocket headers
 #include "ThrustCurveMotorSelector.h"
 #include "ui_ThrustCurveMotorSelector.h"
-#include "QtRocket.h"
+#include "core/QtRocket.h"
 #include "model/MotorModelDatabase.h"
 
 ThrustCurveMotorSelector::ThrustCurveMotorSelector(QWidget *parent) :
