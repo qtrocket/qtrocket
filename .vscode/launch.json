@@ -5,7 +5,7 @@
             "name": "Debug qtrocket (CodeLLDB)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/build/qtrocket",
+            "program": "${workspaceFolder}/build/gui/qtrocket",
             "args": [],
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,
