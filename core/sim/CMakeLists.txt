@@ -25,6 +25,9 @@ add_library(sim
    WindModel.h)
 qtrocket_enable_coverage(sim)
 
+# headers are included as "sim/...", rooted at core/
+target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 target_link_libraries(sim PUBLIC
    utils)
 

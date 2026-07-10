@@ -28,18 +28,18 @@ ctest --test-dir build -R 'qtrocket_*'                 # all suites (what CI run
 ctest --test-dir build -R 'qtrocket_*' -LE heavy       # fast loop: skip the full-ladder flight sweeps
 ctest --test-dir build -R 'qtrocket_*' -L heavy        # ONLY the heavy full-ladder flight sweeps
 ctest --test-dir build -R PartTests                    # tests are also discovered individually via gtest_discover_tests
-./build/model/tests/model_tests                        # Part composition / inertia tests
-./build/sim/tests/sim_tests                            # RK45 solver, US Standard Atmosphere tests
+./build/core/model/tests/model_tests                   # Part composition / inertia tests
+./build/core/sim/tests/sim_tests                       # RK45 solver, US Standard Atmosphere tests
 ./build/tests/integration_tests                        # end-to-end physics + motor DB persistence
 ./build/tests/propagator_tests                         # focused Propagator behavior
 ./build/tests/cli_tests                                # CLI/REPL command behavior
 ./build/tests/design_matrix_tests                      # CLI design/persistence/part-type + 1/4A->M flight matrix
-./build/model/tests/model_tests --gtest_filter='PartTests.Clone*'   # single test
+./build/core/model/tests/model_tests --gtest_filter='PartTests.Clone*'   # single test
 ```
 
 The `design_matrix` binary is registered with ctest twice: `qtrocket_design_matrix_tests` flies one motor per class for the flight sweeps (fast smoke), and `qtrocket_design_matrix_heavy_tests` (label `heavy`, sets `QTROCKET_FULL_LADDER=1`) re-runs the `FlightMatrix`/`Atmosphere` sweeps over each class's complete 1/4A→M motor ladder. So `-LE heavy` is the fast loop and `-L heavy` is the full sweep; both are covered by a plain `-R 'qtrocket_*'`.
 
-Test sources live next to what they test: `model/tests/`, `sim/tests/`, and top-level `tests/` for integration.
+Test sources live next to what they test: `core/model/tests/`, `core/sim/tests/`, and top-level `tests/` for integration.
 
 ## Coverage
 
@@ -62,12 +62,14 @@ The `coverage` target builds the instrumented test binaries, runs `ctest -R '^qt
 Layering (each layer only depends on those below it):
 
 ```
-gui/ (Qt6 Widgets — the ONLY Qt-dependent code; GuiRunner owns QApplication)
+gui/ (Qt6 Widgets — the ONLY Qt-dependent code)
 cli/ (readline-style REPL, no Qt)
-QtRocket.h/.cpp (controller singleton, Qt-free)
-model/  +  sim/
-utils/
+core/QtRocket.h/.cpp (controller singleton, Qt-free)
+core/model/  +  core/sim/
+core/utils/
 ```
+
+Includes for core code are rooted at `core/` (`#include "model/..."`, `"sim/..."`, `"utils/..."`); each core lib exports that root as a `PUBLIC` include dir.
 
 - **QtRocket** is the master controller singleton: owns the RocketModel/Propagator pairs, Environment, and MotorModelDatabase; entry points are `launchRocket()`, `setInitialState()`, `getStates()`.
 - **`qtrocket_core`**: `QtRocket.cpp` is built once into the `qtrocket_core` static lib (`PUBLIC model sim utils`), linked by all three executables (`qtrocket`, `qtrocket-cli`, `integration_tests`) — **new executables link `qtrocket_core`**. (Until June 2026 it was compiled directly into every executable to dodge a `utils → QtRocket::getInstance()` back-call cycle; those back-calls are gone — `Environment` is injected via the Propagator, and `MotorModelDatabase` logs via `Logger::getInstance()`.)

@@ -38,6 +38,9 @@ add_library(model
    InertiaTensors.h)
 qtrocket_enable_coverage(model)
 
+# headers are included as "model/...", rooted at core/
+target_include_directories(model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 # sim is a real dependency: Propagatable/RocketModel use sim::Aero and
 # sim/StateData.h. Boost/jsoncpp serve the motor-database ingest paths
 # (RockSim .rse XML and the thrustcurve.org REST API).

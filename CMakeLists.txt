@@ -121,9 +121,7 @@ endfunction()
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-add_subdirectory(utils)
-add_subdirectory(sim)
-add_subdirectory(model)
+# The simulation core: utils/sim/model libs plus the qtrocket_core controller lib.
 add_subdirectory(core)
 
 # QtRocket GUI application
