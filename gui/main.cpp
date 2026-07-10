@@ -10,7 +10,6 @@
 
 #include "core/QtRocket.h"
 #include "gui/MainWindow.h"
-#include "gui/GuiRunner.h"
 #include "utils/Logger.h"
 
 int main(int argc, char *argv[])

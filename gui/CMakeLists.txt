@@ -33,8 +33,6 @@ set(SOURCES
    CannonballTab.cpp
    CannonballTab.h
    CannonballTab.ui
-   GuiRunner.cpp
-   GuiRunner.h
    MainWindow.cpp
    MainWindow.h
    MainWindow.ui
