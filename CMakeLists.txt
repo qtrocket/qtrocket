@@ -124,24 +124,24 @@ function(qtrocket_enable_coverage target_name)
     endif()
 endfunction()
 
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
+#set(CMAKE_AUTOUIC ON)
+#set(CMAKE_AUTOMOC ON)
+#set(CMAKE_AUTORCC ON)
 
 
-if(WIN32)
-  set(CMAKE_PREFIX_PATH $ENV{QTDIR})
+#if(WIN32)
+#  set(CMAKE_PREFIX_PATH $ENV{QTDIR})
 #  include_directories("C:\\boost\\boost_1_82_0\\")
 #  find_package(Qt6Core REQUIRED)
 #  find_package(Qt6Widgets REQUIRED)
-endif()
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
-find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
+#endif()
+#find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
+#find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
 #find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools PrintSupport)
 #find_package(CURL)
 #find_package(fmt)
 
-set(TS_FILES qtrocket_en_US.ts)
+#set(TS_FILES qtrocket_en_US.ts)
 
 include_directories(${PROJECT_SOURCE_DIR})
 
@@ -150,74 +150,75 @@ include_directories(${PROJECT_SOURCE_DIR})
 #
 # qcustomplot throws some warnings, so silence them so we can turn on -Werror
 # for our code
-set_source_files_properties(
-    gui/qcustomplot.cpp
-    PROPERTIES
-    COMPILE_OPTIONS "-w"
-)
-set(PROJECT_SOURCES
-        main.cpp
-        gui/AboutWindow.cpp
-        gui/AboutWindow.h
-        gui/AboutWindow.ui
-        gui/AnalysisWindow.cpp
-        gui/AnalysisWindow.h
-        gui/AnalysisWindow.ui
-        gui/CannonballTab.cpp
-        gui/CannonballTab.h
-        gui/CannonballTab.ui
-        gui/GuiRunner.cpp
-        gui/GuiRunner.h
-        gui/MainWindow.cpp
-        gui/MainWindow.h
-        gui/MainWindow.ui
-        gui/RocketModelerView.cpp
-        gui/RocketModelerView.h
-        gui/RocketTreeView.cpp
-        gui/RocketTreeView.h
-        gui/SimOptionsTab.cpp
-        gui/SimOptionsTab.h
-        gui/SimOptionsTab.ui
-        gui/ThrustCurveMotorSelector.cpp
-        gui/ThrustCurveMotorSelector.h
-        gui/ThrustCurveMotorSelector.ui
-        gui/qcustomplot.cpp
-        gui/qcustomplot.h
-        ${TS_FILES}
-)
-
-if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(qtrocket
-        qtrocket.qrc
-        MANUAL_FINALIZATION
-        ${PROJECT_SOURCES}
-    )
+#set_source_files_properties(
+#    gui/qcustomplot.cpp
+#    PROPERTIES
+#    COMPILE_OPTIONS "-w"
+#)
+#set(PROJECT_SOURCES
+#        main.cpp
+#        gui/AboutWindow.cpp
+#        gui/AboutWindow.h
+#        gui/AboutWindow.ui
+#        gui/AnalysisWindow.cpp
+#        gui/AnalysisWindow.h
+#        gui/AnalysisWindow.ui
+#        gui/CannonballTab.cpp
+#        gui/CannonballTab.h
+#        gui/CannonballTab.ui
+#        gui/GuiRunner.cpp
+#        gui/GuiRunner.h
+#        gui/MainWindow.cpp
+#        gui/MainWindow.h
+#        gui/MainWindow.ui
+#        gui/RocketModelerView.cpp
+#        gui/RocketModelerView.h
+#        gui/RocketTreeView.cpp
+#        gui/RocketTreeView.h
+#        gui/SimOptionsTab.cpp
+#        gui/SimOptionsTab.h
+#        gui/SimOptionsTab.ui
+#        gui/ThrustCurveMotorSelector.cpp
+#        gui/ThrustCurveMotorSelector.h
+#        gui/ThrustCurveMotorSelector.ui
+#        gui/qcustomplot.cpp
+#        gui/qcustomplot.h
+#        ${TS_FILES}
+#)
+#
+#if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
+#    qt_add_executable(qtrocket
+#        qtrocket.qrc
+#        MANUAL_FINALIZATION
+#        ${PROJECT_SOURCES}
+#    )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET qtrocket APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
 #                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
 # For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
-
-    qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
-else()
-    if(ANDROID)
-        add_library(qtrocket SHARED
-            ${PROJECT_SOURCES}
-        )
+#
+#    qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
+#else()
+#    if(ANDROID)
+#        add_library(qtrocket SHARED
+#            ${PROJECT_SOURCES}
+#        )
 # Define properties for Android with Qt 5 after find_package() calls as:
 #    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
-    else()
-        add_executable(qtrocket
-            ${PROJECT_SOURCES}
-        )
-    endif()
-
-endif()
-qtrocket_enable_coverage(qtrocket)
+#    else()
+#        add_executable(qtrocket
+#            ${PROJECT_SOURCES}
+#        )
+#    endif()
+#
+#endif()
+#qtrocket_enable_coverage(qtrocket)
 
 add_subdirectory(utils)
 add_subdirectory(sim)
 add_subdirectory(model)
 add_subdirectory(core)
+add_subdirectory(gui)
 
 # Application controller shared by the GUI, the CLI, and the
 # integration tests.
@@ -283,11 +284,6 @@ endif()
 #   fmt::fmt-header-only
 #   eigen)
 
-target_link_libraries(qtrocket PRIVATE
-   Qt6::Widgets
-   Qt6::PrintSupport
-   qtrocket_core)
-
 # Headless CLI / REPL driver for the simulation engine (no Qt). The shared
 # application controller comes from the qtrocket_core static lib.
 add_executable(qtrocket-cli
@@ -296,19 +292,3 @@ add_executable(qtrocket-cli
 qtrocket_enable_coverage(qtrocket-cli)
 target_link_libraries(qtrocket-cli PRIVATE
     cli)
-
-set_target_properties(qtrocket PROPERTIES
-    MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
-)
-
-install(TARGETS qtrocket
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
-if(QT_VERSION_MAJOR EQUAL 6)
-    qt_finalize_executable(qtrocket)
-endif()

@@ -5,8 +5,10 @@
 # 3D geometry in a core-profile OpenGL viewport. It depends only on Qt + qtrocket_core; it does not
 # touch the GUI (gui/) or CLI (cli/) code.
 
-# Qt6::Widgets is already found at the project root; the viewport needs the OpenGL modules too.
-find_package(Qt6 REQUIRED COMPONENTS OpenGLWidgets OpenGL)
+# self-contained qt setup: the root no longer finds qt (gui/ does, but imported
+# targets don't cross sibling directories), so find everything we link here.
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets OpenGL)
 
 set(VISUALIZER_SOURCES
     main.cpp
