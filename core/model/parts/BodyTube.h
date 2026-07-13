@@ -28,45 +28,45 @@ namespace model::part
 class BodyTube : public Part
 {
 public:
-   /**
-    * @brief Construct a body tube from its geometry and material density (all SI meters -- no mm).
-    * @param name        part name
-    * @param innerRadius ri (m), 0 <= ri < ro (ri == 0 is a solid rod)
-    * @param outerRadius ro (m)
-    * @param length      L  (m), > 0
-    * @param density     rho (kg/m^3), > 0
-    * @param centerMass  center of mass w.r.t. the middle of the component (defaults to the origin)
-    * @throws std::invalid_argument unless 0 <= ri < ro && length > 0 && density > 0
-    */
-   BodyTube(const std::string& name, double innerRadius, double outerRadius, double length,
-            double density, const Vector3& centerMass = {0.0, 0.0, 0.0});
-   ~BodyTube() override = default;
+    /**
+     * @brief Construct a body tube from its geometry and material density (all SI meters -- no mm).
+     * @param name        part name
+     * @param innerRadius ri (m), 0 <= ri < ro (ri == 0 is a solid rod)
+     * @param outerRadius ro (m)
+     * @param length      L  (m), > 0
+     * @param density     rho (kg/m^3), > 0
+     * @param centerMass  center of mass w.r.t. the middle of the component (defaults to the origin)
+     * @throws std::invalid_argument unless 0 <= ri < ro && length > 0 && density > 0
+     */
+    BodyTube(const std::string& name, double innerRadius, double outerRadius, double length,
+                double density, const Vector3& centerMass = {0.0, 0.0, 0.0});
+    ~BodyTube() override = default;
 
-   std::string typeName() const override { return "BodyTube"; }
+    std::string typeName() const override { return "BodyTube"; }
 
-   double getInnerRadius()   const { return innerRadius; }
-   double getOuterRadius()   const { return outerRadius; }
-   double getLength()        const override { return length; }
-   double getDensity()       const { return density; }
-   double getWettedArea()    const { return 2.0 * std::numbers::pi * outerRadius * length; } ///< for skin friction
-   double getReferenceArea() const override { return std::numbers::pi * outerRadius * outerRadius; } ///< pi*ro^2
-   double getMaxRadius()     const { return outerRadius; }
+    double getInnerRadius()   const { return innerRadius; }
+    double getOuterRadius()   const { return outerRadius; }
+    double getLength()        const override { return length; }
+    double getDensity()       const { return density; }
+    double getWettedArea()    const { return 2.0 * std::numbers::pi * outerRadius * length; } ///< for skin friction
+    double getReferenceArea() const override { return std::numbers::pi * outerRadius * outerRadius; } ///< pi*ro^2
+    double getMaxRadius()     const { return outerRadius; }
 
-   double radiusOuterAt(double) const override { return outerRadius; } ///< constant skin over [-L, 0]
-   double radiusInnerAt(double) const override { return innerRadius; } ///< constant bore (0 for a solid rod)
-   bool   isSolid()             const override { return innerRadius <= 0.0; } ///< solid rod when ri == 0
+    double radiusOuterAt(double) const override { return outerRadius; } ///< constant skin over [-L, 0]
+    double radiusInnerAt(double) const override { return innerRadius; } ///< constant bore (0 for a solid rod)
+    bool   isSolid()             const override { return innerRadius <= 0.0; } ///< solid rod when ri == 0
 
-   sim::AeroComponent getAero(double refArea) const override; ///< CNalpha = 0 (constant-diameter body)
+    sim::AeroComponent getAero(double refArea) const override; ///< CNalpha = 0 (constant-diameter body)
 
 protected:
-   BodyTube(const BodyTube&) = default;
-   std::shared_ptr<Part> cloneShallow() const override
-   { return std::shared_ptr<Part>(new BodyTube(*this)); }
+    BodyTube(const BodyTube&) = default;
+    std::shared_ptr<Part> cloneShallow() const override
+    { return std::shared_ptr<Part>(new BodyTube(*this)); }
 
 private:
-   static double computeVolume(double ri, double ro, double L);
-   static double computeMass(double ri, double ro, double L, double density);
-   double innerRadius, outerRadius, length, density;
+    static double computeVolume(double ri, double ro, double L);
+    static double computeMass(double ri, double ro, double L, double density);
+    double innerRadius, outerRadius, length, density;
 };
 
 } // namespace model::part

@@ -8,10 +8,10 @@ namespace sim
 class GeoidModel
 {
 public:
-   GeoidModel() {}
-   virtual ~GeoidModel() {}
+    GeoidModel() {}
+    virtual ~GeoidModel() {}
 
-   virtual double getGroundLevel(double latitude, double longitude) = 0;
+    virtual double getGroundLevel(double latitude, double longitude) = 0;
 
 };
 

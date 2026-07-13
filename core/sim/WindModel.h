@@ -10,10 +10,10 @@ namespace sim
 class WindModel
 {
 public:
-   WindModel();
-   virtual ~WindModel();
+    WindModel();
+    virtual ~WindModel();
 
-   virtual Vector3 getWindSpeed(double x, double y, double z);
+    virtual Vector3 getWindSpeed(double x, double y, double z);
 
 };
 

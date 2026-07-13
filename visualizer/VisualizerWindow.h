@@ -32,41 +32,41 @@ class RocketGLWidget;
 /// them to the viewport.
 class VisualizerWindow : public QMainWindow
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   explicit VisualizerWindow(QWidget* parent = nullptr);
-   ~VisualizerWindow() override;
+    explicit VisualizerWindow(QWidget* parent = nullptr);
+    ~VisualizerWindow() override;
 
-   /// @brief Load a .qrd design from @p path, build its meshes, and display it. Returns false (and
-   ///        shows a message) on a load/parse failure, leaving any current model in place.
-   bool openFile(const QString& path);
+    /// @brief Load a .qrd design from @p path, build its meshes, and display it. Returns false (and
+    ///        shows a message) on a load/parse failure, leaving any current model in place.
+    bool openFile(const QString& path);
 
 private slots:
-   void onOpen();                       ///< File > Open: pick a .qrd and load it.
-   void onSchemeSelected(int index);    ///< Preset combo changed.
-   void onPickColor();                  ///< A per-type color button: edit that type's color.
-   void onResetColors();                ///< Restore the current preset's colors.
+    void onOpen();                       ///< File > Open: pick a .qrd and load it.
+    void onSchemeSelected(int index);    ///< Preset combo changed.
+    void onPickColor();                  ///< A per-type color button: edit that type's color.
+    void onResetColors();                ///< Restore the current preset's colors.
 
 private:
-   void buildUi();                      ///< Construct menus, viewport, and the side panel.
-   void rebuildColorButtons();          ///< Sync the per-type swatch buttons to @ref scheme.
-   void applyScheme();                  ///< Push @ref scheme to the viewport + refresh swatches.
-   void refreshView();                  ///< Rebuild meshes from @ref rocket and push to the viewport.
-   void setStatusForRocket();           ///< Update the status bar with the loaded design's stats.
+    void buildUi();                      ///< Construct menus, viewport, and the side panel.
+    void rebuildColorButtons();          ///< Sync the per-type swatch buttons to @ref scheme.
+    void applyScheme();                  ///< Push @ref scheme to the viewport + refresh swatches.
+    void refreshView();                  ///< Rebuild meshes from @ref rocket and push to the viewport.
+    void setStatusForRocket();           ///< Update the status bar with the loaded design's stats.
 
-   RocketGLWidget* glWidget{nullptr};
-   QComboBox*      schemeCombo{nullptr};
-   QLabel*         infoLabel{nullptr};
-   QString         currentFile;
+    RocketGLWidget* glWidget{nullptr};
+    QComboBox*      schemeCombo{nullptr};
+    QLabel*         infoLabel{nullptr};
+    QString         currentFile;
 
-   /// Per-type color buttons, keyed by Part typeName(). Rebuilt when the scheme changes.
-   std::map<QString, QPushButton*> colorButtons;
+    /// Per-type color buttons, keyed by Part typeName(). Rebuilt when the scheme changes.
+    std::map<QString, QPushButton*> colorButtons;
 
-   ColorScheme scheme; ///< the active scheme (preset + any user overrides)
+    ColorScheme scheme; ///< the active scheme (preset + any user overrides)
 
-   std::unique_ptr<model::RocketModel>        rocket; ///< headless model that holds the loaded design
-   std::unique_ptr<model::MotorModelDatabase> motors; ///< empty DB to satisfy DesignSerializer::load
+    std::unique_ptr<model::RocketModel>        rocket; ///< headless model that holds the loaded design
+    std::unique_ptr<model::MotorModelDatabase> motors; ///< empty DB to satisfy DesignSerializer::load
 };
 
 } // namespace viz

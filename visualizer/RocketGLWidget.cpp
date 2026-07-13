@@ -173,9 +173,9 @@ QVector3D qcolorToVec3(const QColor& c)
 ///        to follow the rocket.
 QMatrix4x4 standUpMatrix()
 {
-   QMatrix4x4 m;
-   m.rotate(-90.0F, 1.0F, 0.0F, 0.0F);
-   return m;
+    QMatrix4x4 m;
+    m.rotate(-90.0F, 1.0F, 0.0F, 0.0F);
+    return m;
 }
 
 /// @brief Compile + link a two-stage shader program; qWarning and return nullptr on failure.
@@ -183,504 +183,504 @@ QMatrix4x4 standUpMatrix()
 ///        the slots the VBO setup uses: aPos -> 0, aNormal -> 1. Binding a name a shader doesn't
 ///        declare (e.g. aNormal in the line shader) is harmless.
 std::unique_ptr<QOpenGLShaderProgram> buildProgram(const char* vertSrc, const char* fragSrc,
-                                                   const char* label)
+                                                                    const char* label)
 {
-   auto prog = std::make_unique<QOpenGLShaderProgram>();
-   if (!prog->addShaderFromSourceCode(QOpenGLShader::Vertex, vertSrc))
-   {
-      qWarning("RocketGLWidget: %s vertex shader failed: %s", label,
-               prog->log().toUtf8().constData());
-      return nullptr;
-   }
-   if (!prog->addShaderFromSourceCode(QOpenGLShader::Fragment, fragSrc))
-   {
-      qWarning("RocketGLWidget: %s fragment shader failed: %s", label,
-               prog->log().toUtf8().constData());
-      return nullptr;
-   }
-   prog->bindAttributeLocation("aPos", 0);
-   prog->bindAttributeLocation("aNormal", 1);
-   if (!prog->link())
-   {
-      qWarning("RocketGLWidget: %s shader link failed: %s", label,
-               prog->log().toUtf8().constData());
-      return nullptr;
-   }
-   return prog;
+    auto prog = std::make_unique<QOpenGLShaderProgram>();
+    if (!prog->addShaderFromSourceCode(QOpenGLShader::Vertex, vertSrc))
+    {
+        qWarning("RocketGLWidget: %s vertex shader failed: %s", label,
+                    prog->log().toUtf8().constData());
+        return nullptr;
+    }
+    if (!prog->addShaderFromSourceCode(QOpenGLShader::Fragment, fragSrc))
+    {
+        qWarning("RocketGLWidget: %s fragment shader failed: %s", label,
+                    prog->log().toUtf8().constData());
+        return nullptr;
+    }
+    prog->bindAttributeLocation("aPos", 0);
+    prog->bindAttributeLocation("aNormal", 1);
+    if (!prog->link())
+    {
+        qWarning("RocketGLWidget: %s shader link failed: %s", label,
+                    prog->log().toUtf8().constData());
+        return nullptr;
+    }
+    return prog;
 }
 
 } // namespace
 
 RocketGLWidget::RocketGLWidget(QWidget* parent)
-   : QOpenGLWidget(parent),
-     scheme(defaultScheme())
+    : QOpenGLWidget(parent),
+       scheme(defaultScheme())
 {
 }
 
 RocketGLWidget::~RocketGLWidget()
 {
-   // GL teardown requires a current context; guard against having never initialized.
-   makeCurrent();
-   cleanup();
-   doneCurrent();
+    // GL teardown requires a current context; guard against having never initialized.
+    makeCurrent();
+    cleanup();
+    doneCurrent();
 }
 
 void RocketGLWidget::setRenderItems(std::vector<RenderItem> newItems)
 {
-   items  = std::move(newItems);
-   bounds = computeBounds(items);
+    items  = std::move(newItems);
+    bounds = computeBounds(items);
 
-   if (glReady)
-   {
-      makeCurrent();
-      uploadMeshes();
-      buildOverlays(); // re-size the grid/axes to the freshly computed bounds
-      doneCurrent();
-      resetCamera();
-      update();
-   }
-   // Otherwise the upload is deferred until the end of initializeGL().
+    if (glReady)
+    {
+        makeCurrent();
+        uploadMeshes();
+        buildOverlays(); // re-size the grid/axes to the freshly computed bounds
+        doneCurrent();
+        resetCamera();
+        update();
+    }
+    // Otherwise the upload is deferred until the end of initializeGL().
 }
 
 void RocketGLWidget::setColorScheme(const ColorScheme& newScheme)
 {
-   scheme = newScheme;
-   if (glReady)
-   {
-      makeCurrent();
-      applySchemeColors();
-      doneCurrent();
-   }
-   else
-   {
-      applySchemeColors();
-   }
-   update();
+    scheme = newScheme;
+    if (glReady)
+    {
+        makeCurrent();
+        applySchemeColors();
+        doneCurrent();
+    }
+    else
+    {
+        applySchemeColors();
+    }
+    update();
 }
 
 void RocketGLWidget::resetCamera()
 {
-   // The rocket is drawn through the stand-up transform, so aim at its world-space center (model
-   // center mapped through that rotation), else the camera aims off to one side.
-   camTarget = standUpMatrix().map(bounds.center());
+    // The rocket is drawn through the stand-up transform, so aim at its world-space center (model
+    // center mapped through that rotation), else the camera aims off to one side.
+    camTarget = standUpMatrix().map(bounds.center());
 
-   // Pull back far enough that the bounding sphere fits the frustum, using the tighter of the
-   // vertical/horizontal half-FOV (so tall thin rockets fit a wide window and vice versa), plus a
-   // small margin. Square aspect before the first resize.
-   const float halfFovY = qDegreesToRadians(45.0F * 0.5F);
-   const float aspect   = (height() > 0) ? static_cast<float>(width()) / static_cast<float>(height())
-                                         : 1.0F;
-   const float halfFovX = std::atan(std::tan(halfFovY) * aspect);
-   const float halfFov  = std::min(halfFovY, halfFovX);
-   camDistance = std::max(bounds.radius() / std::sin(halfFov) * 1.15F, 0.05F);
+    // Pull back far enough that the bounding sphere fits the frustum, using the tighter of the
+    // vertical/horizontal half-FOV (so tall thin rockets fit a wide window and vice versa), plus a
+    // small margin. Square aspect before the first resize.
+    const float halfFovY = qDegreesToRadians(45.0F * 0.5F);
+    const float aspect   = (height() > 0) ? static_cast<float>(width()) / static_cast<float>(height())
+                                                       : 1.0F;
+    const float halfFovX = std::atan(std::tan(halfFovY) * aspect);
+    const float halfFov  = std::min(halfFovY, halfFovX);
+    camDistance = std::max(bounds.radius() / std::sin(halfFov) * 1.15F, 0.05F);
 
-   camYaw   = 35.0F;
-   camPitch = 20.0F;
-   update();
+    camYaw   = 35.0F;
+    camPitch = 20.0F;
+    update();
 }
 
 void RocketGLWidget::setWireframe(bool on)
 {
-   wireframe = on;
-   update();
+    wireframe = on;
+    update();
 }
 
 void RocketGLWidget::setShowGrid(bool on)
 {
-   showGrid = on;
-   update();
+    showGrid = on;
+    update();
 }
 
 void RocketGLWidget::setShowAxes(bool on)
 {
-   showAxes = on;
-   update();
+    showAxes = on;
+    update();
 }
 
 void RocketGLWidget::initializeGL()
 {
-   initializeOpenGLFunctions();
+    initializeOpenGLFunctions();
 
-   glEnable(GL_DEPTH_TEST);
-   // Culling off: thin fins and visible tube interiors need both faces; the lit shader is two-sided.
-   glDisable(GL_CULL_FACE);
-   glEnable(GL_MULTISAMPLE);
+    glEnable(GL_DEPTH_TEST);
+    // Culling off: thin fins and visible tube interiors need both faces; the lit shader is two-sided.
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_MULTISAMPLE);
 
-   const QColor& bg = scheme.background;
-   glClearColor(static_cast<float>(bg.redF()), static_cast<float>(bg.greenF()),
-                static_cast<float>(bg.blueF()), 1.0F);
+    const QColor& bg = scheme.background;
+    glClearColor(static_cast<float>(bg.redF()), static_cast<float>(bg.greenF()),
+                     static_cast<float>(bg.blueF()), 1.0F);
 
-   // The context may be desktop or GLES2 (see main.cpp); compile the matching shader dialect.
-   const bool gles = context() != nullptr && context()->isOpenGLES();
-   litProgram  = buildProgram(gles ? kLitVertEs : kLitVertDesktop,
-                              gles ? kLitFragEs : kLitFragDesktop, "lit");
-   lineProgram = buildProgram(gles ? kLineVertEs : kLineVertDesktop,
-                              gles ? kLineFragEs : kLineFragDesktop, "line");
+    // The context may be desktop or GLES2 (see main.cpp); compile the matching shader dialect.
+    const bool gles = context() != nullptr && context()->isOpenGLES();
+    litProgram  = buildProgram(gles ? kLitVertEs : kLitVertDesktop,
+                                        gles ? kLitFragEs : kLitFragDesktop, "lit");
+    lineProgram = buildProgram(gles ? kLineVertEs : kLineVertDesktop,
+                                        gles ? kLineFragEs : kLineFragDesktop, "line");
 
-   glReady = true;
+    glReady = true;
 
-   // Any geometry queued before the context existed gets uploaded now.
-   if (!items.empty())
-   {
-      uploadMeshes();
-      resetCamera();
-   }
-   buildOverlays();
+    // Any geometry queued before the context existed gets uploaded now.
+    if (!items.empty())
+    {
+        uploadMeshes();
+        resetCamera();
+    }
+    buildOverlays();
 
-   const GLubyte* renderer = glGetString(GL_RENDERER);
-   const GLubyte* version  = glGetString(GL_VERSION);
-   emit rendererInfo(QString::fromUtf8(renderer ? reinterpret_cast<const char*>(renderer) : ""),
-                     QString::fromUtf8(version ? reinterpret_cast<const char*>(version) : ""));
+    const GLubyte* renderer = glGetString(GL_RENDERER);
+    const GLubyte* version  = glGetString(GL_VERSION);
+    emit rendererInfo(QString::fromUtf8(renderer ? reinterpret_cast<const char*>(renderer) : ""),
+                            QString::fromUtf8(version ? reinterpret_cast<const char*>(version) : ""));
 }
 
 void RocketGLWidget::resizeGL(int w, int h)
 {
-   glViewport(0, 0, w, h);
+    glViewport(0, 0, w, h);
 }
 
 void RocketGLWidget::paintGL()
 {
-   const QColor& bg = scheme.background;
-   glClearColor(static_cast<float>(bg.redF()), static_cast<float>(bg.greenF()),
-                static_cast<float>(bg.blueF()), 1.0F);
-   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const QColor& bg = scheme.background;
+    glClearColor(static_cast<float>(bg.redF()), static_cast<float>(bg.greenF()),
+                     static_cast<float>(bg.blueF()), 1.0F);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-   // Stand the rocket up: body +z -> world +Y. Grid/axes stay in world space (unrotated), so the
-   // ground stays flat and +Y points up.
-   const QMatrix4x4 model = standUpMatrix();
-   const QMatrix4x4 vp    = viewProjection();
-   const QMatrix4x4 mvp   = vp * model;
+    // Stand the rocket up: body +z -> world +Y. Grid/axes stay in world space (unrotated), so the
+    // ground stays flat and +Y points up.
+    const QMatrix4x4 model = standUpMatrix();
+    const QMatrix4x4 vp    = viewProjection();
+    const QMatrix4x4 mvp   = vp * model;
 
-   // --- overlays (unlit, world space) ---
-   if (lineProgram && (showGrid || showAxes))
-   {
-      lineProgram->bind();
-      lineProgram->setUniformValue("uMvp", vp);
+    // --- overlays (unlit, world space) ---
+    if (lineProgram && (showGrid || showAxes))
+    {
+        lineProgram->bind();
+        lineProgram->setUniformValue("uMvp", vp);
 
-      if (showGrid && gridVertexCount > 0)
-      {
-         lineProgram->setUniformValue("uColor", QVector3D(0.40F, 0.43F, 0.48F));
-         gridVao.bind();
-         glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gridVertexCount));
-         gridVao.release();
-      }
+        if (showGrid && gridVertexCount > 0)
+        {
+            lineProgram->setUniformValue("uColor", QVector3D(0.40F, 0.43F, 0.48F));
+            gridVao.bind();
+            glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gridVertexCount));
+            gridVao.release();
+        }
 
-      if (showAxes && axesVertexCount >= 6)
-      {
-         // Draw each axis segment with its own color so the triad reads X/Y/Z distinctly.
-         axesVao.bind();
-         lineProgram->setUniformValue("uColor", QVector3D(0.85F, 0.25F, 0.25F)); // X = red
-         glDrawArrays(GL_LINES, 0, 2);
-         lineProgram->setUniformValue("uColor", QVector3D(0.30F, 0.80F, 0.30F)); // Y = green
-         glDrawArrays(GL_LINES, 2, 2);
-         lineProgram->setUniformValue("uColor", QVector3D(0.35F, 0.55F, 0.95F)); // Z = blue
-         glDrawArrays(GL_LINES, 4, 2);
-         axesVao.release();
-      }
+        if (showAxes && axesVertexCount >= 6)
+        {
+            // Draw each axis segment with its own color so the triad reads X/Y/Z distinctly.
+            axesVao.bind();
+            lineProgram->setUniformValue("uColor", QVector3D(0.85F, 0.25F, 0.25F)); // X = red
+            glDrawArrays(GL_LINES, 0, 2);
+            lineProgram->setUniformValue("uColor", QVector3D(0.30F, 0.80F, 0.30F)); // Y = green
+            glDrawArrays(GL_LINES, 2, 2);
+            lineProgram->setUniformValue("uColor", QVector3D(0.35F, 0.55F, 0.95F)); // Z = blue
+            glDrawArrays(GL_LINES, 4, 2);
+            axesVao.release();
+        }
 
-      lineProgram->release();
-   }
+        lineProgram->release();
+    }
 
-   // --- rocket geometry (lit) ---
-   if (litProgram && !meshes.empty())
-   {
-      litProgram->bind();
-      litProgram->setUniformValue("uMvp", mvp);
-      litProgram->setUniformValue("uModel", model);
-      litProgram->setUniformValue("uLightDir", QVector3D(-0.4F, -0.6F, -0.7F));
+    // --- rocket geometry (lit) ---
+    if (litProgram && !meshes.empty())
+    {
+        litProgram->bind();
+        litProgram->setUniformValue("uMvp", mvp);
+        litProgram->setUniformValue("uModel", model);
+        litProgram->setUniformValue("uLightDir", QVector3D(-0.4F, -0.6F, -0.7F));
 
-      for (const auto& meshPtr : meshes)
-      {
-         GpuMesh& gm = *meshPtr;
-         litProgram->setUniformValue("uColor", gm.color);
+        for (const auto& meshPtr : meshes)
+        {
+            GpuMesh& gm = *meshPtr;
+            litProgram->setUniformValue("uColor", gm.color);
 
-         // Wireframe draws the pre-expanded edge buffer as GL_LINES; solid draws indexed triangles.
-         if (wireframe)
-         {
-            if (gm.wireVertexCount == 0)
-               continue;
-            gm.wireVao.bind();
-            glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gm.wireVertexCount));
-            gm.wireVao.release();
-         }
-         else
-         {
-            if (gm.indexCount == 0)
-               continue;
-            gm.vao.bind();
-            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gm.indexCount), GL_UNSIGNED_INT,
-                           nullptr);
-            gm.vao.release();
-         }
-      }
+            // Wireframe draws the pre-expanded edge buffer as GL_LINES; solid draws indexed triangles.
+            if (wireframe)
+            {
+                if (gm.wireVertexCount == 0)
+                    continue;
+                gm.wireVao.bind();
+                glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gm.wireVertexCount));
+                gm.wireVao.release();
+            }
+            else
+            {
+                if (gm.indexCount == 0)
+                    continue;
+                gm.vao.bind();
+                glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gm.indexCount), GL_UNSIGNED_INT,
+                                    nullptr);
+                gm.vao.release();
+            }
+        }
 
-      litProgram->release();
-   }
+        litProgram->release();
+    }
 }
 
 void RocketGLWidget::mousePressEvent(QMouseEvent* e)
 {
-   lastMousePos = e->pos();
+    lastMousePos = e->pos();
 }
 
 void RocketGLWidget::mouseMoveEvent(QMouseEvent* e)
 {
-   const QPoint delta = e->pos() - lastMousePos;
-   lastMousePos       = e->pos();
+    const QPoint delta = e->pos() - lastMousePos;
+    lastMousePos       = e->pos();
 
-   const float dx = static_cast<float>(delta.x());
-   const float dy = static_cast<float>(delta.y());
+    const float dx = static_cast<float>(delta.x());
+    const float dy = static_cast<float>(delta.y());
 
-   if (e->buttons() & Qt::LeftButton)
-   {
-      // Orbit: yaw/pitch.
-      camYaw += dx * 0.4F;
-      camPitch += dy * 0.4F;
-      camPitch = std::clamp(camPitch, -89.0F, 89.0F);
-      update();
-   }
-   else if (e->buttons() & (Qt::RightButton | Qt::MiddleButton))
-   {
-      // Pan target in the camera's right/up plane, scaled by distance.
-      const float yawR   = qDegreesToRadians(camYaw);
-      const float pitchR = qDegreesToRadians(camPitch);
+    if (e->buttons() & Qt::LeftButton)
+    {
+        // Orbit: yaw/pitch.
+        camYaw += dx * 0.4F;
+        camPitch += dy * 0.4F;
+        camPitch = std::clamp(camPitch, -89.0F, 89.0F);
+        update();
+    }
+    else if (e->buttons() & (Qt::RightButton | Qt::MiddleButton))
+    {
+        // Pan target in the camera's right/up plane, scaled by distance.
+        const float yawR   = qDegreesToRadians(camYaw);
+        const float pitchR = qDegreesToRadians(camPitch);
 
-      const QVector3D dir(std::cos(pitchR) * std::sin(yawR),
-                          std::sin(pitchR),
-                          std::cos(pitchR) * std::cos(yawR));
-      const QVector3D worldUp(0.0F, 1.0F, 0.0F);
-      QVector3D       right = QVector3D::crossProduct(dir, worldUp);
-      if (right.lengthSquared() < 1e-8F)
-         right = QVector3D(1.0F, 0.0F, 0.0F);
-      right.normalize();
-      const QVector3D up = QVector3D::crossProduct(right, dir).normalized();
+        const QVector3D dir(std::cos(pitchR) * std::sin(yawR),
+                                   std::sin(pitchR),
+                                   std::cos(pitchR) * std::cos(yawR));
+        const QVector3D worldUp(0.0F, 1.0F, 0.0F);
+        QVector3D       right = QVector3D::crossProduct(dir, worldUp);
+        if (right.lengthSquared() < 1e-8F)
+            right = QVector3D(1.0F, 0.0F, 0.0F);
+        right.normalize();
+        const QVector3D up = QVector3D::crossProduct(right, dir).normalized();
 
-      const float panScale = camDistance * 0.0025F;
-      camTarget += (-right * dx + up * dy) * panScale;
-      update();
-   }
+        const float panScale = camDistance * 0.0025F;
+        camTarget += (-right * dx + up * dy) * panScale;
+        update();
+    }
 }
 
 void RocketGLWidget::wheelEvent(QWheelEvent* e)
 {
-   const float steps = static_cast<float>(e->angleDelta().y()) / 120.0F;
-   const float factor = std::pow(0.9F, steps);
-   camDistance        = std::clamp(camDistance * factor,
-                            std::max(bounds.radius() * 0.05F, 1e-3F),
-                            std::max(bounds.radius() * 50.0F, 100.0F));
-   update();
+    const float steps = static_cast<float>(e->angleDelta().y()) / 120.0F;
+    const float factor = std::pow(0.9F, steps);
+    camDistance        = std::clamp(camDistance * factor,
+                                     std::max(bounds.radius() * 0.05F, 1e-3F),
+                                     std::max(bounds.radius() * 50.0F, 100.0F));
+    update();
 }
 
 void RocketGLWidget::uploadMeshes()
 {
-   meshes.clear();
+    meshes.clear();
 
-   for (const RenderItem& item : items)
-   {
-      const Mesh& src = item.mesh;
-      if (src.vertices.empty() || src.indices.empty())
-         continue;
+    for (const RenderItem& item : items)
+    {
+        const Mesh& src = item.mesh;
+        if (src.vertices.empty() || src.indices.empty())
+            continue;
 
-      auto gm = std::make_unique<GpuMesh>();
+        auto gm = std::make_unique<GpuMesh>();
 
-      gm->vao.create();
-      gm->vao.bind();
+        gm->vao.create();
+        gm->vao.bind();
 
-      gm->vbo.create();
-      gm->vbo.bind();
-      gm->vbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-      gm->vbo.allocate(src.vertices.data(),
-                       static_cast<int>(src.vertices.size() * sizeof(Vertex)));
+        gm->vbo.create();
+        gm->vbo.bind();
+        gm->vbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+        gm->vbo.allocate(src.vertices.data(),
+                               static_cast<int>(src.vertices.size() * sizeof(Vertex)));
 
-      gm->ibo.create();
-      gm->ibo.bind();
-      gm->ibo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-      gm->ibo.allocate(src.indices.data(),
-                       static_cast<int>(src.indices.size() * sizeof(unsigned int)));
+        gm->ibo.create();
+        gm->ibo.bind();
+        gm->ibo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+        gm->ibo.allocate(src.indices.data(),
+                               static_cast<int>(src.indices.size() * sizeof(unsigned int)));
 
-      const int stride = static_cast<int>(sizeof(Vertex));
-      glEnableVertexAttribArray(0);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-                            reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
-      glEnableVertexAttribArray(1);
-      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
-                            reinterpret_cast<const void*>(3 * sizeof(float)));
+        const int stride = static_cast<int>(sizeof(Vertex));
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
+                                     reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+                                     reinterpret_cast<const void*>(3 * sizeof(float)));
 
-      gm->vao.release();
-      gm->vbo.release();
-      gm->ibo.release();
+        gm->vao.release();
+        gm->vbo.release();
+        gm->ibo.release();
 
-      gm->indexCount      = static_cast<int>(src.indices.size());
-      gm->typeName        = item.typeName;
-      gm->overlapOffender = item.overlapOffender;
+        gm->indexCount      = static_cast<int>(src.indices.size());
+        gm->typeName        = item.typeName;
+        gm->overlapOffender = item.overlapOffender;
 
-      // Wireframe: expand each triangle into its three edges as a GL_LINES buffer (positions +
-      // normals preserved so the lit shader shades them identically). Replaces glPolygonMode(GL_LINE),
-      // absent on GLES2 / the generic functions.
-      std::vector<Vertex> wireVerts;
-      wireVerts.reserve(src.indices.size() * 2U);
-      for (std::size_t i = 0; i + 2U < src.indices.size(); i += 3U)
-      {
-         const Vertex& a = src.vertices[src.indices[i]];
-         const Vertex& b = src.vertices[src.indices[i + 1U]];
-         const Vertex& c = src.vertices[src.indices[i + 2U]];
-         wireVerts.insert(wireVerts.end(), {a, b, b, c, c, a});
-      }
+        // Wireframe: expand each triangle into its three edges as a GL_LINES buffer (positions +
+        // normals preserved so the lit shader shades them identically). Replaces glPolygonMode(GL_LINE),
+        // absent on GLES2 / the generic functions.
+        std::vector<Vertex> wireVerts;
+        wireVerts.reserve(src.indices.size() * 2U);
+        for (std::size_t i = 0; i + 2U < src.indices.size(); i += 3U)
+        {
+            const Vertex& a = src.vertices[src.indices[i]];
+            const Vertex& b = src.vertices[src.indices[i + 1U]];
+            const Vertex& c = src.vertices[src.indices[i + 2U]];
+            wireVerts.insert(wireVerts.end(), {a, b, b, c, c, a});
+        }
 
-      gm->wireVao.create();
-      gm->wireVao.bind();
-      gm->wireVbo.create();
-      gm->wireVbo.bind();
-      gm->wireVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-      gm->wireVbo.allocate(wireVerts.data(),
-                           static_cast<int>(wireVerts.size() * sizeof(Vertex)));
-      glEnableVertexAttribArray(0);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-                            reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
-      glEnableVertexAttribArray(1);
-      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
-                            reinterpret_cast<const void*>(3 * sizeof(float)));
-      gm->wireVao.release();
-      gm->wireVbo.release();
-      gm->wireVertexCount = static_cast<int>(wireVerts.size());
+        gm->wireVao.create();
+        gm->wireVao.bind();
+        gm->wireVbo.create();
+        gm->wireVbo.bind();
+        gm->wireVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+        gm->wireVbo.allocate(wireVerts.data(),
+                                    static_cast<int>(wireVerts.size() * sizeof(Vertex)));
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
+                                     reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+                                     reinterpret_cast<const void*>(3 * sizeof(float)));
+        gm->wireVao.release();
+        gm->wireVbo.release();
+        gm->wireVertexCount = static_cast<int>(wireVerts.size());
 
-      meshes.push_back(std::move(gm));
-   }
+        meshes.push_back(std::move(gm));
+    }
 
-   applySchemeColors();
+    applySchemeColors();
 }
 
 void RocketGLWidget::buildOverlays()
 {
-   // --- ground grid in the world X-Z plane (rocket is stood up to +Y) ---
-   const float r       = std::max(bounds.radius(), 0.1F);
-   const float extent  = r * 2.5F;
-   const int   divs    = 20;
-   const float step    = (extent * 2.0F) / static_cast<float>(divs);
+    // --- ground grid in the world X-Z plane (rocket is stood up to +Y) ---
+    const float r       = std::max(bounds.radius(), 0.1F);
+    const float extent  = r * 2.5F;
+    const int   divs    = 20;
+    const float step    = (extent * 2.0F) / static_cast<float>(divs);
 
-   // Grid sits at the rocket's base. World up (+Y) is body +z, so the lowest stood-up point is the
-   // minimum body-frame z; origin when there's no geometry.
-   const float groundY = bounds.valid ? bounds.min.z() : 0.0F;
+    // Grid sits at the rocket's base. World up (+Y) is body +z, so the lowest stood-up point is the
+    // minimum body-frame z; origin when there's no geometry.
+    const float groundY = bounds.valid ? bounds.min.z() : 0.0F;
 
-   std::vector<float> gridData;
-   gridData.reserve(static_cast<std::size_t>((divs + 1) * 4 * 3));
-   for (int i = 0; i <= divs; ++i)
-   {
-      const float t = -extent + step * static_cast<float>(i);
-      // Lines parallel to Z.
-      gridData.insert(gridData.end(), {t, groundY, -extent});
-      gridData.insert(gridData.end(), {t, groundY, extent});
-      // Lines parallel to X.
-      gridData.insert(gridData.end(), {-extent, groundY, t});
-      gridData.insert(gridData.end(), {extent, groundY, t});
-   }
+    std::vector<float> gridData;
+    gridData.reserve(static_cast<std::size_t>((divs + 1) * 4 * 3));
+    for (int i = 0; i <= divs; ++i)
+    {
+        const float t = -extent + step * static_cast<float>(i);
+        // Lines parallel to Z.
+        gridData.insert(gridData.end(), {t, groundY, -extent});
+        gridData.insert(gridData.end(), {t, groundY, extent});
+        // Lines parallel to X.
+        gridData.insert(gridData.end(), {-extent, groundY, t});
+        gridData.insert(gridData.end(), {extent, groundY, t});
+    }
 
-   if (!gridVao.isCreated())
-      gridVao.create();
-   gridVao.bind();
-   if (!gridVbo.isCreated())
-      gridVbo.create();
-   gridVbo.bind();
-   gridVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-   gridVbo.allocate(gridData.data(), static_cast<int>(gridData.size() * sizeof(float)));
-   glEnableVertexAttribArray(0);
-   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * static_cast<int>(sizeof(float)),
-                         reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
-   gridVao.release();
-   gridVbo.release();
-   gridVertexCount = static_cast<int>(gridData.size() / 3);
+    if (!gridVao.isCreated())
+        gridVao.create();
+    gridVao.bind();
+    if (!gridVbo.isCreated())
+        gridVbo.create();
+    gridVbo.bind();
+    gridVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+    gridVbo.allocate(gridData.data(), static_cast<int>(gridData.size() * sizeof(float)));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * static_cast<int>(sizeof(float)),
+                                 reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+    gridVao.release();
+    gridVbo.release();
+    gridVertexCount = static_cast<int>(gridData.size() / 3);
 
-   // --- XYZ axis triad (one segment per axis; colored per draw in paintGL) ---
-   const float axisLen = extent;
-   const float axes[]  = {
-      0.0F, 0.0F, 0.0F, axisLen, 0.0F, 0.0F, // X
-      0.0F, 0.0F, 0.0F, 0.0F, axisLen, 0.0F, // Y
-      0.0F, 0.0F, 0.0F, 0.0F, 0.0F, axisLen  // Z
-   };
+    // --- XYZ axis triad (one segment per axis; colored per draw in paintGL) ---
+    const float axisLen = extent;
+    const float axes[]  = {
+        0.0F, 0.0F, 0.0F, axisLen, 0.0F, 0.0F, // X
+        0.0F, 0.0F, 0.0F, 0.0F, axisLen, 0.0F, // Y
+        0.0F, 0.0F, 0.0F, 0.0F, 0.0F, axisLen  // Z
+    };
 
-   if (!axesVao.isCreated())
-      axesVao.create();
-   axesVao.bind();
-   if (!axesVbo.isCreated())
-      axesVbo.create();
-   axesVbo.bind();
-   axesVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-   axesVbo.allocate(axes, static_cast<int>(sizeof(axes)));
-   glEnableVertexAttribArray(0);
-   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * static_cast<int>(sizeof(float)),
-                         reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
-   axesVao.release();
-   axesVbo.release();
-   axesVertexCount = 6;
+    if (!axesVao.isCreated())
+        axesVao.create();
+    axesVao.bind();
+    if (!axesVbo.isCreated())
+        axesVbo.create();
+    axesVbo.bind();
+    axesVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+    axesVbo.allocate(axes, static_cast<int>(sizeof(axes)));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * static_cast<int>(sizeof(float)),
+                                 reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+    axesVao.release();
+    axesVbo.release();
+    axesVertexCount = 6;
 }
 
 void RocketGLWidget::applySchemeColors()
 {
-   // An overlap offender renders in a fixed error red overriding its type color, so a
-   // self-intersecting design is unmistakable under any scheme.
-   static const QVector3D kErrorColor{0.90F, 0.10F, 0.10F};
-   for (const auto& meshPtr : meshes)
-      meshPtr->color = meshPtr->overlapOffender ? kErrorColor
-                                                : qcolorToVec3(scheme.colorFor(meshPtr->typeName));
+    // An overlap offender renders in a fixed error red overriding its type color, so a
+    // self-intersecting design is unmistakable under any scheme.
+    static const QVector3D kErrorColor{0.90F, 0.10F, 0.10F};
+    for (const auto& meshPtr : meshes)
+        meshPtr->color = meshPtr->overlapOffender ? kErrorColor
+                                                                : qcolorToVec3(scheme.colorFor(meshPtr->typeName));
 }
 
 void RocketGLWidget::cleanup()
 {
-   for (const auto& meshPtr : meshes)
-   {
-      if (meshPtr->vbo.isCreated())
-         meshPtr->vbo.destroy();
-      if (meshPtr->ibo.isCreated())
-         meshPtr->ibo.destroy();
-      if (meshPtr->vao.isCreated())
-         meshPtr->vao.destroy();
-      if (meshPtr->wireVbo.isCreated())
-         meshPtr->wireVbo.destroy();
-      if (meshPtr->wireVao.isCreated())
-         meshPtr->wireVao.destroy();
-   }
-   meshes.clear();
+    for (const auto& meshPtr : meshes)
+    {
+        if (meshPtr->vbo.isCreated())
+            meshPtr->vbo.destroy();
+        if (meshPtr->ibo.isCreated())
+            meshPtr->ibo.destroy();
+        if (meshPtr->vao.isCreated())
+            meshPtr->vao.destroy();
+        if (meshPtr->wireVbo.isCreated())
+            meshPtr->wireVbo.destroy();
+        if (meshPtr->wireVao.isCreated())
+            meshPtr->wireVao.destroy();
+    }
+    meshes.clear();
 
-   if (gridVbo.isCreated())
-      gridVbo.destroy();
-   if (gridVao.isCreated())
-      gridVao.destroy();
-   gridVertexCount = 0;
+    if (gridVbo.isCreated())
+        gridVbo.destroy();
+    if (gridVao.isCreated())
+        gridVao.destroy();
+    gridVertexCount = 0;
 
-   if (axesVbo.isCreated())
-      axesVbo.destroy();
-   if (axesVao.isCreated())
-      axesVao.destroy();
-   axesVertexCount = 0;
+    if (axesVbo.isCreated())
+        axesVbo.destroy();
+    if (axesVao.isCreated())
+        axesVao.destroy();
+    axesVertexCount = 0;
 
-   litProgram.reset();
-   lineProgram.reset();
+    litProgram.reset();
+    lineProgram.reset();
 }
 
 QMatrix4x4 RocketGLWidget::viewProjection() const
 {
-   const float w      = static_cast<float>(width());
-   const float h      = static_cast<float>(std::max(height(), 1));
-   const float aspect = w / h;
+    const float w      = static_cast<float>(width());
+    const float h      = static_cast<float>(std::max(height(), 1));
+    const float aspect = w / h;
 
-   const float radius = bounds.radius();
-   const float nearP  = std::max(radius * 0.01F, 1e-3F);
-   const float farP   = radius * 20.0F + 10.0F;
+    const float radius = bounds.radius();
+    const float nearP  = std::max(radius * 0.01F, 1e-3F);
+    const float farP   = radius * 20.0F + 10.0F;
 
-   QMatrix4x4 proj;
-   proj.perspective(45.0F, aspect, nearP, farP);
+    QMatrix4x4 proj;
+    proj.perspective(45.0F, aspect, nearP, farP);
 
-   const float yawR   = qDegreesToRadians(camYaw);
-   const float pitchR = qDegreesToRadians(camPitch);
-   const QVector3D dir(std::cos(pitchR) * std::sin(yawR),
-                       std::sin(pitchR),
-                       std::cos(pitchR) * std::cos(yawR));
-   const QVector3D eye = camTarget + dir * camDistance;
+    const float yawR   = qDegreesToRadians(camYaw);
+    const float pitchR = qDegreesToRadians(camPitch);
+    const QVector3D dir(std::cos(pitchR) * std::sin(yawR),
+                               std::sin(pitchR),
+                               std::cos(pitchR) * std::cos(yawR));
+    const QVector3D eye = camTarget + dir * camDistance;
 
-   QMatrix4x4 view;
-   view.lookAt(eye, camTarget, QVector3D(0.0F, 1.0F, 0.0F));
+    QMatrix4x4 view;
+    view.lookAt(eye, camTarget, QVector3D(0.0F, 1.0F, 0.0F));
 
-   return proj * view;
+    return proj * view;
 }
 
 } // namespace viz

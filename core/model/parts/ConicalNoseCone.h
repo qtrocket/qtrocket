@@ -31,51 +31,51 @@ namespace model::part
 class ConicalNoseCone : public Part
 {
 public:
-   /**
-    * @param name          part name
-    * @param baseRadius    R (m), the open aft radius == the body tube it caps
-    * @param length        L (m), tip-to-base axial height
-    * @param wallThickness t (m), used only when solid == false (thin lateral shell)
-    * @param density       rho (kg/m^3)
-    * @param solid         true => uniform solid cone (default); false => thin conical shell (wall t)
-    * @param centerMass    extra CM offset added to the cone's own centroidal offset (defaults to 0)
-    * @throws std::invalid_argument unless R>0 && L>0 && density>0 && (solid || (0<t<R))
-    */
-   ConicalNoseCone(const std::string& name, double baseRadius, double length,
-                   double wallThickness, double density, bool solid = true,
-                   const Vector3& centerMass = {0.0, 0.0, 0.0});
-   ~ConicalNoseCone() override = default;
+    /**
+     * @param name          part name
+     * @param baseRadius    R (m), the open aft radius == the body tube it caps
+     * @param length        L (m), tip-to-base axial height
+     * @param wallThickness t (m), used only when solid == false (thin lateral shell)
+     * @param density       rho (kg/m^3)
+     * @param solid         true => uniform solid cone (default); false => thin conical shell (wall t)
+     * @param centerMass    extra CM offset added to the cone's own centroidal offset (defaults to 0)
+     * @throws std::invalid_argument unless R>0 && L>0 && density>0 && (solid || (0<t<R))
+     */
+    ConicalNoseCone(const std::string& name, double baseRadius, double length,
+                         double wallThickness, double density, bool solid = true,
+                         const Vector3& centerMass = {0.0, 0.0, 0.0});
+    ~ConicalNoseCone() override = default;
 
-   std::string typeName() const override { return "NoseCone"; }
+    std::string typeName() const override { return "NoseCone"; }
 
-   double getBaseRadius()    const { return baseRadius; }
-   double getLength()        const override { return length; }
-   double getWallThickness() const { return wallThickness; }
-   double getDensity()       const { return density; }
-   bool   isSolid()          const override { return solid; }
-   double getReferenceArea() const override { return std::numbers::pi * baseRadius * baseRadius; } ///< pi*R^2
-   double getMaxRadius()     const { return baseRadius; } ///< for the rocket-wide max-disc ref area
+    double getBaseRadius()    const { return baseRadius; }
+    double getLength()        const override { return length; }
+    double getWallThickness() const { return wallThickness; }
+    double getDensity()       const { return density; }
+    bool   isSolid()          const override { return solid; }
+    double getReferenceArea() const override { return std::numbers::pi * baseRadius * baseRadius; } ///< pi*R^2
+    double getMaxRadius()     const { return baseRadius; } ///< for the rocket-wide max-disc ref area
 
-   /// @brief Linear taper: tip (z=0) -> 0, base (z=-L) -> baseRadius. Guards the divide so a degenerate
-   ///        zero-length cone (a flat disc/ring) returns baseRadius rather than evaluating 0/0.
-   double radiusOuterAt(double zLocal) const override
-   { return (length <= 1e-9) ? baseRadius : baseRadius * (-zLocal / length); }
+    /// @brief Linear taper: tip (z=0) -> 0, base (z=-L) -> baseRadius. Guards the divide so a degenerate
+    ///        zero-length cone (a flat disc/ring) returns baseRadius rather than evaluating 0/0.
+    double radiusOuterAt(double zLocal) const override
+    { return (length <= 1e-9) ? baseRadius : baseRadius * (-zLocal / length); }
 
-   sim::AeroComponent getAero(double refArea) const override; ///< Barrowman; CNalpha=2 at ref base area
+    sim::AeroComponent getAero(double refArea) const override; ///< Barrowman; CNalpha=2 at ref base area
 
 protected:
-   ConicalNoseCone(const ConicalNoseCone&) = default;
-   std::shared_ptr<Part> cloneShallow() const override
-   { return std::shared_ptr<Part>(new ConicalNoseCone(*this)); }
+    ConicalNoseCone(const ConicalNoseCone&) = default;
+    std::shared_ptr<Part> cloneShallow() const override
+    { return std::shared_ptr<Part>(new ConicalNoseCone(*this)); }
 
 private:
-   static double  computeVolume(double R, double L, double t, bool solid);
-   static double  computeMass(double R, double L, double t, double density, bool solid);
-   static Matrix3 coneTensor(double R, double L, bool solid);   ///< SolidCone or ConicalShell
-   static Vector3 coneCmOffset(double L, bool solid);           ///< {0,0, base->CM offset}
+    static double  computeVolume(double R, double L, double t, bool solid);
+    static double  computeMass(double R, double L, double t, double density, bool solid);
+    static Matrix3 coneTensor(double R, double L, bool solid);   ///< SolidCone or ConicalShell
+    static Vector3 coneCmOffset(double L, bool solid);           ///< {0,0, base->CM offset}
 
-   double baseRadius, length, wallThickness, density;
-   bool   solid;
+    double baseRadius, length, wallThickness, density;
+    bool   solid;
 };
 
 } // namespace model::part

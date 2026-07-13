@@ -13,10 +13,10 @@
 /// @brief Widget that shows the current rocket model.
 class RocketModelerView : public QWidget
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   RocketModelerView(QWidget* parent = nullptr);
+    RocketModelerView(QWidget* parent = nullptr);
 };
 
 #endif // GUI_ROCKETMODELERVIEW_H

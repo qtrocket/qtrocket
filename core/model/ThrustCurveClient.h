@@ -24,39 +24,39 @@ namespace model
 class ThrustcurveMetadata
 {
 public:
-   ThrustcurveMetadata() = default;
-   ~ThrustcurveMetadata() = default;
+    ThrustcurveMetadata() = default;
+    ~ThrustcurveMetadata() = default;
 
-   ThrustcurveMetadata(const ThrustcurveMetadata&) = default;
-   ThrustcurveMetadata(ThrustcurveMetadata&&) = default;
+    ThrustcurveMetadata(const ThrustcurveMetadata&) = default;
+    ThrustcurveMetadata(ThrustcurveMetadata&&) = default;
 
-   ThrustcurveMetadata& operator=(const ThrustcurveMetadata&) = default;
-   ThrustcurveMetadata& operator=(ThrustcurveMetadata&&) = default;
+    ThrustcurveMetadata& operator=(const ThrustcurveMetadata&) = default;
+    ThrustcurveMetadata& operator=(ThrustcurveMetadata&&) = default;
 
 //private:
-   std::vector<model::MotorModel::CertOrg> certOrgs;
-   std::vector<double> diameters;
-   std::vector<std::string> impulseClasses;
-   std::map<std::string, std::string> manufacturers;
-   std::vector<model::MotorModel::MotorType> types;
+    std::vector<model::MotorModel::CertOrg> certOrgs;
+    std::vector<double> diameters;
+    std::vector<std::string> impulseClasses;
+    std::map<std::string, std::string> manufacturers;
+    std::vector<model::MotorModel::MotorType> types;
 
 };
 
 class SearchCriteria
 {
 public:
-   SearchCriteria() = default;
-   ~SearchCriteria() = default;
-   SearchCriteria(const SearchCriteria&) = default;
-   SearchCriteria(SearchCriteria&&) = default;
+    SearchCriteria() = default;
+    ~SearchCriteria() = default;
+    SearchCriteria(const SearchCriteria&) = default;
+    SearchCriteria(SearchCriteria&&) = default;
 
-   SearchCriteria& operator=(const SearchCriteria&) = default;
-   SearchCriteria& operator=(SearchCriteria&&) = default;
+    SearchCriteria& operator=(const SearchCriteria&) = default;
+    SearchCriteria& operator=(SearchCriteria&&) = default;
 
-   void addCriteria(const std::string& name,
-                    const std::string& value);
+    void addCriteria(const std::string& name,
+                           const std::string& value);
 
-   std::map<std::string, std::string> criteria;
+    std::map<std::string, std::string> criteria;
 
 };
 
@@ -68,10 +68,10 @@ public:
 class ThrustCurveAPI
 {
 public:
-   virtual ~ThrustCurveAPI() = default;
+    virtual ~ThrustCurveAPI() = default;
 
-   virtual ThrustcurveMetadata getMetadata() = 0;
-   virtual std::vector<model::MotorModel> searchMotors(const SearchCriteria& c) = 0;
+    virtual ThrustcurveMetadata getMetadata() = 0;
+    virtual std::vector<model::MotorModel> searchMotors(const SearchCriteria& c) = 0;
 };
 
 /**
@@ -80,8 +80,8 @@ public:
  */
 struct SearchResponse
 {
-   std::vector<model::MotorModel::MetaData> motors;
-   int matches{0}; ///< server-reported total; may exceed motors.size()
+    std::vector<model::MotorModel::MetaData> motors;
+    int matches{0}; ///< server-reported total; may exceed motors.size()
 };
 
 // Pure parsers over raw thrustcurve.org response bodies, split out from the
@@ -97,24 +97,24 @@ parseDownloadResponse(const std::string& json);
 
 /// @brief Production thrustcurve.org HTTP client used by MotorModelDatabase.
 class ThrustCurveClient
-   : public ThrustCurveAPI
+    : public ThrustCurveAPI
 {
 public:
-   ThrustCurveClient();
-   ~ThrustCurveClient();
+    ThrustCurveClient();
+    ~ThrustCurveClient();
 
-   ThrustcurveMetadata getMetadata() override;
+    ThrustcurveMetadata getMetadata() override;
 
-   std::vector<model::MotorModel> searchMotors(const SearchCriteria& c) override;
+    std::vector<model::MotorModel> searchMotors(const SearchCriteria& c) override;
 
 
 
 private:
 
-   const std::string hostname;
-   utils::CurlConnection curlConnection;
+    const std::string hostname;
+    utils::CurlConnection curlConnection;
 
-   std::optional<ThrustCurve> getThrustCurve(const std::string& id);
+    std::optional<ThrustCurve> getThrustCurve(const std::string& id);
 };
 
 } // namespace model

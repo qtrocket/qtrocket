@@ -11,14 +11,14 @@ namespace sim {
 class ConstantGravityModel : public GravityModel
 {
 public:
-   ConstantGravityModel() {}
+    ConstantGravityModel() {}
 
-   virtual ~ConstantGravityModel() {}
+    virtual ~ConstantGravityModel() {}
 
-   Vector3 getAccel(double, double, double) override
-   {
-      return Vector3(0.0, 0.0, -utils::math::Constants::g0);
-   }
+    Vector3 getAccel(double, double, double) override
+    {
+        return Vector3(0.0, 0.0, -utils::math::Constants::g0);
+    }
 };
 
 } // namespace sim

@@ -20,9 +20,9 @@ namespace math
 template<typename T>
 bool floatingPointEqual(T a, T b, int ulp = 4)
 {
-   return std::fabs(a - b) <= std::numeric_limits<T>::epsilon() * std::fabs(a + b) * ulp
-       // unless the result is subnormal
-       || std::fabs(a - b) < std::numeric_limits<T>::min();
+    return std::fabs(a - b) <= std::numeric_limits<T>::epsilon() * std::fabs(a + b) * ulp
+         // unless the result is subnormal
+         || std::fabs(a - b) < std::numeric_limits<T>::min();
 }
 
 } // namespace math

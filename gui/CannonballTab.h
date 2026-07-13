@@ -20,36 +20,36 @@ QT_END_NAMESPACE
 ///        selection (RSE/RASP import, thrustcurve.org, motor-database load), and launch.
 class CannonballTab : public QWidget
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   explicit CannonballTab(QtRocket* qtRocket, QWidget* parent = nullptr);
-   ~CannonballTab();
+    explicit CannonballTab(QtRocket* qtRocket, QWidget* parent = nullptr);
+    ~CannonballTab();
 
 private slots:
 
-   void onButton_calculateTrajectory_clicked();
+    void onButton_calculateTrajectory_clicked();
 
-   void onButton_loadRSE_button_clicked();
+    void onButton_loadRSE_button_clicked();
 
-   void onButton_getTCMotorData_clicked();
+    void onButton_getTCMotorData_clicked();
 
-   void onButton_loadMotorDatabase_clicked();
+    void onButton_loadMotorDatabase_clicked();
 
-   void onButton_saveMotorDatabase_clicked();
+    void onButton_saveMotorDatabase_clicked();
 
-   void onButton_setMotor_clicked();
+    void onButton_setMotor_clicked();
 
 private:
-   /// Rebuild the engine selector combo from the motor database (the single source of truth).
-   void populateEngineSelectorFromDatabase();
+    /// Rebuild the engine selector combo from the motor database (the single source of truth).
+    void populateEngineSelectorFromDatabase();
 
-   /// Enable "Calculate Trajectory" iff a motor is set; call after any motor-selection path so they
-   /// share one rule rather than each toggling the button.
-   void refreshCalculateTrajectoryEnabled();
+    /// Enable "Calculate Trajectory" iff a motor is set; call after any motor-selection path so they
+    /// share one rule rather than each toggling the button.
+    void refreshCalculateTrajectoryEnabled();
 
-   Ui::CannonballTab* ui;
-   QtRocket* qtRocket;
+    Ui::CannonballTab* ui;
+    QtRocket* qtRocket;
 };
 
 #endif // GUI_CANNONBALLTAB_H

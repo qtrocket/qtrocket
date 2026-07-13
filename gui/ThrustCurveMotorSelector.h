@@ -20,21 +20,21 @@ class ThrustCurveMotorSelector;
 /// @brief Dialog for searching and selecting a motor from thrustcurve.org.
 class ThrustCurveMotorSelector : public QDialog
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   explicit ThrustCurveMotorSelector(QWidget *parent = nullptr);
-   ~ThrustCurveMotorSelector();
+    explicit ThrustCurveMotorSelector(QWidget *parent = nullptr);
+    ~ThrustCurveMotorSelector();
 
 private slots:
-   void onButton_getMetadata_clicked();
+    void onButton_getMetadata_clicked();
 
-   void onButton_searchButton_clicked();
+    void onButton_searchButton_clicked();
 
-   void onButton_setMotor_clicked();
+    void onButton_setMotor_clicked();
 
-   private:
-   Ui::ThrustCurveMotorSelector *ui;
+    private:
+    Ui::ThrustCurveMotorSelector *ui;
 };
 
 #endif // THRUSTCURVEMOTORSELECTOR_H

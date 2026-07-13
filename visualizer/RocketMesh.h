@@ -21,8 +21,8 @@ namespace viz
  */
 struct Vertex
 {
-   float px{0.0F}, py{0.0F}, pz{0.0F}; ///< position (m)
-   float nx{0.0F}, ny{0.0F}, nz{0.0F}; ///< unit normal
+    float px{0.0F}, py{0.0F}, pz{0.0F}; ///< position (m)
+    float nx{0.0F}, ny{0.0F}, nz{0.0F}; ///< unit normal
 };
 
 /**
@@ -31,11 +31,11 @@ struct Vertex
  */
 struct Mesh
 {
-   std::vector<Vertex>       vertices;
-   std::vector<unsigned int> indices;
+    std::vector<Vertex>       vertices;
+    std::vector<unsigned int> indices;
 
-   /// @brief Append @p other into this mesh, rebasing its indices by the current vertex count.
-   void append(const Mesh& other);
+    /// @brief Append @p other into this mesh, rebasing its indices by the current vertex count.
+    void append(const Mesh& other);
 };
 
 /// @brief One renderable rocket component: its positioned geometry plus the tags the renderer uses
@@ -43,14 +43,14 @@ struct Mesh
 ///        resolved pose (see buildRocketMeshes), so the renderer needs only one shared transform.
 struct RenderItem
 {
-   Mesh    mesh;
-   QString typeName; ///< Part::typeName() -- the ColorScheme lookup key
-   QString name;     ///< Part::getName() -- for UI / picking / tooltips
+    Mesh    mesh;
+    QString typeName; ///< Part::typeName() -- the ColorScheme lookup key
+    QString name;     ///< Part::getName() -- for UI / picking / tooltips
 
-   /// An overlap offender per the diagnostics sweep: the renderer overrides its type color with an
-   /// error color; @ref overlapMessage carries the located reason for a tooltip / status line.
-   bool    overlapOffender{false};
-   QString overlapMessage; ///< located diagnostic for this offender (empty when not an offender)
+    /// An overlap offender per the diagnostics sweep: the renderer overrides its type color with an
+    /// error color; @ref overlapMessage carries the located reason for a tooltip / status line.
+    bool    overlapOffender{false};
+    QString overlapMessage; ///< located diagnostic for this offender (empty when not an offender)
 };
 
 /**
@@ -58,12 +58,12 @@ struct RenderItem
  */
 struct Bounds
 {
-   QVector3D min;
-   QVector3D max;
-   bool      valid{false}; ///< false when computed over an empty geometry set
+    QVector3D min;
+    QVector3D max;
+    bool      valid{false}; ///< false when computed over an empty geometry set
 
-   QVector3D center() const { return (min + max) * 0.5F; }
-   float     radius() const { return valid ? (max - min).length() * 0.5F : 1.0F; } ///< half-diagonal
+    QVector3D center() const { return (min + max) * 0.5F; }
+    float     radius() const { return valid ? (max - min).length() * 0.5F : 1.0F; } ///< half-diagonal
 };
 
 // ---- Primitive builders -----------------------------------------------------------------------

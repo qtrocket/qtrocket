@@ -44,74 +44,74 @@ constexpr double DEG_PER_RAD = 57.2958; // matches gui/MainWindow.cpp & cli/Repl
 class PhysicsIntegrationTest : public ::testing::Test
 {
 protected:
-   void SetUp() override
-   {
-      // Keep the singleton logger quiet (its level is otherwise uninitialized).
-      utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
+    void SetUp() override
+    {
+        // Keep the singleton logger quiet (its level is otherwise uninitialized).
+        utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
 
-      qtRocket = QtRocket::getInstance();
+        qtRocket = QtRocket::getInstance();
 
-      // Load the bundled motor DB (absolute path injected by CMake) and arm a
-      // known motor + airframe. The loader is a pure parser; we pull the motor
-      // from it directly via getMotorModelByName.
-      loader = std::make_unique<model::RSEDatabaseLoader>(
-         std::string(QTROCKET_DATA_DIR) + "/Aerotech.rse");
+        // Load the bundled motor DB (absolute path injected by CMake) and arm a
+        // known motor + airframe. The loader is a pure parser; we pull the motor
+        // from it directly via getMotorModelByName.
+        loader = std::make_unique<model::RSEDatabaseLoader>(
+            std::string(QTROCKET_DATA_DIR) + "/Aerotech.rse");
 
-      auto rocket = qtRocket->getRocket();
-      rocket->setMotorModel(loader->getMotorModelByName("G80T"));
-      rocket->setMass(0.5);               // kg structural (dry)
-      rocket->setDragCoefficient(0.75);
-      rocket->setReferenceArea(0.001134); // m^2 (38 mm body tube)
-   }
+        auto rocket = qtRocket->getRocket();
+        rocket->setMotorModel(loader->getMotorModelByName("G80T"));
+        rocket->setMass(0.5);               // kg structural (dry)
+        rocket->setDragCoefficient(0.75);
+        rocket->setReferenceArea(0.001134); // m^2 (38 mm body tube)
+    }
 
-   struct FlightResult
-   {
-      std::size_t steps{0};
-      double tFinal{0.0};
-      double apogee{0.0};
-      double downrange{0.0}; // max horizontal (X) distance reached
-      double finalZ{0.0};    // altitude of the final (impact) sample
-      bool intervalsMatchDt{true};
-   };
+    struct FlightResult
+    {
+        std::size_t steps{0};
+        double tFinal{0.0};
+        double apogee{0.0};
+        double downrange{0.0}; // max horizontal (X) distance reached
+        double finalZ{0.0};    // altitude of the final (impact) sample
+        bool intervalsMatchDt{true};
+    };
 
-   // Runs one flight at the given timestep and (speed, angle-from-vertical) under
-   // the named integrator. Angle is measured from vertical (0 = straight up,
-   // 90 = horizontal), matching the GUI/CLI convention, so Z is the cosine and
-   // downrange X is the sine. The integrator is set on every call (defaulting to
-   // RK4) so a test that selects RKF45 can't leak that choice into later tests via
-   // the shared QtRocket singleton.
-   FlightResult runFlight(double dt, double speed, double angleDeg,
-                          const std::string& integrator = "Runge-Kutta 4th Order")
-   {
-      const double rad = angleDeg / DEG_PER_RAD;
-      StateData initial;
-      initial.position = {0.0, 0.0, 0.0};
-      initial.velocity = {speed * std::sin(rad), 0.0, speed * std::cos(rad)};
-      qtRocket->setInitialState(initial);
-      qtRocket->setIntegratorModel(integrator);
-      qtRocket->setTimeStep(dt);
-      qtRocket->launchRocket();
+    // Runs one flight at the given timestep and (speed, angle-from-vertical) under
+    // the named integrator. Angle is measured from vertical (0 = straight up,
+    // 90 = horizontal), matching the GUI/CLI convention, so Z is the cosine and
+    // downrange X is the sine. The integrator is set on every call (defaulting to
+    // RK4) so a test that selects RKF45 can't leak that choice into later tests via
+    // the shared QtRocket singleton.
+    FlightResult runFlight(double dt, double speed, double angleDeg,
+                                   const std::string& integrator = "Runge-Kutta 4th Order")
+    {
+        const double rad = angleDeg / DEG_PER_RAD;
+        StateData initial;
+        initial.position = {0.0, 0.0, 0.0};
+        initial.velocity = {speed * std::sin(rad), 0.0, speed * std::cos(rad)};
+        qtRocket->setInitialState(initial);
+        qtRocket->setIntegratorModel(integrator);
+        qtRocket->setTimeStep(dt);
+        qtRocket->launchRocket();
 
-      const auto& states = qtRocket->getStates();
-      FlightResult r;
-      r.steps = states.size();
-      if(states.empty())
-         return r;
-      r.tFinal = states.back().first;
-      r.finalZ = states.back().second.position[2];
-      r.apogee = states.front().second.position[2];
-      for(std::size_t i = 0; i < states.size(); ++i)
-      {
-         r.apogee = std::max(r.apogee, states[i].second.position[2]);
-         r.downrange = std::max(r.downrange, std::abs(states[i].second.position[0]));
-         if(i > 0 && std::abs((states[i].first - states[i - 1].first) - dt) > 1e-9)
-            r.intervalsMatchDt = false;
-      }
-      return r;
-   }
+        const auto& states = qtRocket->getStates();
+        FlightResult r;
+        r.steps = states.size();
+        if(states.empty())
+            return r;
+        r.tFinal = states.back().first;
+        r.finalZ = states.back().second.position[2];
+        r.apogee = states.front().second.position[2];
+        for(std::size_t i = 0; i < states.size(); ++i)
+        {
+            r.apogee = std::max(r.apogee, states[i].second.position[2]);
+            r.downrange = std::max(r.downrange, std::abs(states[i].second.position[0]));
+            if(i > 0 && std::abs((states[i].first - states[i - 1].first) - dt) > 1e-9)
+                r.intervalsMatchDt = false;
+        }
+        return r;
+    }
 
-   QtRocket* qtRocket{nullptr};
-   std::unique_ptr<model::RSEDatabaseLoader> loader;
+    QtRocket* qtRocket{nullptr};
+    std::unique_ptr<model::RSEDatabaseLoader> loader;
 };
 
 // The bug that started this effort: Propagator::setTimeStep must reach the RK4
@@ -121,24 +121,24 @@ protected:
 // time scaled with dt, so both the ratio and tFinal checks below would fail.
 TEST_F(PhysicsIntegrationTest, TimestepReachesIntegratorUnderVacuum)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
 
-   const FlightResult coarse = runFlight(0.04, 0.0, 0.0);
-   const FlightResult mid    = runFlight(0.02, 0.0, 0.0);
-   const FlightResult fine   = runFlight(0.01, 0.0, 0.0);
+    const FlightResult coarse = runFlight(0.04, 0.0, 0.0);
+    const FlightResult mid    = runFlight(0.02, 0.0, 0.0);
+    const FlightResult fine   = runFlight(0.01, 0.0, 0.0);
 
-   // Recorded samples are spaced exactly one timestep apart.
-   EXPECT_TRUE(coarse.intervalsMatchDt);
-   EXPECT_TRUE(mid.intervalsMatchDt);
-   EXPECT_TRUE(fine.intervalsMatchDt);
+    // Recorded samples are spaced exactly one timestep apart.
+    EXPECT_TRUE(coarse.intervalsMatchDt);
+    EXPECT_TRUE(mid.intervalsMatchDt);
+    EXPECT_TRUE(fine.intervalsMatchDt);
 
-   // Flight time is ~independent of dt (within discretization error).
-   EXPECT_NEAR(coarse.tFinal, fine.tFinal, 0.05 * fine.tFinal);
-   EXPECT_NEAR(mid.tFinal,    fine.tFinal, 0.05 * fine.tFinal);
+    // Flight time is ~independent of dt (within discretization error).
+    EXPECT_NEAR(coarse.tFinal, fine.tFinal, 0.05 * fine.tFinal);
+    EXPECT_NEAR(mid.tFinal,    fine.tFinal, 0.05 * fine.tFinal);
 
-   // Step count scales ~1/dt: halving dt ~doubles the steps.
-   EXPECT_NEAR(static_cast<double>(mid.steps) / static_cast<double>(coarse.steps), 2.0, 0.2);
-   EXPECT_NEAR(static_cast<double>(fine.steps) / static_cast<double>(mid.steps), 2.0, 0.2);
+    // Step count scales ~1/dt: halving dt ~doubles the steps.
+    EXPECT_NEAR(static_cast<double>(mid.steps) / static_cast<double>(coarse.steps), 2.0, 0.2);
+    EXPECT_NEAR(static_cast<double>(fine.steps) / static_cast<double>(mid.steps), 2.0, 0.2);
 }
 
 // Regression for the RKF45 adaptive integrator under Vacuum, covering both fixes:
@@ -155,24 +155,24 @@ TEST_F(PhysicsIntegrationTest, TimestepReachesIntegratorUnderVacuum)
 // for (drag would mask (b) by dissipating the carried-forward velocity error during coast).
 TEST_F(PhysicsIntegrationTest, AdaptiveIntegratorMatchesRK4UnderVacuum)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
 
-   const FlightResult rk4   = runFlight(0.01, 0.0, 0.0, "Runge-Kutta 4th Order");
-   const FlightResult rkf45 = runFlight(0.01, 0.0, 0.0, "Runge-Kutta-Fehlberg");
+    const FlightResult rk4   = runFlight(0.01, 0.0, 0.0, "Runge-Kutta 4th Order");
+    const FlightResult rkf45 = runFlight(0.01, 0.0, 0.0, "Runge-Kutta-Fehlberg");
 
-   // (a) Did not run away: many steps (not the 6-8 of the runaway), but still far fewer than
-   // the fixed-step baseline -- the adaptive efficiency win (G80T: ~530 vs ~4050 steps).
-   ASSERT_GT(rkf45.steps, 20u);
-   EXPECT_LT(rkf45.steps, rk4.steps);
+    // (a) Did not run away: many steps (not the 6-8 of the runaway), but still far fewer than
+    // the fixed-step baseline -- the adaptive efficiency win (G80T: ~530 vs ~4050 steps).
+    ASSERT_GT(rkf45.steps, 20u);
+    EXPECT_LT(rkf45.steps, rk4.steps);
 
-   // Lands near the ground instead of megameters below it (the cap bounds the final overshoot).
-   EXPECT_NEAR(rkf45.finalZ, 0.0, 20.0);
+    // Lands near the ground instead of megameters below it (the cap bounds the final overshoot).
+    EXPECT_NEAR(rkf45.finalZ, 0.0, 20.0);
 
-   // (b) Apogee now matches the RK4 baseline to well under 1% (G80T: ~0.05%). The 2% tolerance
-   // leaves margin for platform floating-point variation while still catching a regression of
-   // the frozen-thrust error, which was ~8% here before the node-time fix.
-   EXPECT_GT(rkf45.apogee, 0.0);
-   EXPECT_NEAR(rkf45.apogee, rk4.apogee, 0.02 * rk4.apogee);
+    // (b) Apogee now matches the RK4 baseline to well under 1% (G80T: ~0.05%). The 2% tolerance
+    // leaves margin for platform floating-point variation while still catching a regression of
+    // the frozen-thrust error, which was ~8% here before the node-time fix.
+    EXPECT_GT(rkf45.apogee, 0.0);
+    EXPECT_NEAR(rkf45.apogee, rk4.apogee, 0.02 * rk4.apogee);
 }
 
 // Launch angle convention ([H1]): the angle is measured from vertical, so 0 deg
@@ -181,19 +181,19 @@ TEST_F(PhysicsIntegrationTest, AdaptiveIntegratorMatchesRK4UnderVacuum)
 // GUI and CLI. Run under Vacuum so the launch velocity isn't bled off by drag.
 TEST_F(PhysicsIntegrationTest, LaunchAngleFromVerticalProducesDownrange)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
 
-   const double speed = 30.0; // m/s initial velocity
-   const FlightResult straightUp = runFlight(0.01, speed, 0.0);  // 0 deg from vertical
-   const FlightResult tilted     = runFlight(0.01, speed, 45.0); // 45 deg from vertical
+    const double speed = 30.0; // m/s initial velocity
+    const FlightResult straightUp = runFlight(0.01, speed, 0.0);  // 0 deg from vertical
+    const FlightResult tilted     = runFlight(0.01, speed, 45.0); // 45 deg from vertical
 
-   // Straight up stays on the launch axis: ~no downrange, highest apogee.
-   EXPECT_NEAR(straightUp.downrange, 0.0, 1e-6);
+    // Straight up stays on the launch axis: ~no downrange, highest apogee.
+    EXPECT_NEAR(straightUp.downrange, 0.0, 1e-6);
 
-   // Tilting trades altitude for downrange: the rocket travels horizontally...
-   EXPECT_GT(tilted.downrange, 1.0);
-   // ...and doesn't climb as high as a purely vertical launch.
-   EXPECT_LT(tilted.apogee, straightUp.apogee);
+    // Tilting trades altitude for downrange: the rocket travels horizontally...
+    EXPECT_GT(tilted.downrange, 1.0);
+    // ...and doesn't climb as high as a purely vertical launch.
+    EXPECT_LT(tilted.apogee, straightUp.apogee);
 }
 
 // Guard for the timestep-0 hang ([H2]): a non-positive dt must be rejected by
@@ -203,39 +203,39 @@ TEST_F(PhysicsIntegrationTest, LaunchAngleFromVerticalProducesDownrange)
 // leave the flight identical to the last valid step rather than hang.
 TEST_F(PhysicsIntegrationTest, NonPositiveTimestepIsRejectedAndDoesNotHang)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
 
-   // Baseline flight at a known-good step.
-   const FlightResult good = runFlight(0.02, 0.0, 0.0);
-   ASSERT_GT(good.steps, 0u);
+    // Baseline flight at a known-good step.
+    const FlightResult good = runFlight(0.02, 0.0, 0.0);
+    ASSERT_GT(good.steps, 0u);
 
-   // dt = 0 must be ignored: the prior 0.02 s step is retained, so this flight
-   // terminates and matches the baseline (rather than spinning forever).
-   const FlightResult afterZero = runFlight(0.0, 0.0, 0.0);
-   EXPECT_EQ(afterZero.steps, good.steps);
-   EXPECT_NEAR(afterZero.tFinal, good.tFinal, 1e-9);
-   EXPECT_NEAR(afterZero.apogee, good.apogee, 1e-9);
+    // dt = 0 must be ignored: the prior 0.02 s step is retained, so this flight
+    // terminates and matches the baseline (rather than spinning forever).
+    const FlightResult afterZero = runFlight(0.0, 0.0, 0.0);
+    EXPECT_EQ(afterZero.steps, good.steps);
+    EXPECT_NEAR(afterZero.tFinal, good.tFinal, 1e-9);
+    EXPECT_NEAR(afterZero.apogee, good.apogee, 1e-9);
 
-   // A negative dt is likewise rejected, again leaving the 0.02 s step in force.
-   const FlightResult afterNegative = runFlight(-1.0, 0.0, 0.0);
-   EXPECT_EQ(afterNegative.steps, good.steps);
-   EXPECT_NEAR(afterNegative.tFinal, good.tFinal, 1e-9);
+    // A negative dt is likewise rejected, again leaving the 0.02 s step in force.
+    const FlightResult afterNegative = runFlight(-1.0, 0.0, 0.0);
+    EXPECT_EQ(afterNegative.steps, good.steps);
+    EXPECT_NEAR(afterNegative.tFinal, good.tFinal, 1e-9);
 }
 
 // Drag must cost altitude: the same flight reaches far lower with a real
 // atmosphere than in vacuum.
 TEST_F(PhysicsIntegrationTest, DragReducesApogeeVersusVacuum)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
-   const double vacApogee = runFlight(0.01, 0.0, 0.0).apogee;
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    const double vacApogee = runFlight(0.01, 0.0, 0.0).apogee;
 
-   qtRocket->getEnvironment()->setAtmosphereModel("Constant Atmosphere");
-   const double dragApogee = runFlight(0.01, 0.0, 0.0).apogee;
+    qtRocket->getEnvironment()->setAtmosphereModel("Constant Atmosphere");
+    const double dragApogee = runFlight(0.01, 0.0, 0.0).apogee;
 
-   EXPECT_GT(vacApogee, 0.0);
-   EXPECT_GT(dragApogee, 0.0);
-   EXPECT_LT(dragApogee, vacApogee);        // drag costs altitude
-   EXPECT_LT(dragApogee, 0.75 * vacApogee); // and the effect is substantial
+    EXPECT_GT(vacApogee, 0.0);
+    EXPECT_GT(dragApogee, 0.0);
+    EXPECT_LT(dragApogee, vacApogee);        // drag costs altitude
+    EXPECT_LT(dragApogee, 0.75 * vacApogee); // and the effect is substantial
 }
 
 // Terminal-velocity force balance: at v_t = sqrt(2 m g / (rho Cd A)) the drag
@@ -245,33 +245,33 @@ TEST_F(PhysicsIntegrationTest, DragReducesApogeeVersusVacuum)
 // hard-coding any physical constant.
 TEST_F(PhysicsIntegrationTest, TerminalVelocityForceBalance)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Constant Atmosphere");
-   auto rocket = qtRocket->getRocket();
-   rocket->launch(); // ignite so getMass() returns the burned-out mass at large t
+    qtRocket->getEnvironment()->setAtmosphereModel("Constant Atmosphere");
+    auto rocket = qtRocket->getRocket();
+    rocket->launch(); // ignite so getMass() returns the burned-out mass at large t
 
-   const double t = 100.0; // well past burnout: thrust = 0
-   auto env = qtRocket->getEnvironment();
-   const Vector3 highUp{0.0, 0.0, 500.0};
-   const double rho = env->getAtmosphericModel()->getDensity(highUp[2]);
-   const double g   = -env->getGravityModel()->getAccel(highUp)[2];
-   const double Cd  = rocket->getDragCoefficient();
-   const double A   = rocket->getReferenceArea();
-   const double m   = rocket->getMass(t);
-   ASSERT_GT(rho, 0.0);
-   ASSERT_GT(m, 0.0);
-   const double vt = std::sqrt(2.0 * m * g / (rho * Cd * A));
+    const double t = 100.0; // well past burnout: thrust = 0
+    auto env = qtRocket->getEnvironment();
+    const Vector3 highUp{0.0, 0.0, 500.0};
+    const double rho = env->getAtmosphericModel()->getDensity(highUp[2]);
+    const double g   = -env->getGravityModel()->getAccel(highUp)[2];
+    const double Cd  = rocket->getDragCoefficient();
+    const double A   = rocket->getReferenceArea();
+    const double m   = rocket->getMass(t);
+    ASSERT_GT(rho, 0.0);
+    ASSERT_GT(m, 0.0);
+    const double vt = std::sqrt(2.0 * m * g / (rho * Cd * A));
 
-   // Descending at v_t: drag (up) cancels gravity (down) -> net ~ 0.
-   const Vector3 atVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -vt}, *env);
-   EXPECT_NEAR(atVt[2], 0.0, 1e-6);
+    // Descending at v_t: drag (up) cancels gravity (down) -> net ~ 0.
+    const Vector3 atVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -vt}, *env);
+    EXPECT_NEAR(atVt[2], 0.0, 1e-6);
 
-   // Slower than v_t: still accelerating downward (net force down).
-   const Vector3 belowVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -0.5 * vt}, *env);
-   EXPECT_LT(belowVt[2], 0.0);
+    // Slower than v_t: still accelerating downward (net force down).
+    const Vector3 belowVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -0.5 * vt}, *env);
+    EXPECT_LT(belowVt[2], 0.0);
 
-   // Faster than v_t: drag dominates (net force up).
-   const Vector3 aboveVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -2.0 * vt}, *env);
-   EXPECT_GT(aboveVt[2], 0.0);
+    // Faster than v_t: drag dominates (net force up).
+    const Vector3 aboveVt = rocket->getForces(t, highUp, Vector3{0.0, 0.0, -2.0 * vt}, *env);
+    EXPECT_GT(aboveVt[2], 0.0);
 }
 
 // Regression guard for the altitude-clamp fix: the altitude-dependent atmosphere
@@ -279,10 +279,10 @@ TEST_F(PhysicsIntegrationTest, TerminalVelocityForceBalance)
 // the clamp this aborted with std::out_of_range from USStandardAtmosphere's Bin.
 TEST_F(PhysicsIntegrationTest, USStandardAtmosphereCompletesWithoutCrash)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("US Standard 1976");
-   const FlightResult r = runFlight(0.01, 0.0, 0.0);
-   EXPECT_GT(r.steps, 0u);
-   EXPECT_GT(r.apogee, 0.0);
+    qtRocket->getEnvironment()->setAtmosphereModel("US Standard 1976");
+    const FlightResult r = runFlight(0.01, 0.0, 0.0);
+    EXPECT_GT(r.steps, 0u);
+    EXPECT_GT(r.apogee, 0.0);
 }
 
 // The trajectory statistics tracked live during the run (and surfaced through QtRocket) must
@@ -291,15 +291,15 @@ TEST_F(PhysicsIntegrationTest, USStandardAtmosphereCompletesWithoutCrash)
 // Propagatable into QtRocket's accessors.
 TEST_F(PhysicsIntegrationTest, TrajectoryStatisticsMatchSeriesAndReportNominal)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
-   const FlightResult r = runFlight(0.01, 0.0, 0.0);
-   ASSERT_GT(r.steps, 0u);
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    const FlightResult r = runFlight(0.01, 0.0, 0.0);
+    ASSERT_GT(r.steps, 0u);
 
-   const sim::TrajectoryStatistics& stats = qtRocket->getTrajectoryStatistics();
-   // Same samples and the same strict-max rule -> exact agreement with the post-hoc summary.
-   EXPECT_NEAR(stats.maxAltitude, r.apogee, 1e-9);
-   EXPECT_NEAR(stats.totalFlightTime, r.tFinal, 1e-9);
-   EXPECT_EQ(qtRocket->getTerminationReason(), sim::Propagator::TerminationReason::Nominal);
+    const sim::TrajectoryStatistics& stats = qtRocket->getTrajectoryStatistics();
+    // Same samples and the same strict-max rule -> exact agreement with the post-hoc summary.
+    EXPECT_NEAR(stats.maxAltitude, r.apogee, 1e-9);
+    EXPECT_NEAR(stats.totalFlightTime, r.tFinal, 1e-9);
+    EXPECT_EQ(qtRocket->getTerminationReason(), sim::Propagator::TerminationReason::Nominal);
 }
 
 // Spherical gravity must now fly cleanly end-to-end. The old SphericalGravityModel divided by
@@ -309,26 +309,26 @@ TEST_F(PhysicsIntegrationTest, TrajectoryStatisticsMatchSeriesAndReportNominal)
 // g ~ 9.82 m/s^2 near the surface vs the constant model's 9.80665).
 TEST_F(PhysicsIntegrationTest, SphericalGravityFliesNominallyNearConstantGravity)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
 
-   qtRocket->getEnvironment()->setGravityModel("Constant Gravity");
-   const FlightResult constG = runFlight(0.01, 0.0, 0.0);
+    qtRocket->getEnvironment()->setGravityModel("Constant Gravity");
+    const FlightResult constG = runFlight(0.01, 0.0, 0.0);
 
-   qtRocket->getEnvironment()->setGravityModel("Spherical Gravity");
-   const FlightResult sphG = runFlight(0.01, 0.0, 0.0);
-   const auto sphTermination = qtRocket->getTerminationReason();
+    qtRocket->getEnvironment()->setGravityModel("Spherical Gravity");
+    const FlightResult sphG = runFlight(0.01, 0.0, 0.0);
+    const auto sphTermination = qtRocket->getTerminationReason();
 
-   // Restore the default gravity model BEFORE asserting so a failure here can't leak the
-   // Spherical selection into the other tests that rely on the default Constant Gravity.
-   qtRocket->getEnvironment()->setGravityModel("Constant Gravity");
+    // Restore the default gravity model BEFORE asserting so a failure here can't leak the
+    // Spherical selection into the other tests that rely on the default Constant Gravity.
+    qtRocket->getEnvironment()->setGravityModel("Constant Gravity");
 
-   ASSERT_GT(constG.steps, 0u);
-   ASSERT_GT(sphG.steps, 0u);
-   EXPECT_EQ(sphTermination, sim::Propagator::TerminationReason::Nominal); // no NaN abort
-   EXPECT_GT(sphG.apogee, 0.0);
-   EXPECT_TRUE(std::isfinite(sphG.apogee));
-   EXPECT_TRUE(std::isfinite(sphG.tFinal));
-   EXPECT_NEAR(sphG.apogee, constG.apogee, 0.05 * constG.apogee); // within a few percent
+    ASSERT_GT(constG.steps, 0u);
+    ASSERT_GT(sphG.steps, 0u);
+    EXPECT_EQ(sphTermination, sim::Propagator::TerminationReason::Nominal); // no NaN abort
+    EXPECT_GT(sphG.apogee, 0.0);
+    EXPECT_TRUE(std::isfinite(sphG.apogee));
+    EXPECT_TRUE(std::isfinite(sphG.tFinal));
+    EXPECT_NEAR(sphG.apogee, constG.apogee, 0.05 * constG.apogee); // within a few percent
 }
 
 // P1: the motor now lives in the part tree, so getMass(t) is the composite (dry airframe + motor(t))
@@ -336,18 +336,18 @@ TEST_F(PhysicsIntegrationTest, SphericalGravityFliesNominallyNearConstantGravity
 // mass falls to the empty casing after burnout.
 TEST_F(PhysicsIntegrationTest, RocketMassEqualsDryPlusMotorNoDoubleCount)
 {
-   auto rocket = qtRocket->getRocket();
-   const model::MotorModel g80 = loader->getMotorModelByName("G80T");
-   const double dry    = 0.5;                                        // setMass(0.5) in SetUp
-   const double loaded = g80.getMass(0.0);                           // pre-ignition total weight
-   const double empty  = g80.data.totalWeight - g80.data.propWeight; // casing mass
+    auto rocket = qtRocket->getRocket();
+    const model::MotorModel g80 = loader->getMotorModelByName("G80T");
+    const double dry    = 0.5;                                        // setMass(0.5) in SetUp
+    const double loaded = g80.getMass(0.0);                           // pre-ignition total weight
+    const double empty  = g80.data.totalWeight - g80.data.propWeight; // casing mass
 
-   // Before ignition: composite = dry airframe + loaded motor (no double-count).
-   EXPECT_NEAR(rocket->getMass(0.0), dry + loaded, 1e-9);
+    // Before ignition: composite = dry airframe + loaded motor (no double-count).
+    EXPECT_NEAR(rocket->getMass(0.0), dry + loaded, 1e-9);
 
-   rocket->launch(); // ignite the rocket's motor at t = 0
-   // Well past burnout: composite = dry airframe + empty casing.
-   EXPECT_NEAR(rocket->getMass(100.0), dry + empty, 1e-6);
+    rocket->launch(); // ignite the rocket's motor at t = 0
+    // Well past burnout: composite = dry airframe + empty casing.
+    EXPECT_NEAR(rocket->getMass(100.0), dry + empty, 1e-6);
 }
 
 // P1: the composite mass/CG/inertia are recorded into each StateData sample (the Propagatable hook),
@@ -355,25 +355,25 @@ TEST_F(PhysicsIntegrationTest, RocketMassEqualsDryPlusMotorNoDoubleCount)
 // inertia and mass shrink during the burn, then hold constant after burnout.
 TEST_F(PhysicsIntegrationTest, RecordedInertiaShrinksDuringBurnThenFlattens)
 {
-   qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
-   const FlightResult r = runFlight(0.01, 0.0, 0.0);
-   ASSERT_GT(r.steps, 2u);
-   const auto& states = qtRocket->getStates();
+    qtRocket->getEnvironment()->setAtmosphereModel("Vacuum");
+    const FlightResult r = runFlight(0.01, 0.0, 0.0);
+    ASSERT_GT(r.steps, 2u);
+    const auto& states = qtRocket->getStates();
 
-   const double m0     = states.front().second.mass;
-   const double mEnd   = states.back().second.mass;
-   const double Ixx0   = states.front().second.inertia(0, 0);
-   const double IxxEnd = states.back().second.inertia(0, 0);
+    const double m0     = states.front().second.mass;
+    const double mEnd   = states.back().second.mass;
+    const double Ixx0   = states.front().second.inertia(0, 0);
+    const double IxxEnd = states.back().second.inertia(0, 0);
 
-   // Recorded mass properties are populated (not left at StateData's zero defaults).
-   EXPECT_GT(m0, 0.0);
-   EXPECT_GT(Ixx0, 0.0);
+    // Recorded mass properties are populated (not left at StateData's zero defaults).
+    EXPECT_GT(m0, 0.0);
+    EXPECT_GT(Ixx0, 0.0);
 
-   // Propellant burns off: composite mass and transverse inertia both shrink over the flight.
-   EXPECT_LT(mEnd, m0);
-   EXPECT_LT(IxxEnd, Ixx0);
+    // Propellant burns off: composite mass and transverse inertia both shrink over the flight.
+    EXPECT_LT(mEnd, m0);
+    EXPECT_LT(IxxEnd, Ixx0);
 
-   // After burnout the recorded inertia is frozen: the last two samples are identical.
-   const std::size_t n = states.size();
-   EXPECT_NEAR(states[n - 1].second.inertia(0, 0), states[n - 2].second.inertia(0, 0), 1e-12);
+    // After burnout the recorded inertia is frozen: the last two samples are identical.
+    const std::size_t n = states.size();
+    EXPECT_NEAR(states[n - 1].second.inertia(0, 0), states[n - 2].second.inertia(0, 0), 1e-12);
 }

@@ -29,61 +29,61 @@ double expectedG(double r) { return GM / (r * r); }
 // interface (the way Environment hands it to RocketModel::getForces).
 std::shared_ptr<sim::GravityModel> makeGravity()
 {
-   return std::make_shared<sim::SphericalGravityModel>(
-      std::make_shared<sim::SphericalGeoidModel>());
+    return std::make_shared<sim::SphericalGravityModel>(
+        std::make_shared<sim::SphericalGeoidModel>());
 }
 } // namespace
 
 // The spherical geoid returns the mean Earth radius regardless of latitude/longitude.
 TEST(SphericalGeoidModelTest, ReturnsMeanRadiusEverywhere)
 {
-   sim::SphericalGeoidModel geoid;
-   EXPECT_DOUBLE_EQ(geoid.getGroundLevel(0.0, 0.0), R);
-   EXPECT_DOUBLE_EQ(geoid.getGroundLevel(45.0, -90.0), R);
-   EXPECT_DOUBLE_EQ(geoid.getGroundLevel(-33.9, 151.2), R);
+    sim::SphericalGeoidModel geoid;
+    EXPECT_DOUBLE_EQ(geoid.getGroundLevel(0.0, 0.0), R);
+    EXPECT_DOUBLE_EQ(geoid.getGroundLevel(45.0, -90.0), R);
+    EXPECT_DOUBLE_EQ(geoid.getGroundLevel(-33.9, 151.2), R);
 }
 
 // F1 regression: at the pad (the local origin) the acceleration must be finite. The
 // previous model computed GM / r^3 with r = 0 -> NaN, which spun the propagator loop.
 TEST(SphericalGravityModelTest, FiniteAtLaunchOrigin)
 {
-   auto gravity = makeGravity();
-   const Vector3 a = gravity->getAccel(0.0, 0.0, 0.0);
-   EXPECT_TRUE(a.allFinite());
+    auto gravity = makeGravity();
+    const Vector3 a = gravity->getAccel(0.0, 0.0, 0.0);
+    EXPECT_TRUE(a.allFinite());
 }
 
 // At the pad gravity points straight down with magnitude GM / R^2 (~9.82 m/s^2).
 TEST(SphericalGravityModelTest, SurfaceGravityIsInverseSquareAtGroundRadius)
 {
-   auto gravity = makeGravity();
-   const Vector3 a = gravity->getAccel(0.0, 0.0, 0.0);
-   EXPECT_DOUBLE_EQ(a.x(), 0.0);
-   EXPECT_DOUBLE_EQ(a.y(), 0.0);
-   EXPECT_NEAR(a.z(), -expectedG(R), 1e-9); // -GM / R^2
-   EXPECT_NEAR(a.z(), -9.82, 1e-2);         // sanity: ~ -9.8 m/s^2
+    auto gravity = makeGravity();
+    const Vector3 a = gravity->getAccel(0.0, 0.0, 0.0);
+    EXPECT_DOUBLE_EQ(a.x(), 0.0);
+    EXPECT_DOUBLE_EQ(a.y(), 0.0);
+    EXPECT_NEAR(a.z(), -expectedG(R), 1e-9); // -GM / R^2
+    EXPECT_NEAR(a.z(), -9.82, 1e-2);         // sanity: ~ -9.8 m/s^2
 }
 
 // Gravity weakens with altitude and tracks GM / (R + z)^2 exactly.
 TEST(SphericalGravityModelTest, MagnitudeDecreasesWithAltitude)
 {
-   auto gravity = makeGravity();
-   const double z = 10000.0; // 10 km
-   const Vector3 ground = gravity->getAccel(0.0, 0.0, 0.0);
-   const Vector3 high   = gravity->getAccel(0.0, 0.0, z);
+    auto gravity = makeGravity();
+    const double z = 10000.0; // 10 km
+    const Vector3 ground = gravity->getAccel(0.0, 0.0, 0.0);
+    const Vector3 high   = gravity->getAccel(0.0, 0.0, z);
 
-   EXPECT_LT(high.norm(), ground.norm());
-   EXPECT_NEAR(high.z(), -expectedG(R + z), 1e-9);
-   EXPECT_DOUBLE_EQ(high.x(), 0.0);
-   EXPECT_DOUBLE_EQ(high.y(), 0.0);
+    EXPECT_LT(high.norm(), ground.norm());
+    EXPECT_NEAR(high.z(), -expectedG(R + z), 1e-9);
+    EXPECT_DOUBLE_EQ(high.x(), 0.0);
+    EXPECT_DOUBLE_EQ(high.y(), 0.0);
 }
 
 // Off the launch column the acceleration points back toward Earth's center: a small inward
 // horizontal component (toward x = 0) plus the dominant downward component.
 TEST(SphericalGravityModelTest, PointsTowardEarthCenter)
 {
-   auto gravity = makeGravity();
-   const Vector3 a = gravity->getAccel(1000.0, 0.0, 0.0); // 1 km downrange
-   EXPECT_LT(a.x(), 0.0); // pulled back toward the launch column
-   EXPECT_LT(a.z(), 0.0); // and downward
-   EXPECT_TRUE(a.allFinite());
+    auto gravity = makeGravity();
+    const Vector3 a = gravity->getAccel(1000.0, 0.0, 0.0); // 1 km downrange
+    EXPECT_LT(a.x(), 0.0); // pulled back toward the launch column
+    EXPECT_LT(a.z(), 0.0); // and downward
+    EXPECT_TRUE(a.allFinite());
 }

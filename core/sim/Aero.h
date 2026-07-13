@@ -31,9 +31,9 @@ namespace sim
  */
 struct AeroComponent
 {
-   double cnAlpha{0.0};      ///< normal-force-coeff slope (per rad), referenced to the shared refArea
-   double cnAlphaXcp{0.0};   ///< cnAlpha * x_cp (axial CP station from the part's CM, m) -- the weighted moment
-   double cd{0.0};           ///< this part's drag-coeff contribution, already normalized to refArea
+    double cnAlpha{0.0};      ///< normal-force-coeff slope (per rad), referenced to the shared refArea
+    double cnAlphaXcp{0.0};   ///< cnAlpha * x_cp (axial CP station from the part's CM, m) -- the weighted moment
+    double cd{0.0};           ///< this part's drag-coeff contribution, already normalized to refArea
 };
 
 /**
@@ -42,22 +42,22 @@ struct AeroComponent
  */
 struct AeroProfile
 {
-   double cnAlpha{0.0};
-   double cnAlphaXcp{0.0};
-   double cd{0.0};
-   double refArea{0.0};
-   bool   cpValid{false};      ///< false when cnAlpha == 0 (CP undefined; e.g. body tube only)
+    double cnAlpha{0.0};
+    double cnAlphaXcp{0.0};
+    double cd{0.0};
+    double refArea{0.0};
+    bool   cpValid{false};      ///< false when cnAlpha == 0 (CP undefined; e.g. body tube only)
 
-   double cp() const { return cpValid ? cnAlphaXcp / cnAlpha : 0.0; } ///< axial CP from the root CM (m)
+    double cp() const { return cpValid ? cnAlphaXcp / cnAlpha : 0.0; } ///< axial CP from the root CM (m)
 
-   AeroProfile& operator+=(const AeroComponent& c)
-   {
-      cnAlpha += c.cnAlpha;
-      cnAlphaXcp += c.cnAlphaXcp;
-      cd += c.cd;
-      cpValid = (cnAlpha != 0.0);
-      return *this;
-   }
+    AeroProfile& operator+=(const AeroComponent& c)
+    {
+        cnAlpha += c.cnAlpha;
+        cnAlphaXcp += c.cnAlphaXcp;
+        cd += c.cd;
+        cpValid = (cnAlpha != 0.0);
+        return *this;
+    }
 };
 
 /// @brief Back-compat alias: model::Propagatable still holds a default-constructed, unread

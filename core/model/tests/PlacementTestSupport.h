@@ -18,16 +18,16 @@ namespace model::part::test
 /// the origin for any station, so 0 is as good as any (the resolved origin depends only on the gap).
 inline double cmStation(const Part& p)
 {
-   const double L = p.getLength();
-   return (L > 0.0) ? 0.5 + p.getCenterMassOffset().z() / L : 0.0;
+    const double L = p.getLength();
+    return (L > 0.0) ? 0.5 + p.getCenterMassOffset().z() / L : 0.0;
 }
 
 /// The StationLink that places @p child's CM @p gapZ along +z from @p parent's CM -- the explicit form
 /// of the legacy geometric-center-to-center offset, reproduced exactly through the resolver.
 inline StationLink cmToCm(const Part& parent, const Part& child, double gapZ)
 {
-   return StationLink{.parentStation01 = cmStation(parent), .childStation01 = cmStation(child),
-                      .gap = gapZ, .seat = SeatKind::Abut};
+    return StationLink{.parentStation01 = cmStation(parent), .childStation01 = cmStation(child),
+                             .gap = gapZ, .seat = SeatKind::Abut};
 }
 } // namespace model::part::test
 

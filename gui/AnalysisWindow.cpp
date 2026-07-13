@@ -6,110 +6,110 @@
 #include "model/ThrustCurve.h"
 
 AnalysisWindow::AnalysisWindow(QWidget *parent) :
-   QDialog(parent),
-   ui(new Ui::AnalysisWindow)
+    QDialog(parent),
+    ui(new Ui::AnalysisWindow)
 {
-   ui->setupUi(this);
-   this->setWindowModality(Qt::NonModal);
-   this->hide();
-   this->show();
+    ui->setupUi(this);
+    this->setWindowModality(Qt::NonModal);
+    this->hide();
+    this->show();
 
-   connect(ui->plotAltitudeBtn,
-           SIGNAL(clicked()),
-           this,
-           SLOT(onButton_plotAltitude_clicked()));
-   connect(ui->plotVelocityBtn,
-           SIGNAL(clicked()),
-           this,
-           SLOT(onButton_plotVelocity_clicked()));
-   connect(ui->plotMotorCurveBtn,
-           SIGNAL(clicked()),this,
-           SLOT(onButton_plotMotorCurve_clicked()));
+    connect(ui->plotAltitudeBtn,
+               SIGNAL(clicked()),
+               this,
+               SLOT(onButton_plotAltitude_clicked()));
+    connect(ui->plotVelocityBtn,
+               SIGNAL(clicked()),
+               this,
+               SLOT(onButton_plotVelocity_clicked()));
+    connect(ui->plotMotorCurveBtn,
+               SIGNAL(clicked()),this,
+               SLOT(onButton_plotMotorCurve_clicked()));
 
 }
 
 AnalysisWindow::~AnalysisWindow()
 {
-   delete ui;
+    delete ui;
 }
 
 void AnalysisWindow::onButton_plotAltitude_clicked()
 {
-   QtRocket* qtRocket = QtRocket::getInstance();
-   const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
-   auto& plot = ui->plotWidget;
-   plot->clearGraphs();
-   plot->setInteraction(QCP::iRangeDrag, true);
-   plot->setInteraction(QCP::iRangeZoom, true);
+    QtRocket* qtRocket = QtRocket::getInstance();
+    const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
+    auto& plot = ui->plotWidget;
+    plot->clearGraphs();
+    plot->setInteraction(QCP::iRangeDrag, true);
+    plot->setInteraction(QCP::iRangeZoom, true);
 
-   QVector<double> tData(res.size()), zData(res.size());
-   for (int i = 0; i < tData.size(); ++i)
-   {
-     tData[i] = res[i].first;
-     zData[i] = res[i].second.position[2];
-   }
-   plot->addGraph();
-   plot->graph(0)->setData(tData, zData);
-   plot->xAxis->setLabel("time");
-   plot->yAxis->setLabel("Z");
-   // ranges span the data so the whole curve is visible
-   plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
-   plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
-   plot->replot();
+    QVector<double> tData(res.size()), zData(res.size());
+    for (int i = 0; i < tData.size(); ++i)
+    {
+       tData[i] = res[i].first;
+       zData[i] = res[i].second.position[2];
+    }
+    plot->addGraph();
+    plot->graph(0)->setData(tData, zData);
+    plot->xAxis->setLabel("time");
+    plot->yAxis->setLabel("Z");
+    // ranges span the data so the whole curve is visible
+    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
+    plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
+    plot->replot();
 }
 
 void AnalysisWindow::onButton_plotVelocity_clicked()
 {
-   QtRocket* qtRocket = QtRocket::getInstance();
-   const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
-   auto& plot = ui->plotWidget;
-   plot->clearGraphs();
-   plot->setInteraction(QCP::iRangeDrag, true);
-   plot->setInteraction(QCP::iRangeZoom, true);
+    QtRocket* qtRocket = QtRocket::getInstance();
+    const std::vector<std::pair<double, StateData>>& res = qtRocket->getStates();
+    auto& plot = ui->plotWidget;
+    plot->clearGraphs();
+    plot->setInteraction(QCP::iRangeDrag, true);
+    plot->setInteraction(QCP::iRangeZoom, true);
 
-   QVector<double> tData(res.size()), zData(res.size());
-   for (int i = 0; i < tData.size(); ++i)
-   {
-     tData[i] = res[i].first;
-     zData[i] = res[i].second.velocity[2];
-   }
-   plot->addGraph();
-   plot->graph(0)->setData(tData, zData);
-   plot->xAxis->setLabel("time");
-   plot->yAxis->setLabel("Z Velocity");
-   plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
-   plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
-   plot->replot();
+    QVector<double> tData(res.size()), zData(res.size());
+    for (int i = 0; i < tData.size(); ++i)
+    {
+       tData[i] = res[i].first;
+       zData[i] = res[i].second.velocity[2];
+    }
+    plot->addGraph();
+    plot->graph(0)->setData(tData, zData);
+    plot->xAxis->setLabel("time");
+    plot->yAxis->setLabel("Z Velocity");
+    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
+    plot->yAxis->setRange(*std::min_element(std::begin(zData), std::end(zData)), *std::max_element(std::begin(zData), std::end(zData)));
+    plot->replot();
 
 }
 
 void AnalysisWindow::onButton_plotMotorCurve_clicked()
 {
-   std::shared_ptr<model::RocketModel> rocket = QtRocket::getInstance()->getRocket();
-   model::MotorModel motor = rocket->getMotorModel();
-   ThrustCurve tc = motor.getThrustCurve();
+    std::shared_ptr<model::RocketModel> rocket = QtRocket::getInstance()->getRocket();
+    model::MotorModel motor = rocket->getMotorModel();
+    ThrustCurve tc = motor.getThrustCurve();
 
 
-   const std::vector<std::pair<double, double>>& res = tc.getThrustCurveData();
-   auto& plot = ui->plotWidget;
-   plot->clearGraphs();
-   plot->setInteraction(QCP::iRangeDrag, true);
-   plot->setInteraction(QCP::iRangeZoom, true);
+    const std::vector<std::pair<double, double>>& res = tc.getThrustCurveData();
+    auto& plot = ui->plotWidget;
+    plot->clearGraphs();
+    plot->setInteraction(QCP::iRangeDrag, true);
+    plot->setInteraction(QCP::iRangeZoom, true);
 
-   QVector<double> tData(res.size());
-   QVector<double> fData(res.size());
-   for (int i = 0; i < tData.size(); ++i)
-   {
-     tData[i] = res[i].first;
-     fData[i] = res[i].second;
-   }
-   plot->addGraph();
-   plot->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 5));
-   plot->graph(0)->setData(tData, fData);
-   plot->xAxis->setLabel("time");
-   plot->yAxis->setLabel("Thrust (N)");
-   plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
-   plot->yAxis->setRange(*std::min_element(std::begin(fData), std::end(fData)), *std::max_element(std::begin(fData), std::end(fData)));
-   plot->replot();
+    QVector<double> tData(res.size());
+    QVector<double> fData(res.size());
+    for (int i = 0; i < tData.size(); ++i)
+    {
+       tData[i] = res[i].first;
+       fData[i] = res[i].second;
+    }
+    plot->addGraph();
+    plot->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 5));
+    plot->graph(0)->setData(tData, fData);
+    plot->xAxis->setLabel("time");
+    plot->yAxis->setLabel("Thrust (N)");
+    plot->xAxis->setRange(*std::min_element(std::begin(tData), std::end(tData)), *std::max_element(std::begin(tData), std::end(tData)));
+    plot->yAxis->setRange(*std::min_element(std::begin(fData), std::end(fData)), *std::max_element(std::begin(fData), std::end(fData)));
+    plot->replot();
 
 }

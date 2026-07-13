@@ -17,7 +17,7 @@ SphericalGeoidModel::~SphericalGeoidModel()
 
 double SphericalGeoidModel::getGroundLevel(double, double)
 {
-   return  utils::math::Constants::meanEarthRadiusWGS84;
+    return  utils::math::Constants::meanEarthRadiusWGS84;
 }
 
 } // namespace sim

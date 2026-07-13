@@ -27,14 +27,14 @@ class MotorModelDatabase;
 class DesignSerializer
 {
 public:
-   /// Write @p rocket's design to @p filename as versioned XML. @throws on a write error.
-   static void save(const RocketModel& rocket, const std::string& filename);
+    /// Write @p rocket's design to @p filename as versioned XML. @throws on a write error.
+    static void save(const RocketModel& rocket, const std::string& filename);
 
-   /// Load a design from @p filename into @p rocket in place (via setRoot), re-resolving the motor by
-   /// common name against @p motors.
-   /// @throws std::runtime_error on an unsupported major version or a failed attach; propagates Boost
-   ///         (malformed file) and concrete-ctor (bad geometry) exceptions.
-   static void load(RocketModel& rocket, MotorModelDatabase& motors, const std::string& filename);
+    /// Load a design from @p filename into @p rocket in place (via setRoot), re-resolving the motor by
+    /// common name against @p motors.
+    /// @throws std::runtime_error on an unsupported major version or a failed attach; propagates Boost
+    ///         (malformed file) and concrete-ctor (bad geometry) exceptions.
+    static void load(RocketModel& rocket, MotorModelDatabase& motors, const std::string& filename);
 };
 
 } // namespace model

@@ -17,25 +17,25 @@
 /// shaders to it; the viewport still anti-aliases via GL_MULTISAMPLE per frame.
 int main(int argc, char* argv[])
 {
-   // Disable the RHI widget backing store; on EGL/NVIDIA it otherwise tries (and fails) to create
-   // a GLES2 RHI context for QBackingStoreRhiSupport before our viewport comes up.
-   qputenv("QT_WIDGETS_RHI", "0");
+    // Disable the RHI widget backing store; on EGL/NVIDIA it otherwise tries (and fails) to create
+    // a GLES2 RHI context for QBackingStoreRhiSupport before our viewport comes up.
+    qputenv("QT_WIDGETS_RHI", "0");
 
-   QSurfaceFormat fmt;
-   fmt.setDepthBufferSize(24);
-   QSurfaceFormat::setDefaultFormat(fmt);
+    QSurfaceFormat fmt;
+    fmt.setDepthBufferSize(24);
+    QSurfaceFormat::setDefaultFormat(fmt);
 
-   QApplication app(argc, argv);
-   QApplication::setApplicationName("QtRocket Visualizer");
+    QApplication app(argc, argv);
+    QApplication::setApplicationName("QtRocket Visualizer");
 
-   viz::VisualizerWindow w;
-   w.resize(1200, 800);
-   w.show();
+    viz::VisualizerWindow w;
+    w.resize(1200, 800);
+    w.show();
 
-   if (argc > 1)
-   {
-      w.openFile(QString::fromLocal8Bit(argv[1]));
-   }
+    if (argc > 1)
+    {
+        w.openFile(QString::fromLocal8Bit(argv[1]));
+    }
 
-   return app.exec();
+    return app.exec();
 }

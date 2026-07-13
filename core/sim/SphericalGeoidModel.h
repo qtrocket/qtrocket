@@ -11,10 +11,10 @@ namespace sim
 class SphericalGeoidModel : public GeoidModel
 {
 public:
-   SphericalGeoidModel();
-   virtual ~SphericalGeoidModel();
+    SphericalGeoidModel();
+    virtual ~SphericalGeoidModel();
 
-   double getGroundLevel(double latitude, double longitude) override;
+    double getGroundLevel(double latitude, double longitude) override;
 
 };
 

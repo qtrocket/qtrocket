@@ -17,17 +17,17 @@ class AboutWindow;
 /// @brief Modal dialog showing copyright info, with a single OK button.
 class AboutWindow : public QDialog
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   explicit AboutWindow(QWidget *parent = nullptr);
-   ~AboutWindow();
+    explicit AboutWindow(QWidget *parent = nullptr);
+    ~AboutWindow();
 
 private slots:
-   void onButton_okButton_clicked();
+    void onButton_okButton_clicked();
 
 private:
-   Ui::AboutWindow *ui;
+    Ui::AboutWindow *ui;
 };
 
 #endif // ABOUTWINDOW_H

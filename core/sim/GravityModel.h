@@ -10,11 +10,11 @@ namespace sim
 class GravityModel
 {
 public:
-   GravityModel() {}
-   virtual ~GravityModel() {}
+    GravityModel() {}
+    virtual ~GravityModel() {}
 
-   virtual Vector3 getAccel(double x, double y, double z) = 0;
-   Vector3 getAccel(const Vector3& t) { return this->getAccel(t.x(), t.y(), t.z()); }
+    virtual Vector3 getAccel(double x, double y, double z) = 0;
+    Vector3 getAccel(const Vector3& t) { return this->getAccel(t.x(), t.y(), t.z()); }
 };
 
 } // namespace sim

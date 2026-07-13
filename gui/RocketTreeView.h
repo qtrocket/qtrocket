@@ -14,10 +14,10 @@
 ///        parent/child relationships.
 class RocketTreeView : public QTreeView
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   RocketTreeView(QWidget* parent = nullptr);
+    RocketTreeView(QWidget* parent = nullptr);
 };
 
 #endif // ROCKETTREEVIEW_H

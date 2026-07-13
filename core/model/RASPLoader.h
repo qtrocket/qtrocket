@@ -17,14 +17,14 @@ namespace model {
 class RASPLoader
 {
 public:
-   explicit RASPLoader(const std::string& filename);
+    explicit RASPLoader(const std::string& filename);
 
-   std::vector<model::MotorModel>& getMotors() { return motors; }
+    std::vector<model::MotorModel>& getMotors() { return motors; }
 
-   model::MotorModel getMotorModelByName(const std::string& name);
+    model::MotorModel getMotorModelByName(const std::string& name);
 
 private:
-   std::vector<model::MotorModel> motors;
+    std::vector<model::MotorModel> motors;
 };
 
 } // namespace model

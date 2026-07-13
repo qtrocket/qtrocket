@@ -31,9 +31,9 @@ using PartId = std::uint64_t;
  */
 enum class SeatKind : std::uint8_t
 {
-   Abut,        ///< rim-to-rim, same radius; gap is a forward standoff (signed +z)
-   NestInBore,  ///< child OD seats inside parent ID; gap is insertion depth (child moves aft, -z)
-   OnSurface    ///< child seats radially on parent's outer wall; gap is an axial standoff
+    Abut,        ///< rim-to-rim, same radius; gap is a forward standoff (signed +z)
+    NestInBore,  ///< child OD seats inside parent ID; gap is insertion depth (child moves aft, -z)
+    OnSurface    ///< child seats radially on parent's outer wall; gap is an axial standoff
 };
 
 /**
@@ -48,11 +48,11 @@ enum class SeatKind : std::uint8_t
  */
 struct StationLink
 {
-   double     parentStation01{0.0};             ///< 0 = aft plane, 1 = fore plane, on the PARENT
-   double     childStation01{1.0};              ///< 0 = aft plane, 1 = fore plane, on the CHILD
-   double     gap{0.0};                         ///< meters; meaning per SeatKind
-   SeatKind   seat{SeatKind::Abut};             ///< selects the radial check and the gap sign
-   Quaternion childRot{Quaternion::Identity()}; ///< (x,y,z,w) seam orientation; identity in 3-DOF
+    double     parentStation01{0.0};             ///< 0 = aft plane, 1 = fore plane, on the PARENT
+    double     childStation01{1.0};              ///< 0 = aft plane, 1 = fore plane, on the CHILD
+    double     gap{0.0};                         ///< meters; meaning per SeatKind
+    SeatKind   seat{SeatKind::Abut};             ///< selects the radial check and the gap sign
+    Quaternion childRot{Quaternion::Identity()}; ///< (x,y,z,w) seam orientation; identity in 3-DOF
 };
 
 /**
@@ -61,9 +61,9 @@ struct StationLink
  */
 struct Station
 {
-   double z{0.0};      ///< axial station, +z forward (m) = (station01 - 1) * getLength()
-   double rOuter{0.0}; ///< outer radius at z (m)
-   double rInner{0.0}; ///< inner radius at z (m); 0 for solids
+    double z{0.0};      ///< axial station, +z forward (m) = (station01 - 1) * getLength()
+    double rOuter{0.0}; ///< outer radius at z (m)
+    double rInner{0.0}; ///< inner radius at z (m); 0 for solids
 };
 
 /**
@@ -73,16 +73,16 @@ struct Station
  */
 struct Pose
 {
-   Vector3    origin{Vector3::Zero()};        ///< fore-plane origin, on axis, in the root frame
-   Quaternion orient{Quaternion::Identity()}; ///< (x,y,z,w); identity in 3-DOF
+    Vector3    origin{Vector3::Zero()};        ///< fore-plane origin, on axis, in the root frame
+    Quaternion orient{Quaternion::Identity()}; ///< (x,y,z,w); identity in 3-DOF
 
-   /// Place @p childInThis (in this pose's frame) into the root frame: rotate its translation by this
-   /// orientation, then add -- the rigid-transform composition law (vector addition when identity).
-   Pose compose(const Pose& childInThis) const
-   {
-      return Pose{origin + orient * childInThis.origin,
-                  (orient * childInThis.orient).normalized()};
-   }
+    /// Place @p childInThis (in this pose's frame) into the root frame: rotate its translation by this
+    /// orientation, then add -- the rigid-transform composition law (vector addition when identity).
+    Pose compose(const Pose& childInThis) const
+    {
+        return Pose{origin + orient * childInThis.origin,
+                        (orient * childInThis.orient).normalized()};
+    }
 };
 
 /**
@@ -91,8 +91,8 @@ struct Pose
  */
 struct Placed
 {
-   const Part* part{nullptr};
-   Pose        pose{};
+    const Part* part{nullptr};
+    Pose        pose{};
 };
 
 /**
@@ -101,11 +101,11 @@ struct Placed
  */
 struct OverlapDiagnostic
 {
-   PartId      offender{0};      ///< the intruding part
-   PartId      host{0};          ///< the part it intrudes into (may be a non-tree neighbour)
-   double      zWorld{0.0};      ///< located station of worst violation (root frame, +z forward)
-   double      penetration{0.0}; ///< metres the offender radius exceeds the host capacity
-   std::string message{};
+    PartId      offender{0};      ///< the intruding part
+    PartId      host{0};          ///< the part it intrudes into (may be a non-tree neighbour)
+    double      zWorld{0.0};      ///< located station of worst violation (root frame, +z forward)
+    double      penetration{0.0}; ///< metres the offender radius exceeds the host capacity
+    std::string message{};
 };
 
 /**
@@ -115,8 +115,8 @@ struct OverlapDiagnostic
  */
 struct SolveResult
 {
-   bool                           ok{true};
-   std::vector<OverlapDiagnostic> diagnostics{};
+    bool                           ok{true};
+    std::vector<OverlapDiagnostic> diagnostics{};
 };
 
 // --- Snap-operator verbs -------------------------------------------------------------------------
@@ -126,22 +126,22 @@ struct SolveResult
 /// @brief Child fore plane against parent aft plane, with an optional forward standoff @p gap.
 inline StationLink abut(double gap = 0.0)
 {
-   return StationLink{.parentStation01 = 0.0, .childStation01 = 1.0, .gap = gap,
-                      .seat = SeatKind::Abut};
+    return StationLink{.parentStation01 = 0.0, .childStation01 = 1.0, .gap = gap,
+                             .seat = SeatKind::Abut};
 }
 
 /// @brief Child aft plane inserted into the parent's fore bore to insertion @p depth (>= 0).
 inline StationLink nestInBore(double depth)
 {
-   return StationLink{.parentStation01 = 1.0, .childStation01 = 0.0, .gap = depth,
-                      .seat = SeatKind::NestInBore};
+    return StationLink{.parentStation01 = 1.0, .childStation01 = 0.0, .gap = depth,
+                             .seat = SeatKind::NestInBore};
 }
 
 /// @brief Child aft plane seated on the parent's outer wall at fractional @p parentStation01.
 inline StationLink seatOnWall(double parentStation01)
 {
-   return StationLink{.parentStation01 = parentStation01, .childStation01 = 0.0, .gap = 0.0,
-                      .seat = SeatKind::OnSurface};
+    return StationLink{.parentStation01 = parentStation01, .childStation01 = 0.0, .gap = 0.0,
+                             .seat = SeatKind::OnSurface};
 }
 
 // --- The resolver -------------------------------------------------------------------------------

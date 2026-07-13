@@ -97,22 +97,22 @@ public:
 
 private:
 
-   std::unique_ptr<sim::Integrator> linearIntegrator;
-   // The 6-DOF orientation integrator will use the same DESolver<Quaternion> interface, with a
-   // time-keyed ODE callback so getTorques() can be sampled at each stage's node time like getForces().
+    std::unique_ptr<sim::Integrator> linearIntegrator;
+    // The 6-DOF orientation integrator will use the same DESolver<Quaternion> interface, with a
+    // time-keyed ODE callback so getTorques() can be sampled at each stage's node time like getForces().
 //   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
 
-   std::shared_ptr<model::Propagatable> object;
-   std::shared_ptr<sim::Environment> environment;
+    std::shared_ptr<model::Propagatable> object;
+    std::shared_ptr<sim::Environment> environment;
 
-   bool saveStates{true};
-   double currentTime{0.0};
-   double timeStep{0.01};
+    bool saveStates{true};
+    double currentTime{0.0};
+    double timeStep{0.01};
 
-   /// Why runUntilTerminate last stopped; reset to Nominal at the top of each run.
-   TerminationReason terminationReason{TerminationReason::Nominal};
-   /// Sim-time cap (s) enforced by runUntilTerminate's backstop guard (settable via setMaxSimTime).
-   double maxSimTime{7200.0};
+    /// Why runUntilTerminate last stopped; reset to Nominal at the top of each run.
+    TerminationReason terminationReason{TerminationReason::Nominal};
+    /// Sim-time cap (s) enforced by runUntilTerminate's backstop guard (settable via setMaxSimTime).
+    double maxSimTime{7200.0};
 
 };
 

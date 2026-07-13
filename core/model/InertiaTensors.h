@@ -123,7 +123,7 @@ static Matrix3 ConicalShell(double R, double L)
  * @param rb      body radius the fins mount on (m): radial offset of the fin root
  */
 static Matrix3 TrapezoidalFinSet(unsigned int N, double cr, double ct, double s,
-                                 double sweep, double thk, double rb);
+                                            double sweep, double thk, double rb);
 
 };
 

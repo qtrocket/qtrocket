@@ -11,17 +11,17 @@ namespace sim {
 class VacuumAtmosphere : public AtmosphericModel
 {
 public:
-   VacuumAtmosphere() {}
-   virtual ~VacuumAtmosphere() {}
+    VacuumAtmosphere() {}
+    virtual ~VacuumAtmosphere() {}
 
-   double getDensity(double) override { return 0.0; }
-   double getPressure(double) override { return 0.0; }
-   double getTemperature(double) override { return 0.0; }
+    double getDensity(double) override { return 0.0; }
+    double getPressure(double) override { return 0.0; }
+    double getTemperature(double) override { return 0.0; }
 
-   // No medium -> sound doesn't propagate. Callers computing a Mach number must guard against 0.
-   double getSpeedOfSound(double) override { return 0.0; }
+    // No medium -> sound doesn't propagate. Callers computing a Mach number must guard against 0.
+    double getSpeedOfSound(double) override { return 0.0; }
 
-   double getDynamicViscosity(double) override { return 0.0; }
+    double getDynamicViscosity(double) override { return 0.0; }
 };
 
 } // namespace sim

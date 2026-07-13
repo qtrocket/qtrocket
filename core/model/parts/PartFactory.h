@@ -26,24 +26,24 @@ namespace model::part
  */
 struct PartParams
 {
-   std::string name;                    ///< human-facing part name
+    std::string name;                    ///< human-facing part name
 
-   std::optional<double> innerRadius;   ///< BodyTube/HollowSphere ri (m); default 0 (solid)
-   std::optional<double> outerRadius;   ///< BodyTube/HollowSphere ro (m); required
-   std::optional<double> baseRadius;    ///< ConicalNoseCone R (m); required
-   std::optional<double> length;        ///< BodyTube/ConicalNoseCone L (m); required
-   std::optional<double> wallThickness; ///< ConicalNoseCone shell t (m); default 0 (used only if !solid)
-   std::optional<double> density;       ///< uniform density (kg/m^3); required for all geometry types
+    std::optional<double> innerRadius;   ///< BodyTube/HollowSphere ri (m); default 0 (solid)
+    std::optional<double> outerRadius;   ///< BodyTube/HollowSphere ro (m); required
+    std::optional<double> baseRadius;    ///< ConicalNoseCone R (m); required
+    std::optional<double> length;        ///< BodyTube/ConicalNoseCone L (m); required
+    std::optional<double> wallThickness; ///< ConicalNoseCone shell t (m); default 0 (used only if !solid)
+    std::optional<double> density;       ///< uniform density (kg/m^3); required for all geometry types
 
-   std::optional<double> rootChord;     ///< FinSet cr (m); required
-   std::optional<double> tipChord;      ///< FinSet ct (m); required
-   std::optional<double> span;          ///< FinSet semi-span s (m); required
-   std::optional<double> sweep;         ///< FinSet LE sweep length Xt (m); default 0 (un-swept)
-   std::optional<double> thickness;     ///< FinSet plate thickness (m); required
-   std::optional<double> bodyRadius;    ///< FinSet mount radius rb (m); required
+    std::optional<double> rootChord;     ///< FinSet cr (m); required
+    std::optional<double> tipChord;      ///< FinSet ct (m); required
+    std::optional<double> span;          ///< FinSet semi-span s (m); required
+    std::optional<double> sweep;         ///< FinSet LE sweep length Xt (m); default 0 (un-swept)
+    std::optional<double> thickness;     ///< FinSet plate thickness (m); required
+    std::optional<double> bodyRadius;    ///< FinSet mount radius rb (m); required
 
-   std::optional<unsigned int> finCount; ///< FinSet N; required
-   std::optional<bool>         solid;    ///< ConicalNoseCone solid vs thin shell; default true
+    std::optional<unsigned int> finCount; ///< FinSet N; required
+    std::optional<bool>         solid;    ///< ConicalNoseCone solid vs thin shell; default true
 };
 
 /**

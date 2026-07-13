@@ -20,19 +20,19 @@ namespace model {
 class RSEDatabaseLoader
 {
 public:
-   RSEDatabaseLoader(const std::string& filename);
-   ~RSEDatabaseLoader();
+    RSEDatabaseLoader(const std::string& filename);
+    ~RSEDatabaseLoader();
 
-   std::vector<model::MotorModel>& getMotors() { return motors; }
+    std::vector<model::MotorModel>& getMotors() { return motors; }
 
-   model::MotorModel getMotorModelByName(const std::string& name);
+    model::MotorModel getMotorModelByName(const std::string& name);
 private:
 
-   std::vector<model::MotorModel> motors;
+    std::vector<model::MotorModel> motors;
 
-   void buildAndAppendMotorModel(boost::property_tree::ptree& v);
+    void buildAndAppendMotorModel(boost::property_tree::ptree& v);
 
-   boost::property_tree::ptree tree;
+    boost::property_tree::ptree tree;
 };
 
 } // namespace model

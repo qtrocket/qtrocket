@@ -17,16 +17,16 @@ namespace viz
 ///        Switch @ref presets or override one type at runtime via @ref setColor.
 struct ColorScheme
 {
-   QString                   name;                       ///< human-facing scheme name
-   std::map<QString, QColor> byType;                     ///< typeName() -> render color
-   QColor                    defaultColor{160, 160, 160};///< fallback for an unmapped part type
-   QColor                    background{0x2b, 0x30, 0x3b};///< viewport clear color
+    QString                   name;                       ///< human-facing scheme name
+    std::map<QString, QColor> byType;                     ///< typeName() -> render color
+    QColor                    defaultColor{160, 160, 160};///< fallback for an unmapped part type
+    QColor                    background{0x2b, 0x30, 0x3b};///< viewport clear color
 
-   /// @brief Color for part type @p typeName, or @ref defaultColor when the type is not mapped.
-   QColor colorFor(const QString& typeName) const;
+    /// @brief Color for part type @p typeName, or @ref defaultColor when the type is not mapped.
+    QColor colorFor(const QString& typeName) const;
 
-   /// @brief Set (or override) the render color for part type @p typeName.
-   void setColor(const QString& typeName, const QColor& color);
+    /// @brief Set (or override) the render color for part type @p typeName.
+    void setColor(const QString& typeName, const QColor& color);
 };
 
 /**

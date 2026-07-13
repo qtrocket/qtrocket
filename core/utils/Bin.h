@@ -18,16 +18,16 @@ namespace utils {
 class Bin
 {
 public:
-   Bin();
-   Bin(Bin&& o);
-   ~Bin();
+    Bin();
+    Bin(Bin&& o);
+    ~Bin();
 
-   void insert(const std::pair<double, double>& toInsert);
-   double operator[](double key);
-   double getBinBase(double key);
+    void insert(const std::pair<double, double>& toInsert);
+    double operator[](double key);
+    double getBinBase(double key);
 
 private:
-   std::vector<std::pair<double, double>> bins;
+    std::vector<std::pair<double, double>> bins;
 
 };
 

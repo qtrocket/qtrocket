@@ -24,26 +24,26 @@ class SimOptionsTab;
 ///        dialogs (About, motor-database save). All user interaction starts here.
 class MainWindow : public QMainWindow
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   MainWindow(QtRocket* _qtRocket, QWidget *parent = nullptr);
-   ~MainWindow();
+    MainWindow(QtRocket* _qtRocket, QWidget *parent = nullptr);
+    ~MainWindow();
 
 private slots:
 
-   void onMenu_Help_About_triggered();
+    void onMenu_Help_About_triggered();
 
-   void onMenu_File_Quit_triggered();
+    void onMenu_File_Quit_triggered();
 
-   void onMenu_Tools_SaveMotorDatabase();
+    void onMenu_Tools_SaveMotorDatabase();
 
-   private:
+    private:
 
-   Ui::MainWindow* ui;
-   QtRocket* qtRocket;
+    Ui::MainWindow* ui;
+    QtRocket* qtRocket;
 
-   CannonballTab* cannonballTab{nullptr};
-   SimOptionsTab* simOptionsTab{nullptr};
+    CannonballTab* cannonballTab{nullptr};
+    SimOptionsTab* simOptionsTab{nullptr};
 };
 #endif // MAINWINDOW_H

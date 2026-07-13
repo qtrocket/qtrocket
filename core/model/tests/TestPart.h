@@ -26,19 +26,19 @@ namespace model::part
 class TestPart : public Part
 {
 public:
-   using Part::Part; ///< inherit the (name, I, m, centerMass) constructor verbatim
+    using Part::Part; ///< inherit the (name, I, m, centerMass) constructor verbatim
 
-   std::string typeName() const override { return "TestPart"; }
+    std::string typeName() const override { return "TestPart"; }
 
 protected:
-   /// @brief Uses Part's protected copy ctor (own mass properties, fresh id, no children), so clone()
-   ///        reproduces a TestPart.
-   TestPart(const TestPart&) = default;
+    /// @brief Uses Part's protected copy ctor (own mass properties, fresh id, no children), so clone()
+    ///        reproduces a TestPart.
+    TestPart(const TestPart&) = default;
 
-   std::shared_ptr<Part> cloneShallow() const override
-   {
-      return std::shared_ptr<Part>(new TestPart(*this));
-   }
+    std::shared_ptr<Part> cloneShallow() const override
+    {
+        return std::shared_ptr<Part>(new TestPart(*this));
+    }
 };
 
 } // namespace model::part

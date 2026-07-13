@@ -28,40 +28,40 @@ namespace model::part
 class Motor : public Part
 {
 public:
-   /// Wraps a copy of @p motor.
-   Motor(const std::string& name, const MotorModel& motor);
+    /// Wraps a copy of @p motor.
+    Motor(const std::string& name, const MotorModel& motor);
 
-   ~Motor() override = default;
+    ~Motor() override = default;
 
-   std::string typeName() const override { return "Motor"; }
+    std::string typeName() const override { return "Motor"; }
 
-   /// This part's own mass at time @p t (kg): loaded weight pre-ignition, falling to the casing mass
-   /// over the burn, constant after burnout. @see MotorModel::getMass
-   double getMass(double t) const override { return mm.getMass(t); }
+    /// This part's own mass at time @p t (kg): loaded weight pre-ignition, falling to the casing mass
+    /// over the burn, constant after burnout. @see MotorModel::getMass
+    double getMass(double t) const override { return mm.getMass(t); }
 
-   const MotorModel& getMotorModel() const { return mm; }
-   MotorModel& getMotorModel() { return mm; }
+    const MotorModel& getMotorModel() const { return mm; }
+    MotorModel& getMotorModel() { return mm; }
 
-   /// Replace the wrapped motor in place: re-seeds the static mass/inertia and flags the tree for
-   /// composite recompute. Mutates this node rather than re-attaching, so RocketModel's borrowed
-   /// Motor* stays valid.
-   void setMotorModel(const MotorModel& motor);
+    /// Replace the wrapped motor in place: re-seeds the static mass/inertia and flags the tree for
+    /// composite recompute. Mutates this node rather than re-attaching, so RocketModel's borrowed
+    /// Motor* stays valid.
+    void setMotorModel(const MotorModel& motor);
 
 protected:
-   /// Copy ctor + cloneShallow() implement clone(); MotorModel deep-copies by value.
-   Motor(const Motor&) = default;
+    /// Copy ctor + cloneShallow() implement clone(); MotorModel deep-copies by value.
+    Motor(const Motor&) = default;
 
-   std::shared_ptr<Part> cloneShallow() const override
-   {
-      return std::shared_ptr<Part>(new Motor(*this));
-   }
+    std::shared_ptr<Part> cloneShallow() const override
+    {
+        return std::shared_ptr<Part>(new Motor(*this));
+    }
 
 private:
-   /// Per-unit-mass tensor (m^2): a solid cylinder from the motor's diameter/length (mm -> m), or Zero
-   /// (point mass) if either is non-positive. Static so it runs in the Part base-class initializer.
-   static Matrix3 motorTensor(const MotorModel& motor);
+    /// Per-unit-mass tensor (m^2): a solid cylinder from the motor's diameter/length (mm -> m), or Zero
+    /// (point mass) if either is non-positive. Static so it runs in the Part base-class initializer.
+    static Matrix3 motorTensor(const MotorModel& motor);
 
-   MotorModel mm; ///< the wrapped motor, owned by value
+    MotorModel mm; ///< the wrapped motor, owned by value
 };
 
 } // namespace model::part

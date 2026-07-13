@@ -21,25 +21,25 @@ QT_END_NAMESPACE
 ///        shared Environment.
 class SimOptionsTab : public QWidget
 {
-   Q_OBJECT
+    Q_OBJECT
 
 public:
-   explicit SimOptionsTab(QtRocket* qtRocket, QWidget* parent = nullptr);
-   ~SimOptionsTab();
+    explicit SimOptionsTab(QtRocket* qtRocket, QWidget* parent = nullptr);
+    ~SimOptionsTab();
 
 private slots:
 
-   void onTimeStepEditingFinished();
+    void onTimeStepEditingFinished();
 
-   void onAtmosphereModelChanged(const QString& model);
+    void onAtmosphereModelChanged(const QString& model);
 
-   void onGravityModelChanged(const QString& model);
+    void onGravityModelChanged(const QString& model);
 
-   void onIntegratorModelChanged(const QString& model);
+    void onIntegratorModelChanged(const QString& model);
 
 private:
-   Ui::SimOptionsTab* ui;
-   QtRocket* qtRocket;
+    Ui::SimOptionsTab* ui;
+    QtRocket* qtRocket;
 };
 
 #endif // GUI_SIMOPTIONSTAB_H
