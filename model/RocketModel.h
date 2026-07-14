@@ -122,7 +122,15 @@ public:
 
 private:
 
-   void notifyStructureChanged() { if(structureChangedCallback) { structureChangedCallback(); } }
+   // This always updates the geometry first, then calls any callback that might have been set
+   void notifyStructureChanged()
+   {
+      referenceArea = deriveReferenceAreaFromGeometry();
+      if(structureChangedCallback)
+      {
+         structureChangedCallback();
+      }
+   }
 
    /// Fired on every structural/compositional edit; null until the GUI registers one. @see setStructureChangedCallback.
    std::function<void()> structureChangedCallback;

@@ -70,8 +70,8 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
     // Thrust along the rocket's z-axis, assumed through the CM.
     Vector3 forces{0.0, 0.0, motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0};
 
-    // Evaluate gravity at the integrator's trial position (not currentState) so each RK4 stage sees
-    // a consistent state.
+    // Evaluate gravity at the integrator's trial position (not currentState) so each integrator stage sees
+    // a consistent state. 
     auto gravityModel = environment.getGravityModel();
 
     Vector3 gravity = gravityModel->getAccel(position)*getMass(t);
@@ -85,7 +85,7 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
     const double altitude = position[2] > 0.0 ? position[2] : 0.0;
     const double rho = atmosphere->getDensity(altitude);
     const double speed = velocity.norm();
-    const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
+    const Vector3 drag = -0.5 * rho * speed * getDragCoefficient() * getReferenceArea() * velocity;
     forces += drag;
 
     return forces;
@@ -172,7 +172,11 @@ bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> c
    const auto before = parent->getChildParts().size();
    parent->addChildPart(std::move(child), link);
    const bool attached = parent->getChildParts().size() == before + 1;
-   if(attached) { reresolveMotorPart(); notifyStructureChanged(); } // a Motor sub-tree could have been attached
+   if(attached)
+   {
+      reresolveMotorPart(); // a Motor sub-tree could have been attached
+      notifyStructureChanged();
+   }
    return attached;
 }
 
