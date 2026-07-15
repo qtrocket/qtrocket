@@ -5,7 +5,7 @@
 An open-source model-rocket flight simulator: a C++23 simulation core shared by a Qt6 Widgets
 GUI, a scriptable headless REPL, and a standalone OpenGL design viewer.
 
-![qtrocket-visualizer rendering a 75 mm multi-part design](docs/images/qtrocket-visualizer.png)
+![qtrocket-visualizer showing a 75 mm multi-part design](docs/images/qtrocket-visualizer.png)
 
 ## What it does today
 
@@ -35,10 +35,12 @@ Barrowman stability math (per-part CN<sub>α</sub> and center-of-pressure compos
 implemented and test-verified; surfacing it in the CLI and GUI is the next milestone. The
 [roadmap](TODO.md) tracks what's real versus planned.
 
-## Sixty seconds in the REPL
+## The REPL
 
-`qtrocket-cli` drives the whole engine headlessly — interactively, from a pipe, from a script
+`qtrocket-cli` can drive the whole engine headlessly, interactively, from a pipe, from a script
 file, or via `-c "<command>"`. Exit status is 0 only if every command succeeded.
+
+![qtrocket-cli building and flying a rocket from a script](docs/images/qtrocket-cli-demo.gif)
 
 ```console
 $ qtrocket-cli demo.cli
