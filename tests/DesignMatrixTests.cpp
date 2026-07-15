@@ -249,12 +249,13 @@ TEST(ConcretePartTypes, CompositeMassIsTheSumOfItsParts)
                                      " sweep=0.03 thickness=0.003 bodyRadius=0.020 density=600")));
     const double fins = compositeMass(repl);
 
-    // Assemble the three into one rocket; the composite mass must equal the sum of the leaf masses.
-    ASSERT_TRUE(ok(run(repl, "newdesign NoseCone name=N baseRadius=0.020 length=0.08 density=900")));
-    ASSERT_TRUE(ok(run(repl, "addpart root BodyTube name=B innerRadius=0.018 outerRadius=0.020 length=0.40 density=800 z=-0.24")));
-    ASSERT_TRUE(ok(run(repl, "addpart root FinSet name=F finCount=3 rootChord=0.06 tipChord=0.03 span=0.04"
-                                     " sweep=0.03 thickness=0.003 bodyRadius=0.020 density=600 z=-0.40")));
-    const double composite = compositeMass(repl);
+   // Assemble the three into one rocket; the composite mass must equal the sum of the leaf masses.
+   ASSERT_TRUE(ok(run(repl, "newdesign NoseCone name=N baseRadius=0.020 length=0.08 density=900")));
+   ASSERT_TRUE(ok(run(repl, "addpart root BodyTube name=B innerRadius=0.018 outerRadius=0.020 length=0.40 density=800")));
+   ASSERT_TRUE(ok(run(repl, "addpart B FinSet name=F finCount=3 rootChord=0.06 tipChord=0.03 span=0.04"
+                            " sweep=0.03 thickness=0.003 bodyRadius=0.020 density=600"
+                            " seat=OnSurface parentStation=0 childStation=0")));
+   const double composite = compositeMass(repl);
 
     // Relative tolerance: each of the four masses is read from ~6-significant-figure CLI text.
     EXPECT_NEAR(composite, nose + body + fins, 1e-4 * composite);
@@ -271,12 +272,12 @@ TEST(MotorUnits, OnlineSourcedMotorMassIsKilogramsNotGrams)
     quietLogs();
     cli::Repl repl(QtRocket::getInstance());
 
-    ASSERT_TRUE(ok(run(repl, "loaddb " + kSmallMotors.string())));
-    // A few-gram micro airframe so the total mass is dominated by, and clearly reveals, the motor mass.
-    ASSERT_TRUE(ok(run(repl, "newdesign NoseCone name=Nose baseRadius=0.0072 length=0.03 density=550")));
-    ASSERT_TRUE(ok(run(repl, "addpart root BodyTube name=Body innerRadius=0.0066 outerRadius=0.0072 length=0.12 density=900 z=-0.075")));
-    ASSERT_TRUE(ok(run(repl, "setmotor 1/4A3")));
-    configureVacuumFlight(repl);
+   ASSERT_TRUE(ok(run(repl, "loaddb " + kSmallMotors.string())));
+   // A few-gram micro airframe so the total mass is dominated by, and clearly reveals, the motor mass.
+   ASSERT_TRUE(ok(run(repl, "newdesign NoseCone name=Nose baseRadius=0.0072 length=0.03 density=550")));
+   ASSERT_TRUE(ok(run(repl, "addpart root BodyTube name=Body innerRadius=0.0066 outerRadius=0.0072 length=0.12 density=900")));
+   ASSERT_TRUE(ok(run(repl, "setmotor 1/4A3")));
+   configureVacuumFlight(repl);
 
     const double apogee = flyApogee(repl);
     const double massT0 = firstStateField(run(repl, "states 1"), 7); // ignition mass = airframe + motor

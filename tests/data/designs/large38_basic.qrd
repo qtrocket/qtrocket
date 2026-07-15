@@ -6,11 +6,10 @@
     <children>
       <part type="BodyTube" name="Airframe">
         <params innerRadius="0.019099999999999999" outerRadius="0.02" length="0.40000000000000002" density="1400"/>
-        <link seat="Abut" parentStation="0" childStation="1" gap="-0.029999999999999999"/>
         <children>
           <part type="FinSet" name="Fins">
             <params density="1400" rootChord="0.070000000000000007" tipChord="0.029999999999999999" span="0.050000000000000003" sweep="0.040000000000000001" thickness="0.0030000000000000001" bodyRadius="0.02" finCount="3"/>
-            <link seat="OnSurface" parentStation="0" childStation="0" gap="-0.0086666666666666559"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="0"/>
             <children/>
           </part>
         </children>

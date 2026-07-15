@@ -1,0 +1,9 @@
+# xl75_multi.qrd -- multi-child tree + baked-in motor: 6 fins + a flush bore coupler (the clean twin of xl75_multi_pokethrough)
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=MultiNose baseRadius=0.0395 length=0.3 density=1700
+addpart MultiNose BodyTube name=MultiBody innerRadius=0.0376 outerRadius=0.0395 length=0.9 density=1700
+addpart MultiBody FinSet name=MultiFins finCount=6 rootChord=0.1 tipChord=0.04 span=0.06 sweep=0.04 thickness=0.003 bodyRadius=0.0395 density=1700 seat=OnSurface parentStation=0 childStation=0
+addpart MultiBody BodyTube name=MultiCoupler innerRadius=0.036 outerRadius=0.0376 length=0.08 density=1700 seat=NestInBore gap=0.08
+setmotor M1350W
+checkdesign

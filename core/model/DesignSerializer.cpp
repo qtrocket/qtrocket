@@ -50,34 +50,14 @@ pt::ptree writeParams(const part::PartParams& p)
     return n;
 }
 
-// SeatKind <-> attribute string, one shared table so reader and writer agree by construction.
-std::string seatToString(part::SeatKind seat)
-{
-    switch(seat)
-    {
-        case part::SeatKind::Abut:       return "Abut";
-        case part::SeatKind::NestInBore: return "NestInBore";
-        case part::SeatKind::OnSurface:  return "OnSurface";
-    }
-    return "Abut";
-}
-
-std::optional<part::SeatKind> seatFromString(const std::string& s)
-{
-    if(s == "Abut")       { return part::SeatKind::Abut; }
-    if(s == "NestInBore") { return part::SeatKind::NestInBore; }
-    if(s == "OnSurface")  { return part::SeatKind::OnSurface; }
-    return std::nullopt;
-}
-
 pt::ptree writeLink(const part::StationLink& link)
 {
-    pt::ptree n;
-    n.put("<xmlattr>.seat", seatToString(link.seat));
-    n.put("<xmlattr>.parentStation", link.parentStation01);
-    n.put("<xmlattr>.childStation", link.childStation01);
-    n.put("<xmlattr>.gap", link.gap);
-    return n;
+   pt::ptree n;
+   n.put("<xmlattr>.seat", part::seatKindToString(link.seat));
+   n.put("<xmlattr>.parentStation", link.parentStation01);
+   n.put("<xmlattr>.childStation", link.childStation01);
+   n.put("<xmlattr>.gap", link.gap);
+   return n;
 }
 
 // True when a link carries no authored intent beyond the zero-config default (child fore plane abuts
@@ -172,43 +152,43 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
             const std::string childName = child->getName();
             const auto before = node->getChildParts().size();
 
-            // 0.2 placement: a <link> (explicit intent) or neither element (an elided default-equal link,
-            // attaches by the zero-config abut default). A legacy 0.1 <offset> (CM-to-CM) is rejected
-            // below rather than silently mis-placed.
-            if(childNode.get_child_optional("link"))
+         // 0.2 placement: a <link> (explicit intent) or neither element (an elided default-equal link,
+         // attaches by the zero-config abut default). A legacy 0.1 <offset> (CM-to-CM) is rejected
+         // below rather than silently mis-placed.
+         if(childNode.get_child_optional("link"))
+         {
+            const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
+            const auto        seat    = part::seatKindFromString(seatStr);
+            if(!seat) // fail-closed, on the same path as makePart's unknown-type rejection
             {
-                const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
-                const auto        seat    = seatFromString(seatStr);
-                if(!seat) // fail-closed, on the same path as makePart's unknown-type rejection
-                {
-                    throw std::runtime_error("DesignSerializer: unknown seat kind '" + seatStr + "'");
-                }
-                const part::StationLink link{
-                    childNode.get<double>("link.<xmlattr>.parentStation", 0.0),
-                    childNode.get<double>("link.<xmlattr>.childStation", 1.0),
-                    childNode.get<double>("link.<xmlattr>.gap", 0.0),
-                    *seat,
-                    Quaternion::Identity()};
-                node->addChildPart(std::move(child), link);
+               throw std::runtime_error("DesignSerializer: unknown seat kind '" + seatStr + "'");
             }
-            else if(childNode.get_child_optional("offset"))
-            {
-                throw std::runtime_error(
-                    "DesignSerializer: legacy 0.1 <offset> placement is no longer supported; this file "
-                    "predates the 0.2 <link> format and must be re-created");
-            }
-            else
-            {
-                node->addChildPart(std::move(child), part::StationLink{}); // elided default -> abut
-            }
-            if(node->getChildParts().size() != before + 1) // addChildPart is a silent no-op on rejection
-            {
-                throw std::runtime_error(
-                    "DesignSerializer: failed to attach child part '" + childName + "' (see log for the reason)");
-            }
-        }
-    }
-    return node;
+            const part::StationLink link{
+               childNode.get<double>("link.<xmlattr>.parentStation", 0.0),
+               childNode.get<double>("link.<xmlattr>.childStation", 1.0),
+               childNode.get<double>("link.<xmlattr>.gap", 0.0),
+               *seat,
+               Quaternion::Identity()};
+            node->addChildPart(std::move(child), link);
+         }
+         else if(childNode.get_child_optional("offset"))
+         {
+            throw std::runtime_error(
+               "DesignSerializer: legacy 0.1 <offset> placement is no longer supported; this file "
+               "predates the 0.2 <link> format and must be re-created");
+         }
+         else
+         {
+            node->addChildPart(std::move(child), part::StationLink{}); // elided default -> abut
+         }
+         if(node->getChildParts().size() != before + 1) // addChildPart is a silent no-op on rejection
+         {
+            throw std::runtime_error(
+               "DesignSerializer: failed to attach child part '" + childName + "' (see log for the reason)");
+         }
+      }
+   }
+   return node;
 }
 } // anonymous namespace
 

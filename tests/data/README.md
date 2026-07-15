@@ -20,8 +20,19 @@ Mid/large motors (**E … M**) come from the bundled `../../data/Aerotech.rse` (
 
 ## `designs/*.qrd` — 24 rocket designs across 7 diameter classes
 
-Built through the real `qtrocket-cli`. Each class is sized so its motor fits the airframe (body
-`innerRadius >= motor radius`); nose `baseRadius` and fin `bodyRadius` equal the body `outerRadius`.
+Built through the real `qtrocket-cli` from the committed scripts in `designs/scripts/<stem>.cli` —
+one script per fixture, replayed verbatim by `DesignRebuildTests` (so fixture and script cannot
+drift) and by `designs/regenerate.sh` (which rewrites every `.qrd` through the CLI; run it after a
+deliberate design change, then refresh the placement baseline — the command is in the script
+header). Each class is sized so its motor fits the airframe (body `innerRadius >= motor radius`);
+nose `baseRadius` and fin `bodyRadius` equal the body `outerRadius`.
+
+Every fixture is physically seated (station-pair links, no compensating gaps): the body abuts the
+nose at gap 0, fins seat `OnSurface` flush with the body's aft rim, and couplers either nest
+`NestInBore` flush with the fore rim (insertion depth = coupler length) or abut as a co-radial aft
+extension (`mid24_multi`, `large38_multi`). `DesignRebuildTests` asserts the whole corpus is
+contiguous (no air gaps), radially seated at every seam, and overlap-free; each build script ends
+with the CLI's own `checkdesign` verdict.
 
 | Class | Motor dia | Body OD / ID (m) | Motor ladder (ascending total impulse) |
 |-------|-----------|------------------|----------------------------------------|

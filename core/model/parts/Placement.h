@@ -36,6 +36,11 @@ enum class SeatKind : std::uint8_t
     OnSurface    ///< child seats radially on parent's outer wall; gap is an axial standoff
 };
 
+/// SeatKind <-> its stable name ("Abut", "NestInBore", "OnSurface") -- one shared table so the file
+/// format and the CLI agree by construction. fromString is nullopt for an unknown name (fail-closed).
+std::string seatKindToString(SeatKind seat);
+std::optional<SeatKind> seatKindFromString(const std::string& s);
+
 /**
  * @brief Physical intent for one parent->child attachment -- the only spatial relationship stored.
  *

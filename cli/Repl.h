@@ -28,11 +28,15 @@ public:
     /// Read and execute commands until EOF or a quit/exit command. Returns a process exit code (0).
     int run(std::istream& in, std::ostream& out);
 
-    /// Execute one command line. Returns false to exit the REPL, true to keep going.
-    bool execute(const std::string& line, std::ostream& out);
+   /// Execute one command line. Returns false to exit the REPL, true to keep going. A command that
+   /// throws (e.g. a composite read on a design whose placement solve failed) reports ERR, never kills
+   /// the session.
+   bool execute(const std::string& line, std::ostream& out);
 
 private:
-    QtRocket* qtRocket;
+   bool executeImpl(const std::string& line, std::ostream& out);
+
+   QtRocket* qtRocket;
 
     // Staged configuration, applied at launch (mirrors the GUI's line edits).
     bool motorSet{false};

@@ -17,6 +17,25 @@
 namespace model::part
 {
 
+std::string seatKindToString(SeatKind seat)
+{
+   switch(seat)
+   {
+      case SeatKind::Abut:       return "Abut";
+      case SeatKind::NestInBore: return "NestInBore";
+      case SeatKind::OnSurface:  return "OnSurface";
+   }
+   return "Abut";
+}
+
+std::optional<SeatKind> seatKindFromString(const std::string& s)
+{
+   if(s == "Abut")       { return SeatKind::Abut; }
+   if(s == "NestInBore") { return SeatKind::NestInBore; }
+   if(s == "OnSurface")  { return SeatKind::OnSurface; }
+   return std::nullopt;
+}
+
 Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
                      const StationLink& link)
 {

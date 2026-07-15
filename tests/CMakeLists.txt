@@ -68,6 +68,7 @@ add_test(NAME qtrocket_cli_tests COMMAND cli_tests)
 # a flight matrix spanning impulse classes 1/4A -> M across multiple motor diameters.
 add_executable(design_matrix_tests
    DesignMatrixTests.cpp
+   DesignRebuildTests.cpp
 )
 qtrocket_enable_coverage(design_matrix_tests)
 
