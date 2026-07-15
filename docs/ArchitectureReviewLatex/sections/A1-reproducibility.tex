@@ -38,10 +38,14 @@ Prerequisites are a \TeX{} distribution providing \code{latexmk}, \code{pdflatex
 
 \subsection{How this review was produced}
 
-The review is pinned to one tree state: commit \code{254cd41} (``Major comment cleanup''),
-a clean working tree, reviewed on 2026-07-06. Every \code{\textbackslash src} citation in
-this document refers to that revision; line numbers will drift as the tree moves, so a
-reader on a later commit should treat them as anchors, not absolutes.
+The review is pinned to one tree state: commit \code{20eca72}, the \code{development} tip
+on 2026-07-15. It was originally produced against commit \code{254cd41} (``Major comment
+cleanup'') on 2026-07-06 and revised in place after the \code{core/} restructure, the
+\code{dynamic-Cd} merge, and the \code{RocketTreeViewImplementation} merge landed. Every
+\code{\textbackslash src} citation refers to the pinned revision, with source paths written
+include-rooted (\srcf{model/}, \srcf{sim/}, and \srcf{utils/} live under \srcf{core/} on
+disk); line numbers will drift as the tree moves, so a reader on a later commit should
+treat them as anchors, not absolutes.
 
 The analysis behind the document was performed as a fan-out of independent subsystem
 reviews --- part tree and placement, motors, simulation core, aerodynamics, GUI and
@@ -57,5 +61,5 @@ disagree, this review reports the code and flags the discrepancy.
 
 Two behaviors were additionally confirmed by execution rather than reading: the CLI
 command inventory of \cref{sec:interfaces} was captured from a live
-\code{build/qtrocket-cli} session, and end-to-end flight behavior was exercised through
+\code{build/cli/qtrocket-cli} session, and end-to-end flight behavior was exercised through
 the same REPL against a bundled design.

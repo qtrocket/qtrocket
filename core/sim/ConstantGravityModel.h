@@ -13,7 +13,7 @@ class ConstantGravityModel : public GravityModel
 public:
     ConstantGravityModel() {}
 
-    virtual ~ConstantGravityModel() {}
+    ~ConstantGravityModel() override {}
 
     Vector3 getAccel(double, double, double) override
     {

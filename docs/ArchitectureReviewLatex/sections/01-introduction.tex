@@ -18,17 +18,20 @@ the source, never as facts to inherit, and where the two disagree this document 
 
 \subsection{The tree under review}
 
-Every statement in this document is pinned to one revision: commit \code{254cd41}
-(``Major comment cleanup''), reviewed with a clean working tree on 2026-07-06. That
-commit is the tip of the \code{development} line at the time of review and includes the
-completed Part Placement feature (the station-pair --- \code{StationLink} --- placement backbone specified in the
-companion whitepaper under \srcf{docs/PartPlacementDesignLatex/}). Two commits of
-in-flight GUI work exist beyond it on the \code{RocketTreeViewImplementation} branch ---
-an initial part-tree widget and work-in-progress design save/load wiring --- and are
-covered explicitly as future work (\cref{sec:interfaces,sec:roadmap}) rather than folded
-silently into the review. Code citations take the form \src{model/parts/Part.h}{42};
-line numbers will drift as the tree moves and should be read as anchors into that
-revision, not absolutes.
+Every statement in this document is pinned to one revision: commit \code{20eca72}
+(``Fix Windows run-time error on one of the CliDesign google tests''), the tip of the
+\code{development} line on 2026-07-15. The review was originally produced against commit
+\code{254cd41} on 2026-07-06 and has been revised in place against the current tip; the
+tree between those commits absorbed the \code{core/} directory restructure, the removal
+of the GUI's spawned-thread runner, the CLI seat-vocabulary and design-corpus work merged
+from \code{dynamic-Cd}, and the merge of the \code{RocketTreeViewImplementation} branch
+(GUI part tree and design open/save). The pinned tree includes the completed Part
+Placement feature (the station-pair --- \code{StationLink} --- placement backbone
+specified in the companion whitepaper under \srcf{docs/PartPlacementDesignLatex/}).
+Code citations take the form \src{model/parts/Part.h}{42}; source paths are written
+include-rooted, so \srcf{model/}, \srcf{sim/}, and \srcf{utils/} live under \srcf{core/}
+on disk. Line numbers will drift as the tree moves and should be read as anchors into
+that revision, not absolutes.
 
 \subsection{What the review found, in one paragraph}
 

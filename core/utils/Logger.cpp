@@ -33,34 +33,35 @@ Logger::~Logger()
 void Logger::log(std::string_view msg, const LogLevel& lvl)
 {
     std::lock_guard<std::mutex> lck(mtx);
+    // the file sink flushes per line so log.txt is complete after a crash; stdout stays buffered
     // Intentional fallthrough: each level emits its own message, then falls to the lower levels.
     switch(currentLevel)
     {
         case PERF_:
             if(lvl == PERF_)
             {
-                outFile << "[PERF] " << msg << std::endl;
+                outFile << "[PERF] " << msg << '\n' << std::flush;
                  std::cout << "[PERF] " << msg << "\n";
             }
             [[fallthrough]];
         case DEBUG_:
             if(lvl == DEBUG_)
             {
-                outFile << "[DEBUG] " << msg << std::endl;
+                outFile << "[DEBUG] " << msg << '\n' << std::flush;
                  std::cout << "[DEBUG] " << msg << "\n";
             }
             [[fallthrough]];
         case INFO_:
             if(lvl == INFO_)
             {
-                outFile << "[INFO] " << msg << std::endl;
+                outFile << "[INFO] " << msg << '\n' << std::flush;
                  std::cout << "[INFO] " << msg << "\n";
             }
             [[fallthrough]];
         case WARN_:
             if(lvl == WARN_)
             {
-                outFile << "[WARN] " << msg << std::endl;
+                outFile << "[WARN] " << msg << '\n' << std::flush;
                  std::cout << "[WARN] " << msg << "\n";
             }
             [[fallthrough]];
@@ -68,7 +69,7 @@ void Logger::log(std::string_view msg, const LogLevel& lvl)
         default:
             if(lvl == ERROR_)
             {
-                outFile << "[ERROR] " << msg << std::endl;
+                outFile << "[ERROR] " << msg << '\n' << std::flush;
                  std::cout << "[ERROR] " << msg << "\n";
             }
     }
@@ -82,7 +83,7 @@ void Logger::setLogLevel(const LogLevel& lvl)
 void Logger::log(std::ostream& o, const std::string& msg)
 {
     std::lock_guard<std::mutex> lck(mtx);
-    o << msg << std::endl;
+    o << msg << '\n' << std::flush;
 }
 
 } // namespace utils

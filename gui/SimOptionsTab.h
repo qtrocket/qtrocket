@@ -25,7 +25,7 @@ class SimOptionsTab : public QWidget
 
 public:
     explicit SimOptionsTab(QtRocket* qtRocket, QWidget* parent = nullptr);
-    ~SimOptionsTab();
+    ~SimOptionsTab() override;
 
 private slots:
 

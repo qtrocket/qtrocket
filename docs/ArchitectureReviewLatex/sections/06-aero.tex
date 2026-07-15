@@ -10,7 +10,7 @@ shows both halves at once; this section describes each precisely, then the laten
 must be repaired before the dormant half can be wired in, and finally the flight-envelope features
 for which no machinery exists at all.
 
-\tikzfig{force-path}{The flight-physics force path at commit \code{254cd41}. Three terms ---
+\tikzfig{force-path}{The flight-physics force path at commit \code{20eca72}. Three terms ---
 world-vertical thrust, pluggable gravity, and a single quadratic drag law --- are assembled by
 \code{getForces()} and integrated as three linear degrees of freedom. The red-edged layer below is
 built and tested but has no production caller.}{fig:aero-forcepath}
@@ -51,9 +51,9 @@ division, and the altitude clamp keeps trial states below ground inside the atmo
 domain.}\label{lst:aero-draglaw}
 \end{listing}
 
-\code{dragCoefficient} defaults to $1.0$ (\src{model/RocketModel.h}{138}) and
+\code{dragCoefficient} defaults to $1.0$ (\src{model/RocketModel.h}{155}) and
 \code{referenceArea} to $1.134\times10^{-3}\unit{m^2}$ --- a $38\unit{mm}$ disc
-(\src{model/RocketModel.h}{141}). Density comes from the pluggable \code{AtmosphericModel}:
+(\src{model/RocketModel.h}{158}). Density comes from the pluggable \code{AtmosphericModel}:
 constant $1.225\unit{kg/m^3}$ (\src{sim/ConstantAtmosphere.h}{15}), a genuinely layered US Standard
 1976 implementation with lapse-rate and isothermal branches (\src{sim/USStandardAtmosphere.cpp}{93}),
 or vacuum (\src{sim/VacuumAtmosphere.h}{17}); the surrounding integration loop, its guards, and the
@@ -61,13 +61,13 @@ environment plumbing are \cref{sec:sim}'s subject. This consumed path is the bes
 the tree: an analytic terminal-velocity force balance is derived from the live models and checked
 for sign and magnitude (\src{tests/PhysicsIntegrationTests.cpp}{246}), and drag-versus-vacuum
 sweeps run across every reference airframe and the full 1/4A--M motor ladder under both integrators
-(\src{tests/DesignMatrixTests.cpp}{524}).
+(\src{tests/DesignMatrixTests.cpp}{525}).
 
 Two structural consequences of this force path deserve plain statement. First, \emph{launch angle
 is a velocity, not an attitude}. Both front ends implement an angled launch by splitting the
 user-supplied initial speed into $v_x/v_z$ components --- the GUI at
-\src{gui/CannonballTab.cpp}{105}, the CLI's launch handler consuming the \code{setangle}-stored
-value at \src{cli/Repl.cpp}{680} --- and nothing else in the dynamics knows the angle exists. With
+\src{gui/CannonballTab.cpp}{117}, the CLI's launch handler consuming the \code{setangle}-stored
+value at \src{cli/Repl.cpp}{747} --- and nothing else in the dynamics knows the angle exists. With
 zero initial speed, setting a launch angle changes nothing at all. With nonzero initial speed,
 thrust is permanently misaligned with the velocity vector for the whole burn --- there is no
 gravity turn and no thrust-along-body-axis, so the model is physically consistent only for
@@ -84,13 +84,13 @@ the max-frontal-disc convention over the part tree via \code{Part::maxFrontalRef
 tip extent (\src{model/parts/FinSet.h}{71}) --- the same convention OpenRocket uses
 (\cref{sec:comparison}). It has no production caller. The drag law reads the stored \code{referenceArea} scalar; the header's promise
 that ``the geometry default applies only when it [the override] hasn't''
-(\src{model/RocketModel.h}{76}) is implemented by nothing; and design-file load applies the saved
-area only when \code{referenceAreaOverridden="true"} (\src{model/DesignSerializer.cpp}{265}). All
+(\src{model/RocketModel.h}{77}) is implemented by nothing; and design-file load applies the saved
+area only when \code{referenceAreaOverridden="true"} (\src{model/DesignSerializer.cpp}{245}). All
 25 bundled reference designs say \code{"false"}, so every one of them --- including the
 $75\unit{mm}$ \code{xl75} airframe --- flies with whatever area was last set, by default the
 $38\unit{mm}$ disc. Drag therefore does not scale with airframe class, and the sweep-test comment
 claiming the ``design's own geometry-derived reference area \ldots\ is used''
-(\src{tests/DesignMatrixTests.cpp}{518}) does not match the code. \fail
+(\src{tests/DesignMatrixTests.cpp}{519}) does not match the code. \fail
 \end{hardfail}
 
 \subsection{The dormant Barrowman layer}\label{sec:aero-barrowman}
@@ -129,7 +129,7 @@ Because \code{getCompositeAero} and \code{getCompositeCm} share one datum, the c
 \cppinline|cp() - cg()| --- the design intent is stated in the seam's own documentation
 (\src{sim/Aero.h}{25}). The moment-weighted storage (\code{cnAlphaXcp} as a product) makes
 composition pure addition, and unit tests pin the datum correctness across nested trees
-(\src{model/tests/NoseConeTests.cpp}{175}, \src{tests/PlacementInvarianceTests.cpp}{106}). The
+(\src{model/tests/NoseConeTests.cpp}{175}, \src{tests/PlacementInvarianceTests.cpp}{89}). The
 machinery for a live CP/CG/stability readout exists end to end --- except for a caller.
 \end{keyinsight}
 
@@ -234,7 +234,7 @@ here as a finding; severity ranking and consolidation belong to \cref{sec:roadma
 
 \begin{description}
   \item[Wind: dead code. \fabsent] \code{sim::WindModel} is compiled into the sim library
-  (\src{sim/CMakeLists.txt}{24}) and shaped as a virtual extension point
+  (\src{core/sim/CMakeLists.txt}{24}) and shaped as a virtual extension point
   (\src{sim/WindModel.h}{16}), but its one implementation returns $(0,0,0)$ with all three
   position arguments ignored (\src{sim/WindModel.cpp}{16}), and no other file in the repository
   references it: \code{Environment} has no wind slot (\src{sim/Environment.h}{101}) and

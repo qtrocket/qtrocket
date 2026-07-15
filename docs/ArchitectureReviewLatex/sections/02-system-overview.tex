@@ -6,7 +6,7 @@ over the same simulation API; \code{qtrocket-visualizer} is a standalone OpenGL 
 saved designs. All three link the same static library, \code{qtrocket\_core}, which contains
 exactly one class --- the \code{QtRocket} application controller --- and pulls in the
 \code{model}, \code{sim}, and \code{utils} layer libraries beneath it
-(\src{CMakeLists.txt}{224}). \Cref{fig:overview-layering} shows the arrangement; the rest of
+(\src{core/CMakeLists.txt}{8}). \Cref{fig:overview-layering} shows the arrangement; the rest of
 this section walks it from the top down, then summarizes the build that enforces it.
 
 \tikzfig{system-layering}{The shipped system: three executables over one Qt-free core.
@@ -19,26 +19,24 @@ seam through which the simulation loop sees the rocket model.}{fig:overview-laye
 
 \begin{description}
 \item[\code{qtrocket} (GUI).] The entry point instantiates the \code{Logger} at INFO
-  \src{main.cpp}{16}, obtains the controller singleton \src{main.cpp}{20}, and blocks in
-  \cppinline|gui::run(qtrocket, argc, argv)| \src{main.cpp}{25}. The executable is the only
-  Qt-dependent front end in the main tree, linking \code{Qt6::Widgets},
-  \code{Qt6::PrintSupport}, and \code{qtrocket\_core} \src{CMakeLists.txt}{286}. One
-  structural oddity is worth flagging at the map level: \code{gui::run} spawns a
-  \cppinline|std::thread| whose body constructs \code{QApplication} and runs the entire Qt
-  event loop, then joins it \src{gui/GuiRunner.cpp}{62} --- an unusual inversion of Qt's
-  main-thread convention whose consequences \cref{sec:interfaces} examines.
+  \src{gui/main.cpp}{20}, obtains the controller singleton \src{gui/main.cpp}{24}, then
+  constructs \code{QApplication} and \code{MainWindow} directly and blocks in
+  \cppinline|a.exec()| \src{gui/main.cpp}{29} --- the conventional Qt main-thread
+  arrangement. The executable is the only Qt-dependent front end in the main tree, linking
+  \code{Qt6::Widgets}, \code{Qt6::PrintSupport}, and \code{qtrocket\_core}
+  \src{gui/CMakeLists.txt}{82}.
 \item[\code{qtrocket-cli} (headless REPL).] The CLI entry point deliberately ignores
   \code{argc}/\code{argv} \src{cli/CliMain.cpp}{13}, silences the logger to ERROR because
   stdout doubles as the machine-readable \code{OK}/\code{ERR}/\code{CSV} protocol
   \src{cli/CliMain.cpp}{17}, prints a \code{\#}-prefixed banner, and hands
   \code{std::cin}/\code{std::cout} to \code{cli::Repl} \src{cli/CliMain.cpp}{25}. The Repl
   is compiled into its own \code{cli} static library so that the test binaries drive the
-  identical object code users type into \src{CMakeLists.txt}{234}; the executable links that
-  library and nothing else \src{CMakeLists.txt}{297}. \Cref{sec:interfaces} reviews the
+  identical object code users type into \src{cli/CMakeLists.txt}{1}; the executable links that
+  library and nothing else \src{cli/CMakeLists.txt}{13}. \Cref{sec:interfaces} reviews the
   command set itself.
 \item[\code{qtrocket-visualizer} (OpenGL viewer).] A self-contained Qt application under
   \srcf{visualizer/} that finds its own \code{Qt6::OpenGLWidgets}/\code{OpenGL} components
-  \src{visualizer/CMakeLists.txt}{9} and, by stated design, never touches \srcf{gui/} or
+  \src{visualizer/CMakeLists.txt}{11} and, by stated design, never touches \srcf{gui/} or
   \srcf{cli/} code \src{visualizer/CMakeLists.txt}{3}. Its \code{main} disables the RHI
   widget backing store \src{visualizer/main.cpp}{22} and deliberately requests no specific
   GL version (a documented EGL/Wayland-plus-NVIDIA workaround,
@@ -48,25 +46,25 @@ seam through which the simulation loop sees the rocket model.}{fig:overview-laye
 \end{description}
 
 The visualizer's load path illustrates the document's recurring motif early: the shared
-design serializer is consumed by the CLI and the visualizer, but at this commit the GUI ---
-the front end a desktop user would expect to open files from --- has no design load path at
-all; GUI save/load wiring exists only as work in progress on the
-\code{RocketTreeViewImplementation} branch (\cref{sec:interfaces,sec:persistence}). The seam
-was built and tested before its most obvious consumer arrived.
+design serializer was consumed by the CLI and the visualizer for months before the GUI ---
+the front end a desktop user would expect to open files from --- gained its File\,>\,Open/%
+Save wiring with the \code{RocketTreeViewImplementation} merge
+(\cref{sec:interfaces,sec:persistence}). The seam was built and tested well before its most
+obvious consumer arrived.
 
 \subsection{The layering and the link graph}\label{sec:overview-layers}
 
 The layering is not a documentation convention; it is the link graph. \code{utils} sits at
 the bottom, linking only \code{libcurl} and \code{eigen}
-\src{utils/CMakeLists.txt}{14}. \code{sim} links only \code{utils}
-\src{sim/CMakeLists.txt}{28}. \code{model} links \code{utils}, \code{sim},
-\code{Boost::property\_tree}, and \code{jsoncpp\_static} \src{model/CMakeLists.txt}{44} ---
+\src{core/utils/CMakeLists.txt}{17}. \code{sim} links only \code{utils}
+\src{core/sim/CMakeLists.txt}{31}. \code{model} links \code{utils}, \code{sim},
+\code{Boost::property\_tree}, and \code{jsoncpp\_static} \src{core/model/CMakeLists.txt}{47} ---
 so \code{model} and \code{sim} are layered rather than peers: the model depends on the
 simulation layer's value types (\code{sim::Aero}, \code{StateData}), never the reverse
-\src{model/CMakeLists.txt}{41}. Above both sits \code{qtrocket\_core}
+\src{core/model/CMakeLists.txt}{44}. Above both sits \code{qtrocket\_core}
 (\cref{lst:overview-core}), and above that the three executables plus the test binaries.
 Include resolution everywhere uses a single global
-\cppinline|include_directories(${PROJECT_SOURCE_DIR})| \src{CMakeLists.txt}{147}, which is
+\cppinline|include_directories(${PROJECT_SOURCE_DIR})| \src{CMakeLists.txt}{122}, which is
 what makes the \code{model/...}, \code{sim/...}, and \code{utils/...} path prefixes resolve
 uniformly across the tree.
 
@@ -84,13 +82,13 @@ target_link_libraries(qtrocket_core PUBLIC
    sim
    utils)
 \end{minted}
-\caption{The keystone of the link graph \srccap{CMakeLists.txt}{222}: the controller
+\caption{The keystone of the link graph \srccap{core/CMakeLists.txt}{6}: the controller
 compiles once into a static library, and every executable and integration-test binary links
 it rather than recompiling \texttt{QtRocket.cpp}.}\label{lst:overview-core}
 \end{listing}
 
 \begin{designrule}[The layering invariant, stated where it binds]
-``Bottom layer: utils must not depend on model/ or sim/'' \src{utils/CMakeLists.txt}{13}.
+``Bottom layer: utils must not depend on model/ or sim/'' \src{core/utils/CMakeLists.txt}{16}.
 The comment sits directly above the \cppinline|target_link_libraries| call it constrains,
 and the review confirmed it holds: no header under \srcf{utils/} includes anything from
 \srcf{model/} or \srcf{sim/}. This single rule is what keeps the dependency graph acyclic
@@ -101,29 +99,30 @@ back-edge.
 \subsection{The controller and the \code{Propagatable} bridge}\label{sec:overview-controller}
 
 \code{QtRocket} is the application controller: a process-wide singleton
-\src{QtRocket.cpp}{19} that owns the \code{(RocketModel, Propagator)} pair, the
+\src{core/QtRocket.cpp}{19} that owns the \code{(RocketModel, Propagator)} pair, the
 \code{Environment}, and the \code{MotorModelDatabase}. Installing a rocket constructs its
 propagator in the same breath, with the shared environment injected
-\src{QtRocket.h}{41} --- the model and its integrator loop are never allowed to drift apart.
+\src{core/QtRocket.h}{41} --- the model and its integrator loop are never allowed to drift apart.
 The API surface the front ends drive is deliberately small: accessors for the environment,
-time step, integrator selection, rocket, and motor database \src{QtRocket.h}{34};
-\code{launchRocket()} \src{QtRocket.h}{43}; the recorded state history via
-\code{getStates()} \src{QtRocket.h}{48}; whole-flight summary statistics
-\src{QtRocket.h}{55}; a typed termination reason \src{QtRocket.h}{62}; and
-\code{setInitialState()} \src{QtRocket.h}{68}. A launch is four steps --- clear the state
+time step, integrator selection, rocket, and motor database \src{core/QtRocket.h}{34};
+\code{launchRocket()} \src{core/QtRocket.h}{43}; the recorded state history via
+\code{getStates()} \src{core/QtRocket.h}{48}; whole-flight summary statistics
+\src{core/QtRocket.h}{55}; a typed termination reason \src{core/QtRocket.h}{62}; and
+\code{setInitialState()} \src{core/QtRocket.h}{68}. A launch is four steps --- clear the state
 history, reset propagator time to zero, ignite the motor, run the ODE loop to termination
-\src{QtRocket.cpp}{54} --- and everything else (staging launch parameters, choosing models,
+\src{core/QtRocket.cpp}{54} --- and everything else (staging launch parameters, choosing models,
 exporting results) lives in the front ends.
 
 \begin{keyinsight}[Racy double-checked initialization]
 \code{QtRocket::getInstance()} reads the static \code{initialized} flag without holding the
-mutex \src{QtRocket.cpp}{21}; only \code{init()} re-checks under the lock
-\src{QtRocket.cpp}{30}. Two threads calling \code{getInstance()} concurrently would race on
+mutex \src{core/QtRocket.cpp}{21}; only \code{init()} re-checks under the lock
+\src{core/QtRocket.cpp}{30}. Two threads calling \code{getInstance()} concurrently would race on
 that unsynchronized read --- a data race in the C++ memory model. It is latent today because
-the two front ends that use it call it once, single-threaded, at startup (the visualizer builds its own \code{RocketModel} and never touches the controller); but the GUI's
-spawned-thread event loop (\cref{sec:interfaces}) means the assumption is worth stating
-rather than trusting. The \code{Logger} singleton one layer down already uses the safe
-Meyers form \src{utils/Logger.cpp}{19}.
+the two front ends that use it call it once, single-threaded, at startup (the visualizer
+builds its own \code{RocketModel} and never touches the controller); it becomes real the
+moment simulation moves to the worker thread that \cref{sec:roadmap} anticipates. The
+\code{Logger} singleton one layer down already uses the safe Meyers form
+\src{utils/Logger.cpp}{19}.
 \end{keyinsight}
 
 The seam between the two halves of the core is the \code{Propagatable} interface
@@ -170,12 +169,12 @@ each, and the same presets drive both developer workflows and CI.
 \toprule
 Dependency & Pinned tag & Build shape and role & \\
 \midrule
-GoogleTest & \code{v1.17.0} & test framework for all six test binaries & \src{CMakeLists.txt}{17} \\
-jsoncpp & \code{1.9.7} & static-only, tests/examples off; thrustcurve.org JSON & \src{CMakeLists.txt}{32} \\
-curl & \code{curl-8\_20\_0} & static, HTTP-only, optional backends forced off & \src{CMakeLists.txt}{44} \\
-Eigen & \code{5.0.1} & vectors, matrices, quaternions beneath \code{utils} & \src{CMakeLists.txt}{72} \\
-Boost & \code{boost-1.91.0-1} & restricted to \code{property\_tree}; XML persistence & \src{CMakeLists.txt}{79} \\
-Qt6 & system & Widgets/PrintSupport; visualizer adds OpenGL modules & \src{CMakeLists.txt}{140} \\
+GoogleTest & \code{v1.17.0} & test framework for all six test binaries & \src{CMakeLists.txt}{16} \\
+jsoncpp & \code{1.9.7} & static-only, tests/examples off; thrustcurve.org JSON & \src{CMakeLists.txt}{31} \\
+curl & \code{curl-8\_20\_0} & static, HTTP-only, optional backends forced off & \src{CMakeLists.txt}{43} \\
+Eigen & \code{5.0.1} & vectors, matrices, quaternions beneath \code{utils} & \src{CMakeLists.txt}{66} \\
+Boost & \code{boost-1.91.0-1} & restricted to \code{property\_tree}; XML persistence & \src{CMakeLists.txt}{73} \\
+Qt6 & system & Widgets/PrintSupport; visualizer adds OpenGL modules & \src{gui/CMakeLists.txt}{13} \\
 \bottomrule
 \end{tabularx}
 \caption{Every non-Qt dependency is vendored via FetchContent at an exact tag; Qt6 is the
@@ -184,15 +183,15 @@ slow once, hermetic thereafter.}\label{tab:overview-deps}
 \end{table}
 
 Dependency policy is strict vendoring (\cref{tab:overview-deps}). The curl configuration is
-the most deliberate: built static and HTTP-only \src{CMakeLists.txt}{47} with every optional
+the most deliberate: built static and HTTP-only \src{CMakeLists.txt}{46} with every optional
 third-party backend explicitly forced off, because auto-detected Homebrew libraries on macOS
 CI runners had previously broken the final link --- the hermeticity rationale is recorded in
-the tree \src{CMakeLists.txt}{51}. Qt is resolved with a hard
-\cppinline|find_package(Qt6 REQUIRED ...)| \src{CMakeLists.txt}{140}; the finer
+the tree \src{CMakeLists.txt}{48}. Qt is resolved with a hard
+\cppinline|find_package(Qt6 REQUIRED ...)| \src{gui/CMakeLists.txt}{13}; the finer
 hygiene findings in that block are examined in \cref{sec:testing}.
 
 Warning hygiene is tree-wide and strict: \code{-Wall -Wextra -Wpedantic -Werror} on GCC and
-Clang \src{CMakeLists.txt}{97}, \code{/W4 /WX} on MSVC \src{CMakeLists.txt}{88}, applied
+Clang \src{CMakeLists.txt}{91}, \code{/W4 /WX} on MSVC \src{CMakeLists.txt}{82}, applied
 after the FetchContent blocks so vendored code is exempt. The test suites themselves (six
 GoogleTest binaries), the five-platform CI matrix that runs them, the llvm-cov coverage
 target, and the finer warning-hygiene findings (a stale sanitizer claim, the vendored

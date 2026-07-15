@@ -12,7 +12,7 @@ class USStandardAtmosphere : public AtmosphericModel
 {
 public:
     USStandardAtmosphere();
-    virtual ~USStandardAtmosphere();
+    ~USStandardAtmosphere() override;
 
     /// Air density (kg/m^3) at @p altitude above mean sea level.
     /// @todo Verify against the 1976 US Standard Atmosphere / NOAA paper.

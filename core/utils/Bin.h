@@ -19,7 +19,7 @@ class Bin
 {
 public:
     Bin();
-    Bin(Bin&& o);
+    Bin(Bin&& o) noexcept;
     ~Bin();
 
     void insert(const std::pair<double, double>& toInsert);

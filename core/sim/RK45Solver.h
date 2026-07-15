@@ -44,7 +44,7 @@ class RK45Solver : public DESolver<T>
 public:
 
     RK45Solver(std::function<std::pair<T, T>(double, T&, T&)> func = nullptr, double desiredError = 1.0e-6)
-        : odes(func),
+        : odes(std::move(func)),
            tol(desiredError)
     {
         // Eigen Vector types only (mirrors RK4Solver).
@@ -56,7 +56,7 @@ public:
             throw std::invalid_argument("RK45Solver error tolerance must be positive");
         }
     }
-    virtual ~RK45Solver() {}
+    ~RK45Solver() override {}
 
     void setFunction(std::function<std::pair<T, T>(double, T&, T&)> func) override { odes = std::move(func); }
 

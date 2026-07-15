@@ -20,6 +20,10 @@ namespace viz
 namespace
 {
 
+// gl vertex-attribute offsets are byte counts passed as a pointer by API design
+// NOLINTNEXTLINE(performance-no-int-to-ptr)
+const void* glOffset(std::size_t bytes) { return reinterpret_cast<const void*>(bytes); }
+
 // Shaders are written for the lowest-common-denominator dialects so they run on whatever context
 // main.cpp's unconstrained surface format yields: GLSL 1.20 on a desktop compatibility context, or
 // GLSL ES 1.00 on a GLES2 context. Both use attribute/varying and gl_FragColor (no in/out, no
@@ -501,10 +505,10 @@ void RocketGLWidget::uploadMeshes()
         const int stride = static_cast<int>(sizeof(Vertex));
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-                                     reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+                                     glOffset(0));
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
-                                     reinterpret_cast<const void*>(3 * sizeof(float)));
+                                     glOffset(3 * sizeof(float)));
 
         gm->vao.release();
         gm->vbo.release();
@@ -536,10 +540,10 @@ void RocketGLWidget::uploadMeshes()
                                     static_cast<int>(wireVerts.size() * sizeof(Vertex)));
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
-                                     reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+                                     glOffset(0));
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
-                                     reinterpret_cast<const void*>(3 * sizeof(float)));
+                                     glOffset(3 * sizeof(float)));
         gm->wireVao.release();
         gm->wireVbo.release();
         gm->wireVertexCount = static_cast<int>(wireVerts.size());
@@ -563,7 +567,7 @@ void RocketGLWidget::buildOverlays()
     const float groundY = bounds.valid ? bounds.min.z() : 0.0F;
 
     std::vector<float> gridData;
-    gridData.reserve(static_cast<std::size_t>((divs + 1) * 4 * 3));
+    gridData.reserve(static_cast<std::size_t>(divs + 1) * 4U * 3U);
     for (int i = 0; i <= divs; ++i)
     {
         const float t = -extent + step * static_cast<float>(i);
@@ -585,7 +589,7 @@ void RocketGLWidget::buildOverlays()
     gridVbo.allocate(gridData.data(), static_cast<int>(gridData.size() * sizeof(float)));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * static_cast<int>(sizeof(float)),
-                                 reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+                                 glOffset(0));
     gridVao.release();
     gridVbo.release();
     gridVertexCount = static_cast<int>(gridData.size() / 3);
@@ -608,7 +612,7 @@ void RocketGLWidget::buildOverlays()
     axesVbo.allocate(axes, static_cast<int>(sizeof(axes)));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * static_cast<int>(sizeof(float)),
-                                 reinterpret_cast<const void*>(static_cast<std::size_t>(0)));
+                                 glOffset(0));
     axesVao.release();
     axesVbo.release();
     axesVertexCount = 6;

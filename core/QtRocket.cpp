@@ -10,34 +10,17 @@
 #include "utils/Logger.h"
 #include <memory>
 
-// Initialize static member data
-QtRocket* QtRocket::instance = nullptr;
-std::mutex QtRocket::mtx;
-bool QtRocket::initialized = false;
-
-
 QtRocket* QtRocket::getInstance()
 {
-    if(!initialized)
-    {
-        init();
-    }
-    return instance;
-}
-
-void QtRocket::init()
-{
-    std::lock_guard<std::mutex> lck(mtx);
-    if(!initialized)
-    {
-        utils::Logger::getInstance()->debug("Instantiating new QtRocket");
-        instance = new QtRocket();
-        initialized = true;
-    }
+    // meyers singleton: C++11 guarantees thread-safe once-only construction,
+    static QtRocket instance;
+    return &instance;
 }
 
 QtRocket::QtRocket()
 {
+    utils::Logger::getInstance()->debug("Instantiating new QtRocket");
+
     // Need to set some sane defaults for the Environment
     // The default constructor for Environment will do that for us, so just use that
     environment = std::make_shared<sim::Environment>();

@@ -40,6 +40,15 @@
       }
     },
     {
+      "name": "asan-clang",
+      "displayName": "ASan+UBSan (Ninja, clang)",
+      "inherits": "debug-clang",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "QTROCKET_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
       "name": "release-clang",
       "displayName": "Release (Ninja, clang)",
       "inherits": "release",
@@ -80,6 +89,7 @@
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
     { "name": "debug-clang", "configurePreset": "debug-clang" },
+    { "name": "asan-clang", "configurePreset": "asan-clang" },
     { "name": "coverage-clang", "configurePreset": "coverage-clang" },
     { "name": "release-clang", "configurePreset": "release-clang" },
     { "name": "debug-gcc", "configurePreset": "debug-gcc" },
@@ -95,6 +105,11 @@
     {
       "name": "debug-clang",
       "configurePreset": "debug-clang",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "asan-clang",
+      "configurePreset": "asan-clang",
       "output": { "outputOnFailure": true }
     },
     {

@@ -235,6 +235,7 @@ std::vector<Paired> loadCorpus()
    utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);  // quiet motor-absent warnings
    const std::map<std::string, DesignSnapshot> baseline = parseBaseline();
    std::vector<Paired> out;
+   out.reserve(baseline.size());
    for(const auto& [stem, base] : baseline)
    {
       out.push_back(Paired{stem, base, snapshotFixture(stem)});
@@ -247,6 +248,7 @@ std::vector<Paired> loadCorpus()
 // geometry change (see tests/data/designs/regenerate.sh); skipped otherwise.
 TEST(PlacementInvariance, RegenerateBaseline)
 {
+   // NOLINTNEXTLINE(concurrency-mt-unsafe) -- single-threaded test setup; getenv is benign here
    if(std::getenv("QTROCKET_REGEN_PLACEMENT_BASELINE") == nullptr)
    {
       GTEST_SKIP() << "set QTROCKET_REGEN_PLACEMENT_BASELINE=1 to rewrite the baseline";
@@ -399,7 +401,7 @@ TEST(PlacementInvariance, CorpusStableOnResave)
       // Snapshot the fixture as loaded ...
       model::RocketModel        r1;
       model::MotorModelDatabase m1;
-      model::DesignSerializer::load(r1, m1, kDesignsDir + "/" + stem + ".qrd");
+      model::DesignSerializer::load(r1, m1, std::format("{}/{}.qrd", kDesignsDir, stem));
       const DesignSnapshot a = snapshotRoot(*r1.getTopPart());
 
       // ... save it back and reload it.

@@ -1,0 +1,34 @@
+# curated for a numerics codebase: correctness and performance checks that stay
+# signal-dense; style-only families (readability-*, cppcoreguidelines-*) are out.
+# bugprone exclusions: easily-swappable-parameters and implicit-widening fire
+# constantly on physics math (double x, double y, double z) with no real defect.
+# optin.cplusplus.UninitializedObject fires only inside boost property_tree's
+# bundled rapidxml (analyzer reports bypass the header filters). enum-size wants
+# byte-packed enums, which buys nothing here. template-virtual-member-function
+# flags the DESolver<T> interface, which MSVC compiles and CI tests as-is.
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  clang-analyzer-*,
+  -clang-analyzer-optin.cplusplus.UninitializedObject,
+  concurrency-*,
+  performance-*,
+  -performance-enum-size,
+  portability-*,
+  -portability-template-virtual-member-function,
+  misc-redundant-expression,
+  misc-unused-using-decls,
+  modernize-make-shared,
+  modernize-make-unique,
+  modernize-use-emplace,
+  modernize-use-nullptr,
+  modernize-use-override,
+  readability-container-size-empty,
+  readability-redundant-smartptr-get
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(core|cli|gui|visualizer|tests)/'
+ExcludeHeaderFilterRegex: '(qcustomplot|_autogen|_deps)'
+FormatStyle: none

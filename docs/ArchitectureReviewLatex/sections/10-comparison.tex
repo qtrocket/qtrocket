@@ -35,21 +35,22 @@ distance to OpenRocket is overwhelmingly a consumption gap, not a construction g
 Second, failure posture: QtRocket is fail-closed where OpenRocket is warn-and-continue. A
 self-intersecting design hard-fails the mass computation with a located diagnostic
 (\src{model/parts/Part.cpp}{184}) where OpenRocket warns and simulates anyway; legacy design
-files are rejected rather than migrated (\src{model/DesignSerializer.cpp}{194}); the RASP parser
+files are rejected rather than migrated (\src{model/DesignSerializer.cpp}{174}); the RASP parser
 rejects malformed motor files with typed, line-numbered errors (\src{model/RASPLoader.cpp}{253}).
 This costs user forgiveness but guarantees that a produced number came from a coherent model.
 
 Third, the placement model: OpenRocket positions components by offsets under its
 \code{AxialMethod} scheme, while QtRocket records placement as intent --- a \code{StationLink}
 names fractional stations on both ends of a seam plus a seat kind selecting the radial
-compatibility rule (\src{model/parts/Placement.h}{49}). Arguably the richer model, though at the
-pinned commit only the coaxial \code{Abut} verb is reachable from any front end
-(\src{cli/Repl.cpp}{872}) --- another built-but-unconsumed seam (\cref{sec:model}).
+compatibility rule (\src{model/parts/Placement.h}{54}). Arguably the richer model, and since the
+\code{dynamic-Cd} merge the full seat vocabulary is authorable from the CLI
+(\src{cli/Repl.cpp}{221}); the GUI still authors nothing (\cref{sec:model},
+\cref{sec:interfaces}).
 
 Fourth, where the engineering effort has gone. QtRocket's infrastructure is strong for its size:
 a five-platform CI matrix with \code{-Werror} tree-wide
 (\src{.github/workflows/cmake-multi-platform.yml}{28}), \code{llvm-cov} coverage in the build,
-and 239 tests including a placement-invariance gate and 1/4A--M motor-ladder sweeps
+and 247 tests including a placement-invariance gate and 1/4A--M motor-ladder sweeps
 (\cref{sec:testing}). And three capabilities are genuine advantages rather than subsets: live
 thrustcurve.org search (\src{model/ThrustCurveClient.h}{68}) where OpenRocket bundles periodic
 snapshots; a true embedded-error adaptive RKF45 integrator (\src{sim/RK45Solver.h}{75}) where
@@ -63,14 +64,14 @@ from the project's documentation and release notes\footnote{Primarily
 \url{https://openrocket.readthedocs.io/en/latest/introduction/features.html} and the release
 notes in the \texttt{openrocket/openrocket} repository.}; QtRocket claims carry citations to the
 pinned commit. Markers: \fpresent{} implemented and consumed; \fpartial{} built but incomplete
-or unconsumed; \fabsent{} not present; \fwip{} under development on an unmerged branch.
+or unconsumed; \fabsent{} not present.
 
 \begingroup
 \footnotesize
 \setlength{\tabcolsep}{5pt}
 \begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.92in}>{\raggedright\arraybackslash}p{2.32in}>{\raggedright\arraybackslash}p{2.84in}@{}}
 \caption{Feature-area comparison: OpenRocket 24.12 versus QtRocket at commit
-\code{254cd41}.}\label{tab:comparison-matrix}\\
+\code{20eca72}.}\label{tab:comparison-matrix}\\
 \toprule
 \textbf{Area} & \textbf{OpenRocket} & \textbf{QtRocket} \\
 \midrule
@@ -91,7 +92,7 @@ centering rings, lugs, rail buttons, four fin classes, recovery devices, mass ob
 boosters; per-component mass/CG/$C_d$ overrides and a commercial preset database. &
 \fpartial{} Five types (\src{model/parts/PartFactory.cpp}{32}); geometry immutable after
 construction, so live dimension editing has no mutation path. Distinctive: intent-based
-\code{StationLink} placement (\src{model/parts/Placement.h}{49}) whose overlap sweep hard-fails
+\code{StationLink} placement (\src{model/parts/Placement.h}{54}) whose overlap sweep hard-fails
 self-intersecting designs (\src{model/parts/Part.cpp}{184}) --- stronger than warn-and-simulate. \\
 \addlinespace
 Mass / inertia modeling &
@@ -149,7 +150,7 @@ Staging / clusters / flight configurations &
 Unlimited serial stages plus strap-on boosters; separation and ignition event options with
 delays; motor clusters; named flight configurations. &
 \fabsent{} Single motor, single stage: first-match DFS (\src{model/RocketModel.cpp}{13});
-\code{Stage.h} is a commented-out ``Not yet'' include (\src{model/RocketModel.h}{22}). Ignition
+\code{Stage.h} is a commented-out ``Not yet'' include (\src{model/RocketModel.h}{23}). Ignition
 timing is half-plumbed (\code{ThrustCurve::setIgnitionTime} has zero call sites); the motor sits
 at the airframe CM with a hardcoded zero offset (\src{model/RocketModel.cpp}{124}). \\
 \addlinespace
@@ -165,11 +166,11 @@ Ships with an empty database; per-sample mass/CG data discarded
 Design UI &
 Component tree with drag-and-drop and undo; per-component dialogs; live 2D schematics with
 CG/CP markers; real-time background simulation while editing. &
-\fwip{} At the pinned commit, a motor-and-launch front end only: design widgets are constructor
-stubs (\src{gui/RocketTreeView.cpp}{1}), File actions ship disabled
-(\src{gui/MainWindow.ui}{116}), authoring is CLI-only (\src{cli/Repl.cpp}{784}). The unmerged
-\code{RocketTreeViewImplementation} branch adds a read-only tree and \code{.qrd} open/save; no
-add/edit UI, no property panel, no schematic. \\
+\fpartial{} A live read-only part tree (Name/Type/Mass, refreshed via a Qt-free
+structure-changed callback, \src{gui/RocketTreeView.cpp}{149}) and working \code{.qrd}
+File\,>\,Open/Save/Save~As (\src{gui/MainWindow.cpp}{95}); authoring remains CLI-only
+(\src{cli/Repl.cpp}{851}) --- no add/edit UI, no undo, no property panel, no schematic, no CG/CP
+markers. \\
 \addlinespace
 3D visualization &
 Embedded 3D finished/unfinished views, per-component appearance, textures and decals,
@@ -191,17 +192,17 @@ File formats \& interop &
 \code{.ork} zipped XML with loaders back to v1.0; RockSim \code{.rkt} and RASAero \code{.CDX1}
 import/export; OBJ, SVG, CSV, PDF export. &
 \fpartial{} Versioned \code{.qrd} XML round-trips the tree with placement intent, re-resolved on
-load (\src{model/DesignSerializer.cpp}{93}); fail-safe atomic loading
-(\src{model/DesignSerializer.cpp}{255}). Legacy 0.1 files rejected with no migration path
-(\src{model/DesignSerializer.cpp}{194}); mass overrides lost on save; no foreign import or
+load (\src{model/DesignSerializer.cpp}{73}); fail-safe atomic loading
+(\src{model/DesignSerializer.cpp}{235}). Legacy 0.1 files rejected with no migration path
+(\src{model/DesignSerializer.cpp}{174}); mass overrides lost on save; no foreign import or
 export of any kind. \\
 \addlinespace
 Simulation extensibility / scripting &
 Three simulation-listener interfaces that can mutate state per step; shipped extensions;
 JavaScript scripting; runtime plugin JARs. &
 \fpartial{} No listener, plugin, or scripting mechanism. Partial substitute the baseline lacks:
-a 33-command scriptable CLI over a machine-parseable OK/ERR protocol
-(\src{cli/Repl.cpp}{232}), weakened as automation by an always-zero exit code. \\
+a 34-command scriptable CLI over a machine-parseable OK/ERR protocol
+(\src{cli/Repl.cpp}{284}), weakened as automation by an always-zero exit code. \\
 \addlinespace
 Optimization / dispersion &
 Rocket Optimizer: multi-parameter optimization toward altitude/velocity/stability goals. Monte
@@ -214,9 +215,9 @@ Docs / i18n / platform / distribution &
 GPLv3 Java with JRE-bundled installers for Windows/macOS/Linux, Snap and Chocolatey packages;
 15-language localization; published technical documentation with a validation chapter. &
 \fpartial{} Strong engineering infrastructure: five-platform CI with \code{-Werror}
-(\src{.github/workflows/cmake-multi-platform.yml}{28}), \code{llvm-cov} coverage, 239 tests.
-Distribution essentially absent: one install rule (\src{CMakeLists.txt}{308}), no CPack or
-installers; i18n is dead scaffolding (\src{CMakeLists.txt}{201}), English only. \\
+(\src{.github/workflows/cmake-multi-platform.yml}{28}), \code{llvm-cov} coverage, 247 tests.
+Distribution essentially absent: one install rule (\src{gui/CMakeLists.txt}{96}), no CPack or
+installers; i18n is dead scaffolding (\src{gui/CMakeLists.txt}{65}), English only. \\
 \end{longtable}
 \endgroup
 
@@ -272,13 +273,11 @@ against roughly twenty: many realistic airframes cannot be described yet, indepe
 physics limitation, and immutable part geometry leaves live dimension editing --- table stakes in
 a design tool --- with no mutation path (\cref{sec:model}).
 
-\textbf{Rank 7: the GUI design experience}, the widest user-facing gap. At the pinned commit the
-design widgets are stubs (\src{gui/RocketTreeView.cpp}{1}) and authoring is CLI-only; the
-unmerged \code{RocketTreeViewImplementation} branch adds a read-only tree and \code{.qrd}
-open/save but no editor, and no CP/CG or stability readout exists on any surface. Simulation and
-network fetches run synchronously on the GUI thread, and \code{QApplication} runs on a spawned
-worker thread contrary to Qt's expectations (\src{gui/GuiRunner.cpp}{59}, fatal on macOS)
-(\cref{sec:interfaces}).
+\textbf{Rank 7: the GUI design experience}, the widest user-facing gap. The merged
+\code{RocketTreeViewImplementation} work gives the GUI a live read-only part tree and \code{.qrd}
+open/save, but authoring is still CLI-only --- no part can be added, removed, or edited from any
+widget --- and no CP/CG or stability readout exists on any surface. Simulation and network fetches
+still run synchronously on the GUI thread (\cref{sec:interfaces}).
 
 \textbf{Ranks 8--10, briefly.} Analysis: three fixed plots and a fixed-schema CSV versus 50+
 configurable variables with custom expressions (\cref{sec:interfaces}). Interop: no \code{.ork}
@@ -292,7 +291,7 @@ Fairness cuts both ways. Live thrustcurve.org search behind a fake-injectable se
 (\src{model/ThrustCurveClient.h}{68}) has no OpenRocket equivalent; nor does the embedded-error
 adaptive RKF45 (\src{sim/RK45Solver.h}{75}); nor the hang-proof loop with its typed termination
 taxonomy (\src{sim/Propagator.h}{35}); nor the scriptable headless REPL
-(\src{cli/Repl.cpp}{232}). The visualizer positions meshes with the exact placement resolver the
+(\src{cli/Repl.cpp}{284}). The visualizer positions meshes with the exact placement resolver the
 physics uses (\src{visualizer/RocketMesh.cpp}{433}), a single-source-of-truth property
 OpenRocket's separate rendering path does not enjoy; gravity is available as true inverse-square
 spherical (\src{sim/SphericalGravityModel.cpp}{28}); and the fail-closed overlap diagnostics

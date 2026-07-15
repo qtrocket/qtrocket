@@ -12,7 +12,7 @@ class SphericalGeoidModel : public GeoidModel
 {
 public:
     SphericalGeoidModel();
-    virtual ~SphericalGeoidModel();
+    ~SphericalGeoidModel() override;
 
     double getGroundLevel(double latitude, double longitude) override;
 

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <iterator>
 // 3rd party headers
@@ -54,12 +55,12 @@ public:
         if(model == "Runge-Kutta 4th Order")
         {
             integratorModel = model;
-            integratorModels[integratorModel].reset(new sim::RK4Solver<Vector3>(odes));
+            integratorModels[integratorModel] = std::make_unique<sim::RK4Solver<Vector3>>(odes);
         }
         else if(model == "Runge-Kutta-Fehlberg")
         {
             integratorModel = model;
-            integratorModels[integratorModel].reset(new sim::RK45Solver<Vector3>(odes));
+            integratorModels[integratorModel] = std::make_unique<sim::RK45Solver<Vector3>>(odes);
         }
         else {
             // unknown name: logged no-op, keep the current valid model
@@ -71,7 +72,7 @@ public:
 
     void setIntegratorFunction(std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> func)
     {
-        odes = func;
+        odes = std::move(func);
     }
 
     void setTimeStep(double dt)

@@ -137,9 +137,9 @@ void MotorModel::computeMassCurve()
     double propMass{data.propWeight};
     for(std::size_t i = 0; i < 127; ++i)
     {
-        massCurve.push_back(std::make_pair(t + i*timeStep, propMass));
+        massCurve.emplace_back(t + i*timeStep, propMass);
         propMass -= thrust.getThrust(t + i*timeStep) * timeStep * data.propWeight / data.totalImpulse;
     }
-    massCurve.push_back(std::make_pair(data.burnTime, 0.0));
+    massCurve.emplace_back(data.burnTime, 0.0);
 }
 } // namespace model

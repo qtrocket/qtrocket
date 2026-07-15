@@ -8,83 +8,77 @@ two; the visualizer's build file states outright that it does not touch the GUI 
 visible form: capability accumulates in the core, and the front ends expose sharply uneven subsets
 of it. The CLI is the broadest surface --- it can author, persist, and fly a multi-part design; the
 visualizer is the most finished piece of visual UI in the project; and the GUI, the executable that
-carries the project's name, is the narrowest --- a motor-selection-and-launch panel whose
-design-tool half is empty scaffolding at commit \code{254cd41}.
+carries the project's name, is the narrowest --- a motor-selection-and-launch panel that can now
+display and persist a design, but still cannot edit one.
 
 \subsection{The Qt6 GUI: a motor-and-launch front end}\label{sec:interfaces-gui}
 
-\code{main.cpp} instantiates the logger and the \code{QtRocket} controller singleton, then blocks in
-\cppinline|gui::run| (\src{main.cpp}{25}). That function --- the only bridge between the Qt-free
-controller and Qt --- spawns a \cppinline|std::thread| running \code{guiWorker}, which constructs
-\code{QApplication}, installs a translator, creates \code{MainWindow}, and enters
-\cppinline|exec()| (\src{gui/GuiRunner.cpp}{30}), then immediately joins it.
+\code{gui/main.cpp} instantiates the logger and the \code{QtRocket} controller singleton, then
+constructs \code{QApplication} and \code{MainWindow} directly on the main thread and blocks in
+\cppinline|a.exec()| (\src{gui/main.cpp}{29}) --- the conventional Qt arrangement. (The review's
+original pin ran the entire event loop on a spawned \cppinline|std::thread| via a since-deleted
+\code{GuiRunner} --- an inversion that was a hard failure on macOS, where the GUI must run on the
+first thread; it was retired when the GUI became a self-contained application.)
 
-\begin{hardfail}[QApplication on a spawned thread]
-\cppinline|std::thread guiThread(guiWorker, ...); guiThread.join();| --- the Qt event loop runs on
-a secondary thread while the main thread blocks in \cppinline|join()| for the application's
-lifetime (\src{gui/GuiRunner.cpp}{59}). The indirection buys nothing --- the caller does no
-concurrent work --- while putting the GUI on a non-main thread, which Qt only tolerates on some
-platforms and which is a hard failure on macOS, where the GUI must run on the first thread. \fail
-\end{hardfail}
-
-Startup also performs two loads that can never succeed. The application icon is read from
-\code{:/qtrocket.png} (\src{gui/GuiRunner.cpp}{31}), a path absent from the project's only
+Startup still performs two loads that can never succeed. The application icon is read from
+\code{:/qtrocket.png} (\src{gui/main.cpp}{30}), a path absent from the project's only
 \code{.qrc}, whose sole entry is \code{resources/rocket64.png} under \code{/images}
-(\src{qtrocket.qrc}{4}); the icon silently resolves to null, masked because the main window loads
+(\src{gui/qtrocket.qrc}{4}); the icon silently resolves to null, masked because the main window loads
 the valid path separately (\src{gui/MainWindow.ui}{16}). And the internationalization scaffolding
 is dead code: the translator loads \code{qtrocket\_<locale>} from a \code{:/i18n/} resource prefix
-that is never populated (\src{gui/GuiRunner.cpp}{40}) --- the build-side half of the story, translation files
-generated but attached to nothing, is covered in \cref{sec:testing} --- and the adjacent \code{TODO} admits the
-application is en\_US only (\src{gui/GuiRunner.cpp}{34}).
+that is never populated (\src{gui/main.cpp}{36}) --- the build-side half of the story, translation files
+generated but attached to nothing, is covered in \cref{sec:testing}.
 
-The main window's layout promises a design tool it does not contain. The \code{.ui} places a
+The main window's layout now delivers half of the design tool it promises. The \code{.ui} places a
 \code{RocketTreeView} (a promoted \code{QTreeView}), a tab widget, and a \code{RocketModelerView}
-in the central splitter (\src{gui/MainWindow.ui}{49}); the constructor adds two tabs
-programmatically --- \code{CannonballTab} and \code{SimOptionsTab} (\src{gui/MainWindow.cpp}{30})
---- and wires exactly three menu actions: Quit, Save Motor Database, and About
-(\src{gui/MainWindow.cpp}{42}). Both design widgets are default-constructed shells with no model,
-no data, and no behavior; the complete implementation of the tree widget at \code{HEAD} is
-(\src{gui/RocketTreeView.cpp}{1}):
+in the central splitter (\src{gui/MainWindow.ui}{49}); the constructor binds the tree to the rocket
+(\src{gui/MainWindow.cpp}{33}), adds two tabs programmatically --- \code{CannonballTab} and
+\code{SimOptionsTab} (\src{gui/MainWindow.cpp}{36}) --- and wires six menu actions: Open, Save,
+Save~As, Quit, Save Motor Database, and About (\src{gui/MainWindow.cpp}{48}). The tree is real:
+\code{RocketPartModel}, a read-only \code{QAbstractItemModel} over the part tree with
+Name/Type/Mass columns (\src{gui/RocketTreeView.h}{16}), using raw \code{Part*} internal pointers
+and \code{Part::getParent()} (\src{model/parts/Part.h}{212}) for the upward walk. It stays live
+through a deliberately Qt-free seam: \code{RocketModel::setStructureChangedCallback}, a
+\cppinline|std::function| observer hook (\src{model/RocketModel.h}{121}) fired from
+\code{setRoot}, \code{addPart}, \code{removePart}, and \code{setMotorModel}; the view re-roots and
+re-expands on every fire (\src{gui/RocketTreeView.cpp}{149}) --- a full model reset per change ---
+and detaches the callback in its destructor. File\,>\,Open/Save/Save~As call
+\code{DesignSerializer} for \code{.qrd} files with current-file tracking and window-title updates
+(\src{gui/MainWindow.cpp}{95}); New and Close remain declared but disabled in the \code{.ui}
+(\src{gui/MainWindow.ui}{118}).
 
-\begin{minted}{cpp}
-#include "RocketTreeView.h"
-
-RocketTreeView::RocketTreeView(QWidget* parent) : QTreeView(parent)
-{
-
-}
-\end{minted}
-
-\noindent \code{RocketModelerView} is the same empty \code{QWidget} shell
-(\src{gui/RocketModelerView.cpp}{3}), so the left panel and bottom panel render permanently blank.
-The File menu completes the picture: New, Open, Save, Close, and Save~As are declared but ship
-\code{enabled=false} in the \code{.ui} --- \code{actionNew} at \src{gui/MainWindow.ui}{118}, Open,
-Save, Close, and Save~As at lines 130, 142, 154, and 171 --- with no slots at \code{HEAD}.
-Every one of these capabilities exists one layer down: the CLI's \code{newdesign}
-(\src{cli/Repl.cpp}{784}) and \code{addpart} (\src{cli/Repl.cpp}{825}) author part trees the GUI
-cannot even display. Structural design status in the GUI at the reviewed commit: \fabsent{}
-(\fwip{} on the in-flight branch of \cref{sec:interfaces-branch}).
+\noindent What the GUI still cannot do is edit: no part can be added, removed, or renamed from any
+widget, selection in the tree drives nothing, and \code{RocketModelerView} remains an empty
+\code{QWidget} shell (\src{gui/RocketModelerView.cpp}{3}), so the bottom panel renders permanently
+blank. Authoring exists only one layer down: the CLI's \code{newdesign} (\src{cli/Repl.cpp}{851})
+and \code{addpart} (\src{cli/Repl.cpp}{892}) build part trees the GUI can now display and save but
+not modify. Structural design status in the GUI at the pinned commit: \fpartial{} (display and
+persistence, no editor).
 
 What the GUI does do is launch point masses, and the tab name is honest about it. The
 \code{CannonballTab} takes initial velocity, a launch angle validated to $0$--$90^{\circ}$ from
 vertical (\src{gui/CannonballTab.cpp}{36}), mass, drag coefficient, and reference area
 (\src{gui/CannonballTab.cpp}{40}). The launch slot decomposes the velocity into downrange and
-vertical components (\src{gui/CannonballTab.cpp}{104}), writes mass, $C_d$, and area into the shared
+vertical components (\src{gui/CannonballTab.cpp}{116}), writes mass, $C_d$, and area into the shared
 \code{RocketModel} through the \code{QtRocket} facade --- the GUI's only route to the core
-(\src{gui/CannonballTab.cpp}{110}) --- and calls \cppinline|launchRocket()|
-(\src{gui/CannonballTab.cpp}{115}). That call is fully synchronous: it runs
-\cppinline|runUntilTerminate()| on the calling thread (\src{QtRocket.cpp}{54}), freezing the window
+(\src{gui/CannonballTab.cpp}{122}) --- and calls \cppinline|launchRocket()|
+(\src{gui/CannonballTab.cpp}{127}). That call is fully synchronous: it runs
+\cppinline|runUntilTerminate()| on the calling thread (\src{core/QtRocket.cpp}{54}), freezing the window
 for the duration of the propagation before \code{AnalysisWindow} opens
-(\src{gui/CannonballTab.cpp}{118}). One rule gates the workflow: Calculate Trajectory is enabled
+(\src{gui/CannonballTab.cpp}{130}). One rule gates the workflow: Calculate Trajectory is enabled
 iff the rocket has a motor (\src{gui/CannonballTab.cpp}{88}), a condition reachable by four
 acquisition paths: (i) local file import of RockSim \code{.rse} or RASP \code{.eng}, dispatched by
-extension with exceptions caught into a critical dialog (\src{gui/CannonballTab.cpp}{136},
-\src{gui/CannonballTab.cpp}{141}); (ii) a \code{.qmd} motor-database round trip with suffix
-enforcement (\src{gui/CannonballTab.cpp}{173}, \src{gui/CannonballTab.cpp}{212}), duplicated in
-the Tools menu (\src{gui/MainWindow.cpp}{74}); (iii) online search through the
-\code{ThrustCurveMotorSelector} dialog (\src{gui/CannonballTab.cpp}{163}); and (iv) an engine
-combo rebuilt from the database as the single source of truth (\src{gui/CannonballTab.cpp}{156})
-plus Set Motor, which resolves the name and installs the motor (\src{gui/CannonballTab.cpp}{231}).
+extension with exceptions caught into a critical dialog (\src{gui/CannonballTab.cpp}{148},
+\src{gui/CannonballTab.cpp}{153}); (ii) a \code{.qmd} motor-database round trip with suffix
+enforcement (\src{gui/CannonballTab.cpp}{185}, \src{gui/CannonballTab.cpp}{224}), duplicated in
+the Tools menu (\src{gui/MainWindow.cpp}{180}); (iii) online search through the
+\code{ThrustCurveMotorSelector} dialog (\src{gui/CannonballTab.cpp}{175}); and (iv) an engine
+combo rebuilt from the database as the single source of truth (\src{gui/CannonballTab.cpp}{168})
+plus Set Motor, which resolves the name and installs the motor (\src{gui/CannonballTab.cpp}{243}).
+A design opened elsewhere re-syncs the tab through \code{refreshFromModel()}
+(\src{gui/CannonballTab.cpp}{91}): the write-back mass/$C_d$/area fields mirror the loaded rocket
+--- so the next Calculate does not silently overwrite loaded values --- and the motor gate is
+re-evaluated.
 
 The online selector is a three-click manual workflow --- ``Get Metadata'' populates search facets
 (\src{gui/ThrustCurveMotorSelector.cpp}{52}), ``Search'' merges results into the local database
@@ -118,9 +112,9 @@ The axis-range code dereferences \cppinline|std::min_element| without an emptine
 undefined behavior on an empty series, and an empty default \code{ThrustCurve} does exist
 (\src{model/ThrustCurve.h}{17}); only the motor-gated launch flow keeps the path unreachable. More
 telling is what the window never shows: the controller exposes whole-flight
-\code{TrajectoryStatistics} (\src{QtRocket.h}{55}) and a \code{TerminationReason}
-(\src{QtRocket.h}{62}), and the propagator records mass, CG, and inertia alongside every state ---
-all of which the CLI surfaces (\src{cli/Repl.cpp}{703}, \src{cli/Repl.cpp}{104}) --- yet neither
+\code{TrajectoryStatistics} (\src{core/QtRocket.h}{55}) and a \code{TerminationReason}
+(\src{core/QtRocket.h}{62}), and the propagator records mass, CG, and inertia alongside every state ---
+all of which the CLI surfaces (\src{cli/Repl.cpp}{770}, \src{cli/Repl.cpp}{104}) --- yet neither
 accessor has a single call site under \code{gui/}. A user whose run aborted for no-liftoff gets an
 altitude plot and no explanation, and must eyeball the curve for apogee. The Barrowman
 center-of-pressure machinery of \cref{sec:aero} is likewise computed and tested in the core with no
@@ -128,8 +122,8 @@ display surface in any front end. \fpartial
 
 The remaining gaps are individually small and collectively diagnostic: no \code{QSettings} or other
 preference persistence exists anywhere in \code{gui/}, \code{visualizer/}, or \code{main.cpp} ---
-file dialogs hardcode \code{/home} as their start directory (\src{gui/CannonballTab.cpp}{127},
-\src{gui/MainWindow.cpp}{78}) --- dialogs keep the Designer default title ``Dialog''
+file dialogs hardcode \code{/home} as their start directory (\src{gui/CannonballTab.cpp}{139},
+\src{gui/MainWindow.cpp}{184}) --- dialogs keep the Designer default title ``Dialog''
 (\src{gui/AnalysisWindow.ui}{14}), and \code{AnalysisWindow.ui} declares a
 \cppinline|plotAltitude()| slot that does not exist in the class (\src{gui/AnalysisWindow.ui}{77}).
 None is hard to fix; together they mark a front end that has not yet had a first polish pass.
@@ -142,34 +136,36 @@ surface in the project. Its \cppinline|main| deliberately ignores \code{argc}/\c
 the logger to \code{ERROR} because ``Logger shares stdout with the CLI's machine-readable output''
 (\src{cli/CliMain.cpp}{15}), then runs \code{cli::Repl} over
 \code{std::cin}/\code{std::cout} (\src{cli/CliMain.cpp}{25}). The loop is a bare
-\cppinline|std::getline| with a flush per command (\src{cli/Repl.cpp}{232}); there is no readline,
+\cppinline|std::getline| with a flush per command (\src{cli/Repl.cpp}{284}); there is no readline,
 no history, and no prompt --- the project's own \code{CLAUDE.md} calls it a ``readline-style REPL,''
-but no such library is linked (\src{CMakeLists.txt}{297}). That austerity is the documented intent:
+but no such library is linked (\src{cli/CMakeLists.txt}{13}). That austerity is the documented intent:
 the class comment promises the same operations the GUI performs, ``interactively, from a pipe, or
 from a redirected script'' (\src{cli/Repl.h}{20}), and batch use is plain shell redirection.
 
 \begin{designrule}[The stdout protocol is the interface contract]
 Every command answers exactly one \code{OK} or \code{ERR} line (dispatch chain at
-\src{cli/Repl.cpp}{245}, unknown-command fallback at \src{cli/Repl.cpp}{981});
+\src{cli/Repl.cpp}{294}, unknown-command fallback at \src{cli/Repl.cpp}{1113});
 \code{launch} appends \code{WARN:} on non-nominal termination --- through an exhaustive switch with
 no default, so a new \code{TerminationReason} fails to compile until the CLI handles it
 (\src{cli/Repl.cpp}{41}) --- and a \code{CSV <abs-path>} line; informational output is
-\code{\#}-prefixed and \code{\#} lines are comments on input (\src{cli/Repl.cpp}{256}). Because the
-REPL is built as a static \code{cli} library (\src{CMakeLists.txt}{235}), the test binaries drive
+\code{\#}-prefixed and \code{\#} lines are comments on input (\src{cli/Repl.cpp}{320}). Because the
+REPL is built as a static \code{cli} library (\src{cli/CMakeLists.txt}{2}), the test binaries drive
 the exact object code users type into and parse this same protocol (\cref{sec:testing}).
 \end{designrule}
 
 \Cref{tab:interfaces-repl} inventories the command set. The count deserves precision: the dispatch
-chain has 32 handler branches covering 33 command words (\code{quit} and \code{exit} share one).
+chain has 33 handler branches covering 34 command words (\code{quit} and \code{exit} share one).
 The grammar for design authoring is \code{key=value} over the part factory
-(\src{cli/Repl.cpp}{169}; \src{model/parts/PartFactory.cpp}{27}), with strict full-string numeric
-parsing that rejects trailing garbage (\src{cli/Repl.cpp}{119}) and warn-and-skip tolerance for
-unknown keys (\src{cli/Repl.cpp}{205}).
+(\src{cli/Repl.cpp}{178}; \src{model/parts/PartFactory.cpp}{27}), with strict full-string numeric
+parsing that rejects trailing garbage (\src{cli/Repl.cpp}{81}), warn-and-skip tolerance for
+unknown keys (\src{cli/Repl.cpp}{215}), and --- since the \code{dynamic-Cd} merge --- a link
+vocabulary (\code{seat=}, \code{parentStation=}, \code{childStation=}, \code{gap=}) that authors
+every \code{StationLink} seat kind the model supports (\src{cli/Repl.cpp}{221}).
 
 \begin{table}[htbp]
 \centering\footnotesize
-\caption{The \code{qtrocket-cli} command set at commit \code{254cd41}: 33 command words, 32 handler
-branches in \code{Repl::execute} (\srccap{cli/Repl.cpp}{245}).}
+\caption{The \code{qtrocket-cli} command set at commit \code{20eca72}: 34 command words, 33 handler
+branches in \code{Repl::execute} (\srccap{cli/Repl.cpp}{294}).}
 \label{tab:interfaces-repl}
 \begin{tabularx}{\linewidth}{@{}>{\ttfamily}p{0.34\linewidth}X@{}}
 \toprule
@@ -197,7 +193,11 @@ status & staged configuration plus database size \\
 \addlinespace
 \multicolumn{2}{@{}l}{\itshape Design authoring}\\
 newdesign <type> [k=v\ldots] & root part via the \code{makePart} factory \\
-addpart <parent|root> <type> [k=v\ldots] & attach with \code{abut(z)}; \code{x}/\code{y} parsed but ignored \\
+addpart <parent|name|root> <type> [k=v\ldots] & attach with full link vocabulary:
+  \code{seat=Abut|NestInBore|OnSurface}, \code{parentStation}/\code{childStation}, \code{gap};
+  parent addressable by name \\
+checkdesign & physical-sense verdict: \code{OK} on a contiguous stack, \code{ERR} with located
+  overlap / air-gap diagnostics \\
 listparts & indented id/type/name/mass tree; composite mass/CG footer \\
 removepart <id> & refuses the root; re-checks motor presence \\
 cleardesign & restore the boot placeholder \\
@@ -213,42 +213,44 @@ savedesign / loaddesign <file.qrd> & design round trip (\cref{sec:persistence}) 
 
 This inventory is not a paper capability; the review exercised it end to end against the built
 binary. A single piped session loaded 249 motors from the bundled \code{Aerotech.rse}
-(\src{cli/Repl.cpp}{314}), loaded the committed \code{large38\_multi.qrd} fixture with its motor
+(\src{cli/Repl.cpp}{381}), loaded the committed \code{large38\_multi.qrd} fixture with its motor
 re-resolved by name (``\code{OK loaddesign: ... (motor I280DM)}''), listed the part tree with its
-composite mass/CG footer (\src{cli/Repl.cpp}{880}), and flew it:
+composite mass/CG footer (\src{cli/Repl.cpp}{1012}), and flew it:
 \code{OK launch: 4258 steps, t\_final=42.570s}, apogee $1856.613\unit{m}$ at $t=13.240\unit{s}$,
 maximum speed $562.928\unit{m/s}$ at $t=1.730\unit{s}$, statistics read from the live-tracked
-\code{TrajectoryStatistics} rather than re-derived (\src{cli/Repl.cpp}{703}). A second fixture
+\code{TrajectoryStatistics} rather than re-derived (\src{cli/Repl.cpp}{770}). A second fixture
 under the adaptive Runge-Kutta-Fehlberg integrator completed in 440 steps, an order of magnitude
 fewer than the fixed-step run, and a CLI-built design round-tripped through
 \code{savedesign}/\code{cleardesign}/\code{loaddesign} with identical part masses
 (\cref{sec:persistence} covers the mechanics).
 
 The REPL's gaps are edges, not holes. The process exit code is always zero
-(\src{cli/Repl.cpp}{242}; the contract comment says so, \src{cli/Repl.h}{28}), so the scripting
+(\src{cli/Repl.cpp}{291}; the contract comment says so, \src{cli/Repl.h}{28}), so the scripting
 mode that is the CLI's stated strength cannot signal failure to a shell --- callers must parse
 \code{ERR} lines. Every \code{launch} unconditionally writes \code{qtrocket\_run.csv} into the
-current directory under a hardcoded name (\src{cli/Repl.cpp}{716}). \code{addpart} parses
-\code{x=} and \code{y=} into an offset vector (\src{cli/Repl.cpp}{189}) and silently discards
-them, attaching with \cppinline|abut(offset.z())| only (\src{cli/Repl.cpp}{872}) --- and that abut
-is the only seat kind reachable from any front end, although the \code{.qrd} format round-trips
-all three (\cref{sec:persistence}). No command sets the design name, so although the serializer
-writes and restores it (\src{model/DesignSerializer.cpp}{221}), every CLI-authored file carries
-\code{<design name=""/>} (\src{cli/Repl.cpp}{259}). \code{status} prints a staged
-\code{dry\_mass} that \code{loaddesign} never re-syncs (\src{cli/Repl.cpp}{966}): after loading a
-$0.785\unit{kg}$ design, the live session still reported ``\code{dry\_mass = 1 kg}''
-(\src{cli/Repl.cpp}{656}) --- harmless to the physics, which uses the composite tree mass, but
+current directory under a hardcoded name (\src{cli/Repl.cpp}{783}). The original review's largest
+CLI gap is closed: \code{addpart} now authors every seat kind and station the model and serializer
+support --- \code{seat=}, \code{parentStation=}, \code{childStation=}, \code{gap=}, with the
+parent addressable by name (\src{cli/Repl.cpp}{221}) --- rejecting unknown seats and negative bore
+depths with typed errors (\src{cli/Repl.cpp}{231}); the old parsed-then-discarded
+\code{x=}/\code{y=} offset tokens are gone from the grammar entirely. No command sets the design
+name, so although the serializer writes and restores it (\src{model/DesignSerializer.cpp}{201}),
+every CLI-authored file carries \code{<design name=""/>} (\src{cli/Repl.cpp}{1058}).
+\code{loaddesign} re-syncs the staged drag, reference area, and motor from the loaded rocket
+(\src{cli/Repl.cpp}{1098}) but not the staged \code{dry\_mass} that \code{status} prints: after
+loading a $0.785\unit{kg}$ design, the live session still reported ``\code{dry\_mass = 1 kg}''
+(\src{cli/Repl.cpp}{723}) --- harmless to the physics, which uses the composite tree mass, but
 misleading in the one place a user checks configuration. Two smaller notes: \code{DEG\_PER\_RAD}
 is a truncated copy of the GUI's constant ($57.2958$ vs.\ $180/\pi = 57.29578\ldots$) whose
 comment points at the wrong file (\src{cli/Repl.cpp}{35}); and \code{setangle} tilts only the
-initial velocity vector (\src{cli/Repl.cpp}{679}) --- thrust remains world-vertical throughout the
+initial velocity vector (\src{cli/Repl.cpp}{746}) --- thrust remains world-vertical throughout the
 burn, a 3-DOF core limitation owned by \cref{sec:sim}.
 
 \subsection{The standalone visualizer}\label{sec:interfaces-viz}
 
 \code{qtrocket-visualizer} is built unconditionally from the root build
-(\src{CMakeLists.txt}{243}) and links only the Qt OpenGL modules plus \code{qtrocket\_core}
-(\src{visualizer/CMakeLists.txt}{27}). Its \cppinline|main| disables the RHI widget backing store
+(\src{CMakeLists.txt}{134}) and links only the Qt OpenGL modules plus \code{qtrocket\_core}
+(\src{visualizer/CMakeLists.txt}{29}). Its \cppinline|main| disables the RHI widget backing store
 and deliberately leaves the GL version and profile unconstrained --- the documented rationale is
 surviving EGL/Wayland/NVIDIA context matching (\src{visualizer/main.cpp}{10}); an optional
 \code{.qrd} path on \code{argv} is opened at startup (\src{visualizer/main.cpp}{35}). The window
@@ -306,39 +308,32 @@ swatch panel is hardcoded to exactly the four current type names
 with no picker.
 
 The one thing the visualizer lacks is a caller. It is not integrated with the GUI in any way ---
-the GUI never launches or embeds it (\src{gui/MainWindow.cpp}{22}) --- and at \code{HEAD} the GUI
-cannot even produce the \code{.qrd} files it consumes; only the CLI's \code{savedesign} can. The
-most finished visual component in the project is unreachable from the product's main window.
-\fpresent{} as a tool, \fabsent{} as an integrated feature.
+the GUI never launches or embeds it (\src{gui/MainWindow.cpp}{24}) --- even though the GUI can now
+produce and open the same \code{.qrd} files (File\,>\,Save~As). The most finished visual component
+in the project is unreachable from the product's main window. \fpresent{} as a tool, \fabsent{} as
+an integrated feature.
 
-\subsection{Work in flight: the
-  \texorpdfstring{\code{RocketTreeViewImplementation}}{RocketTreeViewImplementation} branch}%
+\subsection{Merged since the original review: the
+  \texorpdfstring{\code{RocketTreeViewImplementation}}{RocketTreeViewImplementation} work}%
 \label{sec:interfaces-branch}
 
-Everything above describes commit \code{254cd41}. An in-flight branch,
-\code{RocketTreeViewImplementation}, sits two commits ahead (\code{049bb02} ``Initial
-implementation of RocketTreeView Widget'', \code{2ddd553} ``GUI save/load WIP''; $+360/-15$ lines
-across ten files) and closes part of the GUI's design gap. It adds \code{RocketPartModel}, a
-read-only \code{QAbstractItemModel} over the part tree with Name/Type/Mass columns, using raw
-\code{Part*} internal pointers and a new \code{Part::getParent()} accessor for the parent walk
-(declared at \src{model/parts/Part.h}{212} on that branch). The tree stays live through a
-deliberately Qt-free seam: \code{RocketModel::setStructureChangedCallback}, a
-\cppinline|std::function| observer hook added at \src{model/RocketModel.h}{121} on the branch and
-fired from \code{setMotorModel}, \code{setRoot}, \code{addPart}, and \code{removePart}; the view
-re-roots and expands on every fire and detaches in its destructor. The branch also wires
-File\,>\,Open/Save/Save~As to \code{DesignSerializer} for \code{.qrd} files with current-file
-tracking and window-title updates (handlers in the region of \src{gui/MainWindow.cpp}{92} on the
-branch), and adds \code{CannonballTab::refreshFromModel()} so a load re-syncs the mass/$C_d$/area
-fields rather than letting the next Calculate silently overwrite loaded values. Even on the branch
-the tree is display-only --- no part can be added, removed, or edited from the GUI; New and Close
-remain disabled; and the refresh is a full model reset per change. The second commit's own title,
-``GUI save/load WIP,'' states the status accurately. \fwip
+The original review covered the tree view and design open/save as in-flight work on the
+\code{RocketTreeViewImplementation} branch; that branch has since been merged into
+\code{development} (merge commit \code{29c9f9c}) and deleted, and its contents --- the live
+\code{RocketPartModel} tree, the \code{setStructureChangedCallback} seam, \code{Part::getParent()},
+the File\,>\,Open/Save/Save~As slots, and \code{CannonballTab::refreshFromModel()} --- are
+reviewed above as part of the pinned tree. What the merge deliberately did \emph{not} bring over
+is worth recording: the branch's \code{notifyStructureChanged()} also re-derived the reference
+area from geometry on every structural edit, which on today's tree would have clobbered a restored
+manual override during design load (\src{model/DesignSerializer.cpp}{241}) and silently changed
+every non-overridden fixture's drag; the merge kept the callback dispatch and dropped the
+derivation, leaving \code{deriveReferenceAreaFromGeometry()} uncalled as \cref{sec:aero} reports.
 
 One cross-cutting fact frames all three front ends: nothing under \code{gui/} or
 \code{visualizer/} has any automated test (\cref{sec:testing}), so every ``implemented'' verdict in
 this section rests on code reading and the live CLI sessions above, not on a suite. And the CLI's
 class comment --- ``the same operations the GUI performs \ldots{} as text commands''
-(\src{cli/Repl.h}{20}) --- was written when the GUI was the reference point. At the reviewed commit
-the relationship has inverted: the sentence now undersells a REPL that authors, persists, and flies
-designs the GUI cannot yet open. The consolidated ranking of these gaps belongs to
+(\src{cli/Repl.h}{20}) --- was written when the GUI was the reference point. The relationship
+remains inverted: the sentence undersells a REPL that authors, persists, and flies designs the GUI
+can now open and display but still cannot build. The consolidated ranking of these gaps belongs to
 \cref{sec:roadmap}.

@@ -12,7 +12,7 @@ class VacuumAtmosphere : public AtmosphericModel
 {
 public:
     VacuumAtmosphere() {}
-    virtual ~VacuumAtmosphere() {}
+    ~VacuumAtmosphere() override {}
 
     double getDensity(double) override { return 0.0; }
     double getPressure(double) override { return 0.0; }

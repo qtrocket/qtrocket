@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iomanip>
 #include <optional>
@@ -192,14 +193,14 @@ std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& 
         if(key == "finCount")
         {
             unsigned int n = 0;
-            if(!parseUIntStr(val, n)) return "bad value for 'finCount': '" + val + "'";
+            if(!parseUIntStr(val, n)) return std::format("bad value for 'finCount': '{}'", val);
             p.finCount = n;
             continue;
         }
         if(key == "parentStation" || key == "childStation" || key == "gap")
         {
             double d = 0.0;
-            if(!parseDoubleStr(val, d)) return "bad value for '" + key + "': '" + val + "'";
+            if(!parseDoubleStr(val, d)) return std::format("bad value for '{}': '{}'", key, val);
             if(key == "parentStation")     link.parentStation = d;
             else if(key == "childStation") link.childStation = d;
             else                           link.gap = d;
@@ -208,7 +209,7 @@ std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& 
         if(std::optional<double>* field = doubleFieldFor(key, p))
         {
             double d = 0.0;
-            if(!parseDoubleStr(val, d)) return "bad value for '" + key + "': '" + val + "'";
+            if(!parseDoubleStr(val, d)) return std::format("bad value for '{}': '{}'", key, val);
             *field = d;
             continue;
         }

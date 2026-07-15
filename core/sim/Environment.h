@@ -62,12 +62,12 @@ public:
         if(model == "Constant Gravity")
         {
             gravityModel = model;
-            gravityModels[gravityModel].reset(new sim::ConstantGravityModel);
+            gravityModels[gravityModel] = std::make_shared<sim::ConstantGravityModel>();
         }
         else if(model == "Spherical Gravity")
         {
             gravityModel = model;
-            gravityModels[gravityModel].reset(new sim::SphericalGravityModel(geoidModel));
+            gravityModels[gravityModel] = std::make_shared<sim::SphericalGravityModel>(geoidModel);
         }
     }
 
@@ -76,17 +76,17 @@ public:
         if(model == "Constant Atmosphere")
         {
             atmosphereModel = model;
-            atmosphereModels[atmosphereModel].reset(new sim::ConstantAtmosphere);
+            atmosphereModels[atmosphereModel] = std::make_shared<sim::ConstantAtmosphere>();
         }
         else if(model == "US Standard 1976")
         {
             atmosphereModel = model;
-            atmosphereModels[atmosphereModel].reset(new sim::USStandardAtmosphere);
+            atmosphereModels[atmosphereModel] = std::make_shared<sim::USStandardAtmosphere>();
         }
         else if(model == "Vacuum")
         {
             atmosphereModel = model;
-            atmosphereModels[atmosphereModel].reset(new sim::VacuumAtmosphere);
+            atmosphereModels[atmosphereModel] = std::make_shared<sim::VacuumAtmosphere>();
         }
     }
 

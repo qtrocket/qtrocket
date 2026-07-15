@@ -22,7 +22,7 @@ class AnalysisWindow : public QDialog
 
 public:
     explicit AnalysisWindow(QWidget *parent = nullptr);
-    ~AnalysisWindow();
+    ~AnalysisWindow() override;
 
 private slots:
 

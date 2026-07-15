@@ -101,7 +101,7 @@ class ThrustCurveClient
 {
 public:
     ThrustCurveClient();
-    ~ThrustCurveClient();
+    ~ThrustCurveClient() override;
 
     ThrustcurveMetadata getMetadata() override;
 

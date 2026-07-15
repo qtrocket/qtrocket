@@ -25,7 +25,7 @@ Bin::Bin()
 
 }
 
-Bin::Bin(Bin&& o)
+Bin::Bin(Bin&& o) noexcept
     : bins(std::move(o.bins))
 {
 

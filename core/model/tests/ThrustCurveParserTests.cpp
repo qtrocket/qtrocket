@@ -3,6 +3,7 @@
 // https://www.thrustcurve.org/api/v1/swagger.json). No network involved.
 
 /// \cond
+#include <format>
 #include <optional>
 #include <string>
 /// \endcond
@@ -43,8 +44,8 @@ const std::string raspEntry = R"({
 TEST_F(ThrustCurveParserTest, DownloadPrefersRaspRegardlessOfOrder)
 {
     // Real responses list a motor's simfiles in arbitrary order.
-    for(const std::string& json : {"{\"results\": [" + rockSimEntry + "," + raspEntry + "]}",
-                                             "{\"results\": [" + raspEntry + "," + rockSimEntry + "]}"})
+    for(const std::string& json : {std::format(R"({{"results": [{},{}]}})", rockSimEntry, raspEntry),
+                                             std::format(R"({{"results": [{},{}]}})", raspEntry, rockSimEntry)})
     {
         auto samples = model::parseDownloadResponse(json);
         ASSERT_TRUE(samples.has_value());

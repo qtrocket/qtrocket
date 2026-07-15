@@ -5,7 +5,6 @@
 // C headers
 // C++ headers
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 
@@ -38,7 +37,7 @@ public:
 
     std::shared_ptr<model::MotorModelDatabase> getMotorDatabase() { return motorDatabase; }
 
-    void addRocket(std::shared_ptr<model::RocketModel> r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r, environment); }
+    void addRocket(const std::shared_ptr<model::RocketModel>& r) { rocket.first = r; rocket.second = std::make_shared<sim::Propagator>(r, environment); }
 
     void launchRocket();
     /**
@@ -69,12 +68,6 @@ public:
 
 private:
     QtRocket();
-
-    static void init();
-
-    static bool initialized;
-    static std::mutex mtx;
-    static QtRocket* instance;
 
     using Rocket = std::pair<std::shared_ptr<model::RocketModel>, std::shared_ptr<sim::Propagator>>;
     Rocket rocket;

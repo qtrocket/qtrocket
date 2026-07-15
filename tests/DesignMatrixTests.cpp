@@ -375,6 +375,7 @@ std::string designPath(const std::string& stem)
 // smoke check that still covers every diameter. See tests/CMakeLists.txt.
 std::vector<std::string> motorsToFly(const Ladder& lad)
 {
+    // NOLINTNEXTLINE(concurrency-mt-unsafe) -- single-threaded test setup; getenv is benign here
     if(std::getenv("QTROCKET_FULL_LADDER") != nullptr)
         return lad.motors;
     return { lad.motors.front() };

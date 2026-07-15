@@ -71,14 +71,14 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
   \item[Barrowman seam unconsumed --- \fpartial{} (built, tested, uncalled).] Per-part
   \code{getAero} and the composite CP-on-the-CG-datum profile are complete and unit-tested, yet
   the only caller of \code{getCompositeAero} outside the model tests is itself a test
-  (\src{tests/PlacementInvarianceTests.cpp}{106}). Flight drag remains one hand-entered line
+  (\src{tests/PlacementInvarianceTests.cpp}{89}). Flight drag remains one hand-entered line
   (\src{model/RocketModel.cpp}{88}), and \code{Propagatable::aeroData} is a default-constructed
   member nothing reads (\src{model/Propagatable.h}{61}). Two latent defects gate consumption: the
   \code{FinSet} chordwise sign mirror and the omitted child-tensor rotation (\cref{sec:aero},
   \cref{sec:model}).
 
   \item[Wind --- \fabsent{} (dead code).] \code{WindModel} is compiled into the sim library
-  (\src{sim/CMakeLists.txt}{24}) but orphaned: it returns $(0,0,0)$ with all parameters ignored
+  (\src{core/sim/CMakeLists.txt}{24}) but orphaned: it returns $(0,0,0)$ with all parameters ignored
   (\src{sim/WindModel.cpp}{16}), \code{Environment} has no wind member
   (\src{sim/Environment.h}{117}), and nothing instantiates it. Drag uses raw velocity, not
   relative airspeed (\src{model/RocketModel.cpp}{88}); \cref{sec:sim}.
@@ -98,28 +98,30 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
 
 \begin{description}
 
-  \item[GUI design editor --- \fabsent{} at HEAD, \fwip{} on a branch.] At the pinned commit,
-  \code{RocketTreeView} and \code{RocketModelerView} are seven-line constructor-only classes
-  (\src{gui/RocketTreeView.cpp}{3}, \src{gui/RocketModelerView.cpp}{3}) whose widgets are already
-  placed in the main window; File New/Open/Save/Save~As/Close ship \code{enabled=false}
-  (\src{gui/MainWindow.ui}{118}), and \code{MainWindow} wires only Quit, SaveMotorDatabase, and
-  About (\src{gui/MainWindow.cpp}{42}). Design authoring is CLI-only. \Cref{sec:interfaces};
-  the in-flight branch is covered in \cref{sec:roadmap-inflight}.
+  \item[GUI design editor --- \fpartial{} (display and persistence, no editor).] The merged
+  \code{RocketTreeViewImplementation} work (\cref{sec:roadmap-inflight}) gives the main window a
+  live read-only part tree bound through the Qt-free structure-changed callback
+  (\src{gui/RocketTreeView.cpp}{149}) and working File Open/Save/Save~As
+  (\src{gui/MainWindow.cpp}{95}); New and Close still ship \code{enabled=false}
+  (\src{gui/MainWindow.ui}{118}), \code{RocketModelerView} is still an empty shell
+  (\src{gui/RocketModelerView.cpp}{3}), and no part can be added, removed, or edited from any
+  widget. Design authoring is CLI-only. \Cref{sec:interfaces}.
 
-  \item[CLI placement authoring --- \fpartial{} (accepts and ignores).] \code{parseDesignTokens}
-  parses \code{x=}/\code{y=}/\code{z=} (\src{cli/Repl.cpp}{189}) but \code{addpart} consumes only
-  $z$ as an abut standoff (\src{cli/Repl.cpp}{872}), and no CLI syntax reaches the
-  \code{NestInBore}/\code{OnSurface} seats or non-default stations the model API and serializer
-  fully support (\src{model/parts/Placement.h}{134}); seat-based designs require hand-edited
-  \code{.qrd} XML. \Cref{sec:interfaces}.
+  \item[CLI placement authoring --- \fpresent{} (closed since the original review).] The
+  \code{dynamic-Cd} merge gave \code{addpart} the full link vocabulary --- \code{seat=},
+  \code{parentStation=}, \code{childStation=}, \code{gap=}, parent addressable by name
+  (\src{cli/Repl.cpp}{221}) --- so every seat kind and station the model API and serializer
+  support (\src{model/parts/Placement.h}{139}) is now authorable without hand-edited \code{.qrd}
+  XML; the corpus scripts under \srcf{tests/data/designs/scripts/} exercise it end to end.
+  \Cref{sec:interfaces}.
 
   \item[Motor placement, single motor, single stage --- \fpartial.] \code{motorOffset} is fixed
-  at zero with no setter (\src{model/RocketModel.h}{131}), the motor's link is built from it
-  (\src{model/RocketModel.cpp}{124}) and never persisted (\src{model/DesignSerializer.cpp}{114}),
+  at zero with no setter (\src{model/RocketModel.h}{148}), the motor's link is built from it
+  (\src{model/RocketModel.cpp}{124}) and never persisted (\src{model/DesignSerializer.cpp}{94}),
   so every motor sits at the airframe CM, skewing CG$(t)$. One motor is structural
   (\code{findMotorInTree} is a first-match DFS, \src{model/RocketModel.cpp}{13}); one stage
   likewise --- \code{Stage.h} survives only as a ``Not yet'' commented include
-  (\src{model/RocketModel.h}{22}), the original class removed in March 2024 (commit
+  (\src{model/RocketModel.h}{23}), the original class removed in March 2024 (commit
   \code{46eca11}) to simplify prototyping. \Cref{sec:motors}.
 
   \item[Launch site --- \fabsent.] The spherical geoid ignores its latitude/longitude arguments
@@ -128,8 +130,8 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
   or launch-site input exists in any front end. \Cref{sec:sim}.
 
   \item[Simulation synchronous on the GUI thread --- \fabsent{} (no worker).]
-  \code{launchRocket()} runs the whole propagation inline (\src{QtRocket.cpp}{54}) from a button
-  slot (\src{gui/CannonballTab.cpp}{116}). Tolerable for a seconds-long ballistic hop; a
+  \code{launchRocket()} runs the whole propagation inline (\src{core/QtRocket.cpp}{54}) from a button
+  slot (\src{gui/CannonballTab.cpp}{128}). Tolerable for a seconds-long ballistic hop; a
   minutes-long parachute descent --- the Tier~1 recovery work --- will freeze the UI, so that work
   forces this one. The broader GUI friction set is inventoried in \cref{sec:interfaces}.
 
@@ -153,7 +155,7 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
   fidelity (\src{model/MotorModel.h}{144}); the RSE loader discards manufacturer-measured
   per-sample mass/CG data (\src{model/RSEDatabaseLoader.cpp}{89}). \Cref{sec:motors}.
 
-  \item[Racy controller initialization.] The \code{QtRocket} singleton (\src{QtRocket.h}{29})
+  \item[Racy controller initialization.] The \code{QtRocket} singleton (\src{core/QtRocket.h}{29})
   guards construction with a mutex but tests its \code{initialized} flag \emph{before} taking the
   lock --- benign today only because every front end first-calls it from one thread; real the
   moment simulations move to a worker thread.
@@ -161,7 +163,7 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
   \item[Documentation drift.] Four documents describe superseded designs: the persistence spec
   still shows the retired 0.1 \code{<offset>} schema
   (\src{docs/P2\_DESIGN\_PERSISTENCE\_AND\_CLI\_SPEC.md}{160}) that the shipped serializer rejects
-  (\src{model/DesignSerializer.cpp}{196}); the visualizer's frozen spec documents the
+  (\src{model/DesignSerializer.cpp}{176}); the visualizer's frozen spec documents the
   \code{Vector3}-offset scheme (\src{visualizer/SPEC.md}{38}) the visualizer itself no longer uses
   (\src{visualizer/RocketMesh.cpp}{434}); the architecture audit's gap register is half-stale
   (\src{docs/ARCHITECTURE\_AUDIT.md}{355}) with citations that no longer resolve
@@ -169,8 +171,8 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
   code comments resolve only through its appendix translation table.
 
   \item[Internationalization and packaging vestiges.] \code{QTranslator} plumbing loads a
-  locale-suffixed translation that only resolves to US English (help-wanted TODO,
-  \src{gui/GuiRunner.cpp}{34}); distribution is a single template install rule with no packaging
+  locale-suffixed translation from a resource prefix that is never populated
+  (\src{gui/main.cpp}{36}); distribution is a single template install rule with no packaging
   pipeline (\cref{sec:testing}).
 
   \item[Small tracked notes.] The remaining marked TODOs are honest and minor: \code{StateData}
@@ -179,21 +181,22 @@ powered flight cannot do without. Each entry is a summary with citations; the ow
 
 \end{description}
 
-\subsection{Work in flight and branch archaeology}\label{sec:roadmap-inflight}
+\subsection{Work landed since the original review, and branch archaeology}\label{sec:roadmap-inflight}
 
-This review is pinned to commit \code{254cd41}, simultaneously the tip of \code{development} and
-of the merged \code{PartPlacement} branch. One branch is actively ahead:
-\code{RocketTreeViewImplementation}, two commits ahead (\code{049bb02}, \code{2ddd553} ``GUI
-save/load WIP''; $+360/{-}15$ lines over ten files). It adds a read-only
-\code{QAbstractItemModel} part tree (Name/Type/Mass), a
-\code{RocketModel::setStructureChangedCallback} hook --- a plain \cppinline|std::function|, keeping
-\code{model/} Qt-free --- plus \code{Part::getParent()}, and working File Open/Save/Save~As slots
-calling \code{DesignSerializer}, re-enabling exactly those three actions. It adds no property
-panel, no part add/remove/edit UI, no modeler rendering, and no tests; New and Close stay
-disabled. It is the first slice of the Tier~2 GUI editor, not the editor --- and all statements
-about it describe that branch, not the pinned commit. The remaining remotes
-(\cref{tab:roadmap-branches}) are archaeology rather than roadmap: mostly merged feature branches,
-plus two abandoned experiments.
+This review is pinned to commit \code{20eca72}, the tip of \code{development}. The two branches
+the original review tracked as work in flight have both landed. \code{dynamic-Cd} merged at
+\code{fe11ae7}: the CLI seat vocabulary and \code{checkdesign}, the reworked
+\code{DesignSerializer} \code{<link>} handling, the script-built fixture corpus
+(\srcf{tests/data/designs/scripts/}), and the format-2 regeneration path for the
+placement-invariance baseline (\cref{sec:persistence}). \code{RocketTreeViewImplementation}
+merged at \code{29c9f9c} and was deleted: the live GUI part tree, the
+\code{setStructureChangedCallback} seam, \code{Part::getParent()}, File Open/Save/Save~As, and
+\code{CannonballTab::refreshFromModel()} (\cref{sec:interfaces}) --- the first slice of the
+Tier~2 GUI editor, not the editor. The branch list has also been pruned since the original
+review: the merged and abandoned experiments (\code{3Dviewer\_test},
+\code{3Dviewer\_test\_codex}, \code{MotorPart}, \code{ConcretePartTypes}, \code{propagator},
+\code{development-WIP}, \code{questionable\_changes}) are gone, leaving the short inventory of
+\cref{tab:roadmap-branches}.
 
 \begin{table}[htbp]
   \centering\small
@@ -201,14 +204,8 @@ plus two abandoned experiments.
     \toprule
     \textbf{Remote branch} & \textbf{Ahead} & \textbf{Disposition} \\
     \midrule
-    \code{RocketTreeViewImplementation} & $+2$ & In flight: GUI part tree and save/load WIP (above). \\
-    \code{questionable\_changes} & $+1$ & Abandoned; its own commit message says it ``doesn't build.'' \\
-    \code{3Dviewer\_test\_codex} & $+1$ & Alternate visualizer prototype; superseded by the shipped \srcf{visualizer/}. \\
-    \code{3Dviewer\_test} & $0$ & Merged visualizer prototype. \\
-    \code{MotorPart} & $0$ & Merged: motor-in-the-part-tree work. \\
-    \code{ConcretePartTypes} & $0$ & Merged: concrete part types, RASP loader, coverage tooling. \\
-    \code{propagator} & $0$ & Merged: early propagator refactor. \\
-    \code{development-WIP} & $0$ & Fully merged 2023-era state; last commit 2023-04-27. \\
+    \code{development} & --- & Mainline; the reviewed commit \code{20eca72} is its tip. \\
+    \code{dynamic-Cd} & $0$ & Merged at \code{fe11ae7} (seat vocabulary, corpus scripts); retained. \\
     \code{master} & behind & Retired old default branch. \\
     \code{website} & $+32$ & Jekyll project site; unrelated to the code. \\
     \bottomrule
@@ -227,7 +224,7 @@ with its extension point already built.
 \begin{description}
 
   \item[The joint graph.] Each child stores exactly one \code{StationLink} to one parent
-  (\src{model/parts/Part.h}{288}), so a part bound to two hosts --- clusters, struts, pods --- is
+  (\src{model/parts/Part.h}{292}), so a part bound to two hosts --- clusters, struts, pods --- is
   inexpressible. The implementation plan records this as ``deferred (correct long-term)''
   (\src{docs/part-placement-implementation-plan.md}{1031}): the single link per child can widen
   into a link list or joint table without disturbing the resolver's interface.
@@ -236,8 +233,8 @@ with its extension point already built.
   \emph{check} while the pose solve keeps parts coaxial, because off-axis mass without an
   orientation would itself be a half-correct stored placement --- the error class the placement
   work eliminated. It arrives with 6-DOF, alongside \code{StationLink::childRot}, already carried
-  as an identity quaternion (\src{model/parts/Placement.h}{55}), deliberately unpersisted
-  (\src{model/DesignSerializer.cpp}{85}), and deliberately unapplied in the composite inertia walk
+  as an identity quaternion (\src{model/parts/Placement.h}{60}), deliberately unpersisted
+  (\src{model/DesignSerializer.cpp}{65}), and deliberately unapplied in the composite inertia walk
   --- the $R\,I\,R^{\mathsf{T}}$ rotation is omitted to stay bit-stable, with the code prescribing
   the test that must accompany its introduction (\src{model/parts/Part.cpp}{220}).
 
@@ -246,10 +243,10 @@ with its extension point already built.
   (\src{model/parts/FinSet.cpp}{41}) --- honest under-modeling that becomes a real limit once
   rotational dynamics exist to feel the difference.
 
-  \item[CLI auto-stack stations.] The planned \code{station=} shorthand never shipped; the CLI
-  expresses only the default abut stack (\src{cli/Repl.cpp}{872}). Part of the same Tier~2
-  authoring gap as the unreachable seats, and cheap relative to the model machinery that already
-  supports it.
+  \item[CLI auto-stack stations.] Shipped since the original review: \code{addpart}'s
+  \code{parentStation=}/\code{childStation=} keys (\src{cli/Repl.cpp}{221}) express the stations
+  the design plan once deferred, and the fixture scripts author seated, nested designs with them
+  (\srcf{tests/data/designs/scripts/}). The deferral is retired.
 
 \end{description}
 
@@ -284,7 +281,7 @@ user-visible.
   ejection delays (\src{model/MotorModel.h}{303}), and switch drag configuration at deployment.
   This replaces the ballistic terminate at \src{model/RocketModel.cpp}{65} with a full flight ---
   and, because descents run minutes rather than seconds, it forces the worker-thread move off the
-  GUI thread (\src{QtRocket.cpp}{54}), which in turn makes the initialization race worth fixing
+  GUI thread (\src{core/QtRocket.cpp}{54}), which in turn makes the initialization race worth fixing
   first.
 
   \item \textbf{Six degrees of freedom, then wind.} Reinstate the orientation integrator whose
@@ -297,11 +294,11 @@ user-visible.
 
   \item \textbf{The GUI design editor.} Pure consumption of a proven core: the CLI already
   demonstrates the full build--save--reload--fly loop against the same authoring API
-  (\src{cli/Repl.cpp}{784}), the 25 tracked \code{.qrd} fixtures give the editor a ready test
-  corpus, and the \code{RocketTreeViewImplementation} branch supplies the tree view and the
-  change-notification bridge. What remains is the property panel, part add/remove/edit, the 2-D
-  modeler --- and closing the CLI's own seat/station gap (\src{cli/Repl.cpp}{872}), which is small
-  and makes richer fixtures authorable for the GUI work itself.
+  (\src{cli/Repl.cpp}{851}), the 25 tracked \code{.qrd} fixtures give the editor a ready test
+  corpus, and the merged tree view already supplies the display surface and the
+  change-notification bridge (\cref{sec:interfaces}). What remains is the property panel, part
+  add/remove/edit, and the 2-D modeler --- the CLI's former seat/station gap is closed, so richer
+  fixtures are already authorable for the GUI work itself.
 
 \end{enumerate}
 

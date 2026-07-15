@@ -270,7 +270,7 @@ RASPLoader::RASPLoader(const std::string& filename)
         if(i >= lines.size())
             break;
 
-        const SourceLine headerLine = lines[i];
+        const SourceLine& headerLine = lines[i];
         const RaspHeader header = parseHeader(headerLine);
         ++i;
 

@@ -87,7 +87,7 @@ void AnalysisWindow::onButton_plotMotorCurve_clicked()
 {
     std::shared_ptr<model::RocketModel> rocket = QtRocket::getInstance()->getRocket();
     model::MotorModel motor = rocket->getMotorModel();
-    ThrustCurve tc = motor.getThrustCurve();
+    const ThrustCurve& tc = motor.getThrustCurve();
 
 
     const std::vector<std::pair<double, double>>& res = tc.getThrustCurveData();

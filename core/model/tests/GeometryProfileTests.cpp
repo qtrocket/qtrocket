@@ -24,7 +24,6 @@ using model::part::BodyTube;
 using model::part::ConicalNoseCone;
 using model::part::FinSet;
 using model::part::HollowSphere;
-using model::part::Part;
 }  // namespace
 
 // ---- Cone ---------------------------------------------------------------------------------------

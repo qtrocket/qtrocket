@@ -1,0 +1,5 @@
+# gtest ASSERT_*/EXPECT_* guard optional derefs throughout these tests, but the
+# check's flow analysis can't see the abort path, so every guarded deref is a
+# false positive here. the check stays on for production code.
+InheritParentConfig: true
+Checks: '-bugprone-unchecked-optional-access'

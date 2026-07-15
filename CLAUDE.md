@@ -57,6 +57,21 @@ The `coverage` target builds the instrumented test binaries, runs `ctest -R '^qt
 
 `QTROCKET_ENABLE_COVERAGE=ON` intentionally requires Clang/AppleClang. GCC remains supported through the normal `debug-gcc` and `release-gcc` presets, but not for this `llvm-cov` coverage target.
 
+## Sanitizers and clang-tidy
+
+Both run in CI (`cmake-multi-platform.yml`); keep them green locally before pushing:
+
+```bash
+cmake --preset asan-clang                       # separate build-asan/ tree
+cmake --build --preset asan-clang
+ctest --preset asan-clang -R 'qtrocket_*'       # full suite under ASan+UBSan
+scripts/run-tidy.sh                             # clang-tidy over all hand-written TUs (needs a built build/)
+```
+
+- `QTROCKET_ENABLE_SANITIZERS=ON` (what the `asan-clang` preset sets) instruments the FetchContent deps too, and makes UBSan findings fatal (`-fno-sanitize-recover`), so a passing ctest means genuinely clean.
+- clang-tidy config is layered: root `.clang-tidy` (curated bugprone/performance/analyzer set, findings are errors) plus per-test-dir overrides (`tests/.clang-tidy` etc.) that disable `bugprone-unchecked-optional-access` — gtest `ASSERT_*` guards defeat its flow analysis. `ExcludeHeaderFilterRegex` needs clang-tidy >= 19.
+- run `run-clang-tidy -fix` single-threaded only: parallel fixit application double-applies edits in headers seen from multiple TUs.
+
 ## Architecture
 
 Layering (each layer only depends on those below it):

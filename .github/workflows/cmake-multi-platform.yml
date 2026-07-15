@@ -4,9 +4,11 @@
 # it exercises the same Ninja-based configure/build/test path that developers use
 # locally instead of each platform's default generator. Each matrix entry maps an
 # OS to a preset:
-#   - Linux:   release-gcc, release-clang
+#   - Linux:   release-gcc, release-clang, asan-clang (ASan+UBSan, tests run instrumented)
 #   - macOS:   release-clang (AppleClang)
 #   - Windows: release-msvc  (added to CMakePresets.json; Ninja + cl)
+# A separate clang-tidy job runs scripts/run-tidy.sh (the same entry point
+# developers use locally) over every hand-written TU with findings as errors.
 name: CMake on multiple platforms
 
 on:
@@ -28,8 +30,15 @@ jobs:
         include:
           - { os: ubuntu-latest,  preset: release-gcc,   name: "Linux / GCC" }
           - { os: ubuntu-latest,  preset: release-clang, name: "Linux / Clang" }
+          - { os: ubuntu-latest,  preset: asan-clang,    name: "Linux / Clang ASan+UBSan" }
           - { os: macos-latest,   preset: release-clang, name: "macOS / AppleClang" }
           - { os: windows-latest, preset: release-msvc,  name: "Windows / MSVC" }
+
+    env:
+      # Only consumed by the sanitizer preset's test run; harmless elsewhere.
+      # UBSan findings are already fatal (-fno-sanitize-recover), this just makes
+      # the CI log actionable when one fires.
+      UBSAN_OPTIONS: print_stacktrace=1
 
     steps:
     - uses: actions/checkout@v4
@@ -105,3 +114,44 @@ jobs:
           cmake --preset release-clang
           cmake --build --preset release-clang
           ctest --preset release-clang -R 'qtrocket_*'
+
+  # Static analysis over every hand-written TU (vendored qcustomplot excluded),
+  # via the same scripts/run-tidy.sh developers run locally. Needs a full build
+  # first so the AUTOMOC/AUTOUIC generated headers exist for the Qt TUs.
+  # clang-tidy 20 from apt.llvm.org: the .clang-tidy config uses
+  # ExcludeHeaderFilterRegex, which needs clang-tidy >= 19; ubuntu-latest ships 18.
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install CMake and Ninja
+      uses: lukka/get-cmake@latest
+
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: 6.10.2
+        target: desktop
+
+    - name: Install clang-tidy 20
+      run: |
+        wget -q https://apt.llvm.org/llvm.sh
+        sudo bash llvm.sh 20
+        sudo apt-get install -y clang-tidy-20
+
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ubuntu-latest-clang-tidy
+
+    - name: Configure and build
+      run: >
+        cmake --preset debug-clang
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        && cmake --build --preset debug-clang
+
+    - name: Run clang-tidy
+      run: CLANG_TIDY=clang-tidy-20 RUN_CLANG_TIDY=run-clang-tidy-20 scripts/run-tidy.sh

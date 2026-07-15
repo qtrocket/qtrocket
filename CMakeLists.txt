@@ -7,6 +7,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(QTROCKET_ENABLE_COVERAGE "Enable LLVM source-based coverage for project/test targets" OFF)
+option(QTROCKET_ENABLE_SANITIZERS "Build with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
+
+if(QTROCKET_ENABLE_SANITIZERS)
+    if(MSVC)
+        message(FATAL_ERROR "QTROCKET_ENABLE_SANITIZERS drives -fsanitize (clang/gcc). Use the asan-clang preset.")
+    endif()
+    # set before the FetchContent blocks so the dependencies are instrumented too:
+    # mixing instrumented and uninstrumented std containers across a library
+    # boundary triggers false container-overflow reports.
+    # -fno-sanitize-recover makes UBSan findings fatal, so ctest actually fails on UB.
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
 
 include(FetchContent)
 
@@ -84,7 +97,6 @@ if (MSVC)
     # non-standard MS editorializing, and /WX turns them into hard errors. Allow the standard functions
     # tree-wide. This only silences the CRT secure-function nags -- genuine [[deprecated]] uses still
     # warn (different C4996 trigger), and GCC/Clang -Wall -Wextra remain the real safety net.
-    # We also run ASAN and clang-tidy for additional security
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
     # additional warnings

@@ -21,7 +21,7 @@ class AboutWindow : public QDialog
 
 public:
     explicit AboutWindow(QWidget *parent = nullptr);
-    ~AboutWindow();
+    ~AboutWindow() override;
 
 private slots:
     void onButton_okButton_clicked();

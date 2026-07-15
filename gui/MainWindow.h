@@ -29,7 +29,7 @@ class MainWindow : public QMainWindow
 
 public:
     MainWindow(QtRocket* _qtRocket, QWidget *parent = nullptr);
-    ~MainWindow();
+    ~MainWindow() override;
 
 private slots:
 

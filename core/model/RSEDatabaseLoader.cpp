@@ -59,7 +59,7 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
     std::string delays = v.get<std::string>("<xmlattr>.delays", "1000");
     std::size_t pos{0};
     std::string tok;
-    while ((pos = delays.find(",")) != std::string::npos)
+    while ((pos = delays.find(',')) != std::string::npos)
     {
          tok = delays.substr(0, pos);
          mm.delays.push_back(std::atoi(tok.c_str()));
@@ -90,7 +90,7 @@ void RSEDatabaseLoader::buildAndAppendMotorModel(boost::property_tree::ptree& v)
     {
         double tdata = w.second.get<double>("<xmlattr>.t");
         double fdata = w.second.get<double>("<xmlattr>.f");
-        thrustData.push_back(std::make_pair(tdata, fdata));
+        thrustData.emplace_back(tdata, fdata);
     }
 
     ThrustCurve tc(thrustData);

@@ -10,7 +10,7 @@ class ConstantAtmosphere : public AtmosphericModel
 {
 public:
     ConstantAtmosphere() {}
-    virtual ~ConstantAtmosphere() {}
+    ~ConstantAtmosphere() override {}
 
     double getDensity(double) override { return 1.225; }
     double getPressure(double) override { return 101325.0; }

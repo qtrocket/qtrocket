@@ -49,7 +49,7 @@ along world $+z$ regardless of any launch angle (\src{model/RocketModel.cpp}{70}
 evaluated at the integrator's \emph{trial} position so each stage sees a consistent state
 (\src{model/RocketModel.cpp}{77}), and quadratic drag with a single user-set scalar $C_d$ and
 reference area (defaults $C_d=1.0$, $A=1.134\times10^{-3}\unit{m^2}$;
-\src{model/RocketModel.h}{138}):
+\src{model/RocketModel.h}{155}):
 
 \begin{minted}{cpp}
 // Clamp altitude to >= 0: trial states crossing z=0 fall outside the atmosphere models' domain.
@@ -77,7 +77,7 @@ future \cppinline|DESolver<Quaternion>| ODE (\src{sim/Propagator.h}{103}), and
 snapshots composite mass, CG, and inertia via \code{writeMassProperties}
 (\src{model/RocketModel.cpp}{53}), with the header naming these fields ``the seam the 6-DOF
 rotational ODE will read'' (\src{sim/StateData.h}{59}). Attitude propagation is therefore
-\fabsent{} at commit \code{254cd41}, but the interfaces it will need are in place and typed.
+\fabsent{} at commit \code{20eca72}, but the interfaces it will need are in place and typed.
 
 \subsection{The run loop and typed termination}\label{sec:sim-runloop}
 
@@ -199,8 +199,8 @@ default) and \code{Runge-Kutta-Fehlberg} to freshly constructed solvers on each
 current model usable (\src{sim/Integrator.h}{52}). The name travels from the GUI's integrator
 combo (populated from \code{getAvailableIntegratorModels()};
 \src{gui/SimOptionsTab.cpp}{74}) or the CLI \code{setintegrator} command
-(\src{cli/Repl.cpp}{647}) through \code{QtRocket::setIntegratorModel}
-(\src{QtRocket.h}{36}) to \code{Propagator::setIntegratorModel} (\src{sim/Propagator.h}{90}). The
+(\src{cli/Repl.cpp}{714}) through \code{QtRocket::setIntegratorModel}
+(\src{core/QtRocket.h}{36}) to \code{Propagator::setIntegratorModel} (\src{sim/Propagator.h}{90}). The
 facade has one sharp edge: \code{setIntegratorFunction} only stores the lambda
 (\src{sim/Integrator.h}{72}), so the active solver keeps whatever function it captured at
 construction --- the constructor even builds its default RK4 with a null ODE function
@@ -215,7 +215,7 @@ configured step at the top of every run (\src{sim/Propagator.cpp}{60}).
 \code{Constant Atmosphere} defaults (\src{sim/Environment.h}{31}). All of its models are genuinely
 runtime-selectable from both front ends --- GUI combos populated from the registries
 (\src{gui/SimOptionsTab.cpp}{72}) and the CLI \code{setatmosphere}/\code{setgravity} commands
-(\src{cli/Repl.cpp}{591}, \src{cli/Repl.cpp}{618}). \Cref{tab:sim-envmodels} summarizes the
+(\src{cli/Repl.cpp}{658}, \src{cli/Repl.cpp}{685}). \Cref{tab:sim-envmodels} summarizes the
 inventory.
 
 \begin{table}[htbp]
@@ -240,7 +240,7 @@ Wind & (not registered) & zero-vector stub, zero call sites (\srccap{sim/WindMod
   & \fabsent \\
 \bottomrule
 \end{tabularx}
-\caption{The \code{Environment} inventory at commit \code{254cd41}. The three atmospheres and two
+\caption{The \code{Environment} inventory at commit \code{20eca72}. The three atmospheres and two
 gravity models are live and selectable from both front ends; the geoid is a single hardwired
 member; the wind class is compiled but unreachable.}
 \label{tab:sim-envmodels}
@@ -286,7 +286,7 @@ populate their choices from the registries themselves, so a typo cannot arise; a
 file or save format would make it invisible.
 
 Wind is the purest specimen of the seam-without-consumer motif. The class exists and compiles into
-the sim library (\src{sim/CMakeLists.txt}{24}); its entire behavior is
+the sim library (\src{core/sim/CMakeLists.txt}{24}); its entire behavior is
 
 \begin{minted}{cpp}
 Vector3 WindModel::getWindSpeed(double /* x */, double /* y */ , double /* z */)
@@ -305,23 +305,22 @@ commit; what that costs in flight fidelity is discussed in \cref{sec:aero}.
 
 \code{QtRocket} is the Qt-free controller singleton whose ownership, API surface, and racy
 double-checked initialization are examined in \cref{sec:overview}; what matters here is how it
-runs a flight. \code{launchRocket()} (\src{QtRocket.cpp}{54}) runs the four launch steps of
+runs a flight. \code{launchRocket()} (\src{core/QtRocket.cpp}{54}) runs the four launch steps of
 \cref{sec:overview} synchronously, end to end, on the calling thread
 (\code{RocketModel::launch} copies the initial state to current and ignites at $t=0$;
 \src{model/RocketModel.cpp}{105}). There is no worker thread, no progress reporting, and no cancellation:
 the simulation runs to completion on whichever thread calls it --- the Qt event thread when the
-GUI's launch button fires (\src{gui/CannonballTab.cpp}{116}), so the UI freezes for the run's
-duration, and the REPL loop for the CLI (\src{cli/Repl.cpp}{688}). Nothing reads the state history
-concurrently today and no lock protects it. The GUI's own threading arrangement --- the entire
-\code{QApplication} runs on a spawned \cppinline|std::thread| while \code{main()} blocks on join
-(\src{gui/GuiRunner.cpp}{62}) --- is examined in \cref{sec:interfaces}.
+GUI's launch button fires (\src{gui/CannonballTab.cpp}{128}), so the UI freezes for the run's
+duration, and the REPL loop for the CLI (\src{cli/Repl.cpp}{755}). Nothing reads the state history
+concurrently today and no lock protects it --- an invariant that must be revisited the moment the
+recovery work of \cref{sec:roadmap} forces simulation onto a worker thread.
 
 Results flow back by const reference: \code{getStates()} exposes the \code{(time, StateData)}
 history stored on the \code{Propagatable} (\src{model/Propagatable.h}{47}), alongside
-\code{getTrajectoryStatistics()} and \code{getTerminationReason()} (\src{QtRocket.h}{48}). Two
+\code{getTrajectoryStatistics()} and \code{getTerminationReason()} (\src{core/QtRocket.h}{48}). Two
 loose ends round out the picture. \code{addRocket} --- the API that would swap in a fresh
-model/propagator pair --- has no call sites (\src{QtRocket.h}{41}), joining
+model/propagator pair --- has no call sites (\src{core/QtRocket.h}{41}), joining
 \code{retainStates} in the dead-API column, and \code{setInitialState}'s doc comment still
 describes a stale twelve-element pitch/yaw/roll state vector that the 3-DOF core never consumes
-(\src{QtRocket.h}{66}). Both are consolidated with the other incompleteness findings in
+(\src{core/QtRocket.h}{66}). Both are consolidated with the other incompleteness findings in
 \cref{sec:roadmap}.

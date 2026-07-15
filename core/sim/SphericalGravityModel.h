@@ -25,7 +25,7 @@ class SphericalGravityModel : public GravityModel
 {
 public:
     explicit SphericalGravityModel(std::shared_ptr<GeoidModel> geoidModel);
-    virtual ~SphericalGravityModel();
+    ~SphericalGravityModel() override;
 
     using GravityModel::getAccel; // keep the Vector3 overload visible alongside the override
     Vector3 getAccel(double x, double y, double z) override;

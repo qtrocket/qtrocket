@@ -259,23 +259,23 @@ pointer stays valid (\src{model/parts/Motor.cpp}{16}).
 
 Placement is the weak half. \code{RocketModel::setMotorModel} attaches the single \code{Motor}
 child at the airframe root, joining airframe-CM to motor-CM stations with an offset documented as
-``Zero today'' (\src{model/RocketModel.cpp}{124}, \src{model/RocketModel.h}{130}): the motor's mass
+``Zero today'' (\src{model/RocketModel.cpp}{124}, \src{model/RocketModel.h}{147}): the motor's mass
 is coincident with the airframe's center of mass, not seated in an aft motor mount, so the very
 CG-shift-during-burn machinery the part tree computes so carefully acts at the wrong station. There
 is no user-facing way to reposition it --- a \code{Motor} cannot be added through the part factory,
 and a \code{Motor} node inside a design's part tree is rejected as foreign
-(\src{model/DesignSerializer.cpp}{157}). The single-motor assumption is explicit:
+(\src{model/DesignSerializer.cpp}{137}). The single-motor assumption is explicit:
 \code{findMotorInTree} is a DFS for the \emph{first} motor node (\src{model/RocketModel.cpp}{13}),
-and \code{Stage.h} is a commented-out ``Not yet'' include (\src{model/RocketModel.h}{22}) --- no
+and \code{Stage.h} is a commented-out ``Not yet'' include (\src{model/RocketModel.h}{23}) --- no
 clusters, no stages. In flight, thrust participates as
 \cppinline|Vector3{0.0, 0.0, motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0}|
 applied through the CM (\src{model/RocketModel.cpp}{70}) with \code{getTorques()} returning zero
 unconditionally (\src{model/RocketModel.cpp}{94}); what that simplification costs is
 \cref{sec:aero}'s subject. \code{launch()} ignites at exactly $t=0$
 (\src{model/RocketModel.cpp}{105}), and \code{isMotorSet()} is the launch gate both front ends read
-(\src{model/RocketModel.h}{63}). Designs persist the motor by common name only and re-resolve it
+(\src{model/RocketModel.h}{64}). Designs persist the motor by common name only and re-resolve it
 against the database on load, warning rather than failing on a miss
-(\src{model/DesignSerializer.cpp}{271}); the format details belong to \cref{sec:persistence}.
+(\src{model/DesignSerializer.cpp}{251}); the format details belong to \cref{sec:persistence}.
 
 Delays and ejection charges deserve their own verdict: \fabsent. Every ingest path parses delay
 lists (with 1000 as the plugged sentinel, \src{model/MotorModel.h}{303}), the XML round-trips them,
@@ -295,7 +295,7 @@ the persistence suite's own setup comment acknowledges
 (\src{tests/MotorDatabasePersistenceTests.cpp}{291}). Nothing is loaded at startup:
 \code{QTROCKET\_DATA\_DIR} is a tests-only compile definition (\src{tests/CMakeLists.txt}{16}),
 so a GUI or CLI user begins with an empty database and must import a file or search online
-(\src{gui/CannonballTab.cpp}{125}). A second fixture,
+(\src{gui/CannonballTab.cpp}{137}). A second fixture,
 \srcf{tests/data/motors/estes\_small.qmd}, exists purely to exercise the native format. OpenRocket,
 by contrast, ships the full thrustcurve.org corpus offline; the breadth comparison is drawn in
 \cref{sec:comparison}.

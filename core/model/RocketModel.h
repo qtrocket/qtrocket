@@ -33,7 +33,7 @@ class RocketModel : public Propagatable
 {
 public:
     RocketModel();
-    virtual ~RocketModel() {}
+    ~RocketModel() override {}
 
     /// Propagate until termination (altitude crosses from positive to negative).
     void launch();

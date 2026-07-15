@@ -26,8 +26,8 @@ namespace sim
 
 Propagator::Propagator(std::shared_ptr<model::Propagatable> r, std::shared_ptr<sim::Environment> e)
    : linearIntegrator(),
-     object(r),
-     environment(e),
+     object(std::move(r)),
+     environment(std::move(e)),
      saveStates(true),
      timeStep(0.01)
 {
@@ -43,7 +43,7 @@ Propagator::Propagator(std::shared_ptr<model::Propagatable> r, std::shared_ptr<s
         return std::make_pair(dPosition, dVelocity);
     };
 
-    linearIntegrator.reset(new Integrator);
+    linearIntegrator = std::make_unique<Integrator>();
     linearIntegrator->setIntegratorFunction(linearODEs);
     linearIntegrator->setIntegratorModel("Runge-Kutta 4th Order");
     linearIntegrator->setTimeStep(timeStep);

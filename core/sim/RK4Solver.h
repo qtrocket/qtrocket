@@ -37,7 +37,7 @@ public:
 
         odes = std::move(func);
     }
-    virtual ~RK4Solver() {}
+    ~RK4Solver() override {}
 
     void setTimeStep(double inTs) override { dt = inTs;  halfDT = dt / 2.0; }
     void setFunction(std::function<std::pair<T, T>(double, T&, T&)> func) override { odes = std::move(func); }

@@ -24,7 +24,7 @@ class ThrustCurveMotorSelector : public QDialog
 
 public:
     explicit ThrustCurveMotorSelector(QWidget *parent = nullptr);
-    ~ThrustCurveMotorSelector();
+    ~ThrustCurveMotorSelector() override;
 
 private slots:
     void onButton_getMetadata_clicked();
