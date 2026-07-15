@@ -1,0 +1,423 @@
+\section{Yet to be implemented}\label{sec:incomplete}
+
+Every expository chapter of this document has marked its unbuilt edges in place --- a clause
+here, a callout there --- and deferred the consolidated view to this chapter. This is that
+view: the complete inventory, at pinned commit \code{254cd41}, of what QtRocket has built
+but not wired in, what it has wired in with named gaps, and what it has not started. The
+companion Architecture Review (\srcf{docs/ArchitectureReviewLatex/}) calls the first
+category ``a ring of machinery that is built, unit-tested, and consumed by nothing,'' and
+that ring is the defining feature of the project's frontier: QtRocket builds and tests its
+seams before their consumers exist, so most of what is missing is not missing code --- it is
+a missing caller. The tree says so itself, in the aerodynamics suite's own words:
+``nothing in production consumes this in P2 -- these tests pin the seam for P5''
+\src{model/tests/AeroTests.cpp}{18}.
+
+This chapter is written as a map for the next engineer, not as a critique. Each entry
+records three things: what exists, where it lives, and what consuming it would require.
+The ordering within each category is roughly by size of the waiting machinery; the
+\emph{ranking} by user impact belongs to the Architecture Review and is reproduced, with
+attribution, in \cref{sec:incomplete-sequencing}.
+
+\begin{designrule}[The status vocabulary, and how absence is grounded]
+Three status words partition this inventory, with the companion review's exact senses.
+\emph{Dormant}: built and tested, with zero production consumers --- unreachable from any
+shipping code path. \emph{Partial}: reachable from a production path, but with named gaps.
+\emph{Absent}: no trace in the tree --- and every absence claim below is grounded in a
+failed search of the source, not an impression. The distinction is a planning tool, not
+taxonomy for its own sake: consuming a dormant seam is weeks of work where building an
+absent subsystem is months.
+\end{designrule}
+
+\subsection{Dormant seams}\label{sec:incomplete-dormant}
+
+Seven seams sit finished, most of them unit-tested, with no production caller. Each names, implicitly or in
+an in-source comment, the work it is waiting for.
+
+\begin{description}
+
+\item[The Barrowman layer and \code{aeroData}.] The largest dormant seam is the entire
+center-of-pressure (CP) pipeline. Per-part Barrowman contributions exist for the cone and
+the fin set, expressed as a normal-force slope \code{cnAlpha} and a slope-weighted CP moment
+\code{cnAlphaXcp} \src{sim/Aero.h}{32}; \code{Part::getCompositeAero()} folds them
+additively over resolved placement onto the nose-tip datum \src{model/parts/Part.cpp}{231},
+the same datum as the composite center of gravity (CG), so the static margin is literally
+\cppinline|cp() - cg()| --- a subtraction by construction, and the seam's own documentation
+states that intent \src{sim/Aero.h}{25}. All of it is unit-tested
+(\srcf{model/tests/AeroTests.cpp}, \srcf{model/tests/NoseConeTests.cpp}) and none of it is
+called from production: the only callers of \code{getCompositeAero} are three test files
+\src{tests/PlacementInvarianceTests.cpp}{106}, and the \code{aeroData} member staged for the
+result on the model--sim bridge is default-constructed and never read
+\src{model/Propagatable.h}{61}, kept compiling only by a back-compatibility alias
+\src{sim/Aero.h}{66}. Consuming the seam requires an angle-of-attack computation (none
+exists anywhere in the tree), a normal-force or restoring-moment term in the force path,
+and a display surface; the cheapest first consumer is a live CP/CG/static-margin readout,
+which needs no new physics at all. Two latent defects gate that consumption and are covered
+with the 6-DOF cluster below (\cref{sec:incomplete-sixdof}); the full analysis of the layer
+is \cref{sec:aero}'s.
+
+\item[The wind model.] \code{WindModel} is the purest specimen of the pattern: compiled
+into the \code{sim} library \src{sim/CMakeLists.txt}{24}, its entire behavior is
+\cppinline|return Vector3(0.0, 0.0, 0.0);| \src{sim/WindModel.cpp}{18}, and a repo-wide
+search finds no instantiation, no call site, and no slot for it in \code{Environment}
+(\srcf{sim/Environment.h} holds gravity, atmosphere, and geoid members only). The drag law
+consumes ground-relative velocity directly \src{model/RocketModel.cpp}{88}, so airspeed
+equals ground speed by construction. Consuming it requires an \code{Environment} slot and a
+relative-velocity substitution in \code{getForces()} --- but, as the review observes, wind
+is only worth plumbing after attitude exists: a point mass cannot weathercock, so wind
+would shift drag without producing any behavior wind exists to model.
+
+\item[Ignition offsets and ejection delays.] The motor subsystem carries two time-related
+seams. First, arbitrary ignition times: \code{MotorModel::startMotor(double startTime)}
+accepts any start time \src{model/MotorModel.h}{328}, and the mass model honors the offset
+by evaluating at $\mathtt{simTime} - \mathtt{ignitionTime}$ \src{model/MotorModel.cpp}{36}
+--- but \code{getThrust} passes absolute simulation time through to the curve
+\src{model/MotorModel.cpp}{82}, and \code{ThrustCurve::setIgnitionTime}, the piece that
+would shift the thrust samples, has zero call sites, with its \code{maxTime} adjustment
+commented out inside the definition \src{model/ThrustCurve.cpp}{44}. The asymmetry is
+masked because the only production ignition is \cppinline|startMotor(0.0)| at launch
+\src{model/RocketModel.cpp}{108}; any future air-start would burn propellant on one clock
+and produce thrust on another until the two paths are unified (\cref{sec:motors}). Second,
+ejection delays: both file loaders parse them --- the RockSim loader splits the CSV list
+\src{model/RSEDatabaseLoader.cpp}{59}, the RASP loader splits on \code{-} with 1000 as the
+plugged sentinel \src{model/RASPLoader.cpp}{119}, and the thrustcurve.org client leaves them
+an explicit TODO \src{model/ThrustCurveClient.cpp}{198} --- they are stored
+\src{model/MotorModel.h}{303} and round-tripped through the motor database XML, and no
+simulation, GUI, or CLI code reads them. Their consumer is the absent recovery-event system
+(\cref{sec:incomplete-absent}).
+
+\item[\code{deriveReferenceAreaFromGeometry()}.] The geometry-derived reference area is
+built end to end --- \code{RocketModel} exposes it \src{model/RocketModel.cpp}{48} over
+\code{Part::maxFrontalReferenceArea()}'s widest-frontal-disc convention
+\src{model/parts/Part.cpp}{251} --- and has no production caller. The header's promise that
+the geometry default applies whenever the user has not overridden the area
+\src{model/RocketModel.h}{76} is implemented by no code path: design load applies the saved
+area only when \code{referenceAreaOverridden="true"} \src{model/DesignSerializer.cpp}{265},
+and all 25 bundled fixtures say \code{"false"}, so every loaded design flies on whatever
+scalar was last staged --- by default the 38\,mm disc. Drag therefore does not scale with
+airframe class; \cref{sec:aero} carries that verified defect in full. Consumption here is
+one call: wire the derivation into the non-overridden branch, and the seam's convention
+(fins deliberately report the body disc, not tip extent, \src{model/parts/FinSet.h}{71})
+already matches standard practice.
+
+\item[\code{radialSeamCheck} (the Layer-1 diagnostic).] The placement design specifies three
+diagnostic layers; the shipped gate wires in only the second, the envelope sweep
+(\cref{sec:placement}). The first --- a per-seam, $O(1)$ radius-compatibility check
+dispatched on seat kind --- is implemented \src{model/parts/Placement.cpp}{56} and
+unit-tested \src{model/tests/ResolverSweepTests.cpp}{194}, and nothing in production calls
+it: the placement cache's re-resolve runs the sweep alone \src{model/parts/Part.cpp}{170}.
+The function even documents its own missing caller --- its \code{zWorld} field is left
+parent-local behind the comment ``the root-frame z is added once a pose is known''
+\src{model/parts/Placement.cpp}{87}, a promise no caller exists to fulfill. Consuming it
+means invoking it per attachment during resolve, converting a wrong-radius mate from a
+sweep-time overlap (or a silent pass) into an immediate, located seam diagnostic.
+
+\item[Per-sample RockSim mass and CG histories.] The bundled motor file ships
+manufacturer-measured mass and CG values on every thrust sample
+\src{data/Aerotech.rse}{19}, and the loader reads only \code{t} and \code{f}
+\src{model/RSEDatabaseLoader.cpp}{91}. QtRocket instead always reconstructs burn mass with
+the 128-point constant-$I_{sp}$ depletion curve \src{model/MotorModel.cpp}{132} and holds
+the motor's own center of mass fixed \src{model/parts/Motor.cpp}{12} --- the fallback a
+mature tool uses when a file carries no measured data, applied unconditionally. Consuming
+the discarded columns requires a per-motor measured mass curve in place of the
+reconstruction and intra-motor CG travel during the burn; the latter also depends on motor
+placement becoming real (\cref{sec:incomplete-partial}), since a CG history acting at the
+airframe CM would move the right mass at the wrong station.
+
+\item[The \code{isp} member.] The smallest seam, one line: specific impulse is computed
+whenever motor metadata is installed, $I_{sp} = I_{tot} / (g_0 \cdot m_{prop})$
+\src{model/MotorModel.cpp}{130}, stored \src{model/MotorModel.h}{340}, and read by nothing.
+It is the natural input for a future propellant-performance display or a
+mass-flow-consistency check on ingested files; today it is dead weight computed on every
+metadata write.
+
+\end{description}
+
+\subsection{The 6-DOF cluster}\label{sec:incomplete-sixdof}
+
+The largest coordinated group of dormant machinery is the scaffolding for six degrees of
+freedom (6-DOF) --- rotational state, torques, and the inertia pipeline that would drive
+them. Five pieces exist, typed and in place, and none is consumed:
+
+\begin{itemize}
+\item \textbf{The torque interface.} \code{getTorques(t)} is a pure virtual on the
+  model--sim bridge \src{model/Propagatable.h}{30}; \code{RocketModel}'s override returns
+  the zero vector unconditionally \src{model/RocketModel.cpp}{94}. A repo-wide search finds
+  no call site in \srcf{sim/}, \srcf{gui/}, \srcf{cli/}, or the controller --- only the
+  declaration, the zero override, and a test mock \src{tests/PropagatorTests.cpp}{43}.
+\item \textbf{The inertia accessor.} \code{getCompositeInertiaTensor(t)} is declared
+  \src{model/Propagatable.h}{33} and implemented as a pass-through to the part tree
+  \src{model/RocketModel.cpp}{43}, and no production code calls the virtual; the per-step
+  recording reaches the tree directly through \code{writeMassProperties}
+  \src{model/RocketModel.cpp}{59}. The composite $I(t)$ and CG$(t)$ that
+  \cref{sec:parts} shows the tree computing so carefully have exactly one time-varying
+  consumer today: the per-step state snapshot (the CLI's \code{listparts} also prints a
+  static $t=0$ composite).
+\item \textbf{The quaternion state slots.} \code{StateData} carries \code{orientation} and
+  \code{orientationRate} quaternions, a direction-cosine matrix, and 3-2-1 Euler angles
+  \src{sim/StateData.h}{46}; no code anywhere writes or reads them. Both quaternions are
+  initialized to the all-zero quaternion --- not the identity rotation, not any rotation
+  --- and the members' ``(vector, scalar)'' annotation sits one constructor-order hazard
+  away from Eigen's $(w, x, y, z)$ value constructor (\cref{sec:simcore}). The first
+  consumer inherits an invalid orientation plus a documented convention trap.
+\item \textbf{The orientation integrator.} The rotational half of the propagator exists as
+  a commented-out member whose interface is already worked out
+  (\cref{lst:incomplete-orientation}): the same \code{DESolver} machinery, instantiated for
+  quaternions, with a time-keyed callback so torques are sampled at each stage's node time
+  exactly as forces are. The solver templates admit the quaternion instantiation by
+  \cppinline|static_assert| \src{sim/RK45Solver.h}{51}, though only \code{Vector3}
+  instantiations exist \src{sim/Integrator.h}{57}, and the stage arithmetic would not
+  compile for \code{Eigen::Quaterniond} without adaptation --- the template is a staged
+  intention, not working rotational machinery.
+\item \textbf{The recorded seam.} Every accepted step snapshots mass, CG, and the full
+  inertia tensor into the state history \src{sim/Propagator.cpp}{132}, and the header names
+  the purpose: these are ``the seam the 6-DOF rotational ODE will read''
+  \src{sim/StateData.h}{59}. On the placement side, every \code{StationLink} carries a
+  \code{childRot} quaternion reserved for 6-DOF, identity in 3-DOF
+  \src{model/parts/Placement.h}{55}, deliberately left out of the design file format while
+  it is identity by construction \src{model/DesignSerializer.cpp}{85}.
+\end{itemize}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   std::unique_ptr<sim::Integrator> linearIntegrator;
+   // The 6-DOF orientation integrator will use the same DESolver<Quaternion> interface, with a
+   // time-keyed ODE callback so getTorques() can be sampled at each stage's node time like getForces().
+//   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
+\end{minted}
+\caption{The rotational half of the propagator, present as a commented-out member with its
+design already stated in place \srccap{sim/Propagator.h}{100}. The dormant seam names its
+own consumer: a quaternion ODE fed by \texttt{getTorques()} at stage node times.}
+\label{lst:incomplete-orientation}
+\end{listing}
+
+\begin{keyinsight}[Two defects gate 6-DOF consumption]
+The Architecture Review names two latent defects that must be fixed \emph{before} this
+cluster gains a consumer, because both leave the 3-DOF trajectory untouched and become
+flight errors the moment rotation is integrated. First, the fin set's chordwise frame is mirrored: its mass
+and CP math use aft-positive from-root-leading-edge distances directly as $+z$ offsets
+\src{model/parts/FinSet.cpp}{57}, placing the composite fin CP aft of truth and the fin-set
+mass forward of truth, and the unit tests pin the mirrored values as regression anchors
+\src{model/tests/FinSetTests.cpp}{207} --- the suite enforces the defect rather than
+detecting it (\cref{sec:aero}). Second, the composite-inertia walk deliberately omits the
+$R\,I\,R^{\mathsf{T}}$ child-tensor rotation --- identity in 3-DOF, skipped ``to stay
+bit-stable'' --- and the in-source TODO already prescribes the regression test that must
+accompany its addition \src{model/parts/Part.cpp}{217}. Fixed in that order, the fin-set
+mirror is flushed out while it is still a display bug rather than a flight bug.
+\end{keyinsight}
+
+\subsection{Partial areas}\label{sec:incomplete-partial}
+
+Six areas are reachable from production paths today, each with a named gap.
+
+\begin{description}
+
+\item[Placement authoring.] The model and the serializer support the full placement
+vocabulary --- three seat kinds \src{model/parts/Placement.h}{32}, arbitrary fractional
+stations, and gaps, all round-tripped through the design file
+\src{model/DesignSerializer.cpp}{54} --- but the only authoring surface, the REPL's
+\code{addpart}, attaches everything with \cppinline|abut(offset.z())|
+\src{cli/Repl.cpp}{872}, and parses \code{x=}/\code{y=} offsets only to discard them
+\src{cli/Repl.cpp}{189}. \code{Abut} is the only seat kind reachable from any front end;
+\code{NestInBore} and \code{OnSurface} placements exist today only in hand-edited
+\code{.qrd} files and C++ test fixtures. The file format is ahead of the authoring
+vocabulary (\cref{sec:placement}).
+
+\item[The GUI design surface.] At the pinned commit the main window's design widgets are
+constructor-only stubs --- \code{RocketTreeView} is an empty constructor
+\src{gui/RocketTreeView.cpp}{3}, \code{RocketModelerView} the same
+\src{gui/RocketModelerView.cpp}{3} --- and the File menu's New/Open/Save/Save~As/Close
+actions ship \code{enabled="false"} \src{gui/MainWindow.ui}{117}; exactly three actions are
+wired: Quit, Save Motor Database, and About \src{gui/MainWindow.cpp}{42}. Every capability
+the widgets promise exists one layer down in the CLI (\cref{sec:interfaces}). Two commits
+on the unmerged \code{RocketTreeViewImplementation} branch add a read-only part tree and
+\code{.qrd} open/save wiring; that work is in progress and is not reviewed here.
+
+\item[GUI responsiveness and change notification.] Everything the GUI does, it does on the
+Qt event-loop thread: the launch slot flies the whole simulation synchronously inside the
+button handler \src{gui/CannonballTab.cpp}{116}, and one motor-search click can issue up to
+$1 + 100$ blocking HTTP round trips (\cref{sec:interfaces}) --- there is no \code{QThread},
+\code{QtConcurrent}, or \code{QNetworkAccessManager} anywhere under \srcf{gui/}. In the
+other direction the model cannot tell the GUI anything: no structure-change notification
+out of \code{RocketModel} exists at the pinned commit (a failed repo-wide search for any
+callback or signal), so a future part-tree widget has nothing to subscribe to; the unmerged
+\code{RocketTreeViewImplementation} branch prototypes such a callback.
+
+\item[Analysis and plotting.] The GUI's analysis window draws exactly three fixed graphs
+--- altitude \src{gui/AnalysisWindow.cpp}{49}, vertical velocity
+\src{gui/AnalysisWindow.cpp}{74}, and the motor thrust curve
+\src{gui/AnalysisWindow.cpp}{86} --- and never surfaces the flight statistics or the typed
+termination reason the controller exposes \src{QtRocket.h}{55}: a user whose run aborted
+for no-liftoff gets an altitude plot and no explanation. The CLI prints the statistics and
+writes a fixed fourteen-column CSV \src{cli/Repl.cpp}{104}; there is no configurable
+plotting, no event annotation, and no stability output on any surface.
+
+\item[The motor database ships empty.] Exactly one motor file is bundled,
+\srcf{data/Aerotech.rse}, and only the test binaries can find it, through the
+\code{QTROCKET\_DATA\_DIR} compile definition \src{tests/CMakeLists.txt}{16}; neither front
+end loads any motor data at startup (a failed search --- no production reference to the
+data directory exists). Every GUI or CLI session begins with an empty database and a manual
+import (\cref{sec:motors}).
+
+\item[Single motor, single stage.] One motor is a structural assumption: the model borrows
+a handle to the \emph{first} \code{Motor} node found by depth-first search
+\src{model/RocketModel.cpp}{13}, a second motor is silently ignored for thrust while still
+contributing mass, and \code{Stage.h} is a commented-out include under the comment ``Not
+yet'' \src{model/RocketModel.h}{22}. The one motor is also pinned to the wrong place: it is
+attached CM-to-CM with the airframe under an offset documented ``Zero today'' with no
+setter \src{model/RocketModel.h}{131}, so the CG-travel-during-burn machinery of
+\cref{sec:parts} acts at the airframe CM rather than in an aft mount, and the motor's
+placement link is never persisted \src{model/DesignSerializer.cpp}{114} --- lossless today
+only because the offset cannot move.
+
+\end{description}
+
+\subsection{Absent subsystems}\label{sec:incomplete-absent}
+
+The following have no trace in the tree. Each claim rests on a failed search of the source
+at the pinned commit, not on an impression.
+
+\begin{description}
+
+\item[Recovery and flight events.] Nothing changes at apogee. Once off the pad, the only
+phase logic in the simulator is the terminate predicate --- descending below the launch site
+\src{model/RocketModel.cpp}{62} --- so every flight ends ballistically, descending under
+the ascent's drag law; apogee exists only as a running maximum in the statistics
+\src{sim/TrajectoryStatistics.h}{29}. There is no deployment event, no parachute or
+streamer model, no drag switch at any altitude. The ejection delays every loader ingests
+(\cref{sec:incomplete-dormant}) are this subsystem's staged input, and the review points at
+the typed termination taxonomy \src{sim/Propagator.h}{35} as the natural seed of an event
+vocabulary --- liftoff, burnout, apogee, ejection, touchdown.
+
+\item[Drag build-up, Mach, and Reynolds.] The per-part drag field exists and every producer
+returns zero: \code{cd} stays 0 on the body tube --- ``skin friction over getWettedArea()
+is its eventual contribution'' \src{model/parts/BodyTube.cpp}{41} --- on the nose cone
+\src{model/parts/ConicalNoseCone.cpp}{67}, and on the fin set
+\src{model/parts/FinSet.cpp}{89}; the wetted-area getters staged for the purpose have no
+production consumer \src{model/parts/BodyTube.h}{51}. Above them, the atmosphere interface exposes
+speed of sound and dynamic viscosity \src{sim/AtmosphericModel.h}{17}, and the US Standard
+Atmosphere implements both correctly \src{sim/USStandardAtmosphere.cpp}{143} --- those two
+overrides have no caller of any kind, production or test. No Mach number or Reynolds number
+is computed anywhere (failed search); the single user-set $C_d$ is speed-independent, so an
+upper-class flight passes Mach~1 under subsonic-constant drag without comment
+(\cref{sec:aero,sec:environment}).
+
+\item[Staging, clusters, and flight configurations.] No \code{Stage} type exists anywhere
+under \srcf{model/} (the commented include above is the only mention); there is no motor
+cluster support --- the single-motor DFS makes a second motor physically inconsistent
+rather than illegal --- and no concept of named flight configurations pairing a design with
+alternative motors.
+
+\item[Launch rod, launch site, and Coriolis.] The only pad modeling is a hold clamp ---
+the rocket is pinned at rest at $z = 0$ until the first powered step lifts it
+\src{sim/Propagator.cpp}{111} --- and a no-liftoff abort \src{sim/Propagator.cpp}{146}.
+There is no guided rod phase, rod length, or departure-velocity constraint; since attitude
+does not exist, a rod could not constrain the thrust direction anyway. There is likewise no
+launch-site concept: the geoid ignores its latitude/longitude arguments
+\src{sim/SphericalGeoidModel.cpp}{18}, the spherical gravity model queries it once with a
+literal $(0, 0)$ placeholder \src{sim/SphericalGravityModel.cpp}{20}, altitude above the
+pad is implicitly altitude above sea level in every atmosphere lookup, and no Coriolis or
+Earth-rotation term appears anywhere (failed search).
+
+\item[Foreign design formats.] QtRocket imports foreign \emph{motor} data through three
+paths (\cref{sec:motors}) and foreign \emph{design} data through none: there is no
+OpenRocket \code{.ork} reader or writer, no RockSim \code{.rkt} design import, and no
+export beyond the trajectory CSV \src{cli/Repl.cpp}{104}. Its own legacy 0.1 design files
+are rejected fail-closed with ``must be re-created'' rather than migrated
+\src{model/DesignSerializer.cpp}{194}. Combined with the five-type part catalog
+(\cref{sec:parts}), the \code{.qrd} format is a closed world at this commit
+(\cref{sec:persistence,app:or-features}).
+
+\item[Optimization and dispersion.] No optimizer, no Monte-Carlo or dispersion analysis;
+searches for either return nothing. The deterministic core and the scriptable REPL make
+external parameter sweeps feasible today --- the design-matrix suite is exactly such a
+sweep run as a test (\cref{sec:testing}) --- but nothing in the product performs one.
+
+\item[Packaging and internationalization.] Distribution is a single install rule covering
+the GUI target only \src{CMakeLists.txt}{308}; no CPack configuration exists (failed
+search), the macOS bundle identifier is the Qt template placeholder
+\src{CMakeLists.txt}{301}, and the CLI, the visualizer, and the motor data are not
+installed at all. Internationalization is dead scaffolding: the build generates translation
+catalogs nothing references \src{CMakeLists.txt}{201}, and the GUI loads a translator from
+a resource prefix that is never populated \src{gui/GuiRunner.cpp}{40}, under a TODO
+admitting English-only support \src{gui/GuiRunner.cpp}{34}.
+
+\end{description}
+
+\subsection{A suggested order of work}\label{sec:incomplete-sequencing}
+
+Ranking this inventory is deliberately not this document's job; the Architecture Review
+does it, and its recommendation is reproduced here because it follows directly from the
+dormant-versus-absent distinction above. The review's sequencing
+(\srcf{docs/ArchitectureReviewLatex/sections/11-roadmap.tex}) wires seams to consumers in
+dependency order:
+
+\begin{enumerate}
+\item \textbf{Consume the Barrowman seam.} Fix the fin-set chordwise mirror, add the
+  $R\,I\,R^{\mathsf{T}}$ rotation with the pinned-identity regression test the TODO already
+  prescribes \src{model/parts/Part.cpp}{220}, and give
+  \code{deriveReferenceAreaFromGeometry()} its caller. The payoff is a CP/CG/static-margin
+  readout in the CLI and GUI --- no new physics, the first production exercise of
+  \code{getCompositeAero}, and the sign defect flushed while it is still a display bug
+  rather than a flight bug.
+\item \textbf{Recovery and flight events.} Independent of rotation: grow the termination
+  taxonomy \src{sim/Propagator.h}{35} into an event vocabulary, consume the ejection
+  delays, and switch drag at deployment. This replaces the ballistic terminate with a full
+  flight --- and a minutes-long parachute descent forces the simulation off the GUI thread,
+  which in turn makes the controller's initialization race (\cref{sec:overview}) worth
+  fixing first.
+\item \textbf{Six degrees of freedom, then wind.} Reinstate the orientation integrator
+  (\cref{lst:incomplete-orientation}), fixing the quaternion zero-initialization and the
+  constructor-order hazard before any consumer reads them; align thrust with the body axis;
+  derive restoring torques from step~1's aero profile. Only then plumb the wind model ---
+  a point mass cannot weathercock, so connecting it earlier would shift drag without
+  producing any behavior wind exists to model.
+\item \textbf{The GUI design editor.} Pure consumption of a proven core: the CLI already
+  demonstrates the full author-persist-fly loop against the same API, the 25 committed
+  \code{.qrd} fixtures are a ready test corpus, and the in-flight branch supplies the tree
+  view. What remains is the property panel, part add/remove/edit, and closing the CLI's
+  seat-and-station authoring gap.
+\end{enumerate}
+
+\begin{designrule}[Consumption before construction (the review's verdict)]
+``Almost nothing in Tiers 1--2 requires new architecture. The aero profile, the torque
+interface, the quaternion state, the ejection delays, the termination taxonomy, the
+authoring API, and the serializer all exist and are tested. The highest-leverage sequencing
+wires existing seams to consumers in dependency order, fixing the two known latent defects
+before their numbers become user-visible''
+(\srcf{docs/ArchitectureReviewLatex/sections/11-roadmap.tex}).
+\end{designrule}
+
+Staging, clusters, the multi-host joint graph, and packaging stay off this critical path by
+design: none blocks the four steps, and each gets cheaper after them --- staging needs the
+event system, clusters need the joint graph.
+
+\subsection{The placement system's forward hook}\label{sec:incomplete-hook}
+
+The Part Placement whitepaper (\srcf{docs/PartPlacementDesignLatex/}) closes with the same
+forward posture this chapter documents, and one of its designed pieces is still unbuilt:
+Layer~3 of its diagnostics ladder, the degrees-of-freedom accounting. In 3-DOF a single
+axial \code{StationLink} fully pins a child; under 6-DOF one link leaves a rotational
+degree of freedom unpinned, and the design specifies a cheap detector that warns when a
+child has only one link under free orientation
+(\srcf{docs/PartPlacementDesignLatex/sections/06-diagnostics.tex}). No such code exists in
+\srcf{model/parts/} --- verified by reading \srcf{model/parts/Placement.cpp} and
+\srcf{model/parts/Part.cpp} end to end --- so the detector is designed, not shipped:
+absent, with its specification already written.
+
+The rest of the placement system's 6-DOF path is the inventory's most finished forward
+hook. The schema is already shaped for rotation --- \code{childRot} rides in every stored
+link as an identity quaternion \src{model/parts/Placement.h}{55}, \code{Pose::compose()} is
+the full rotate-then-translate rigid-transform law that degenerates to vector addition
+under identity \src{model/parts/Placement.h}{81} --- so the design document reduces 6-DOF
+placement to three localized edits: stop forcing \code{childRot} to identity at authoring
+and load time, add the one $R\,I\,R^{\mathsf{T}}$ line to the composite-inertia pass, and
+feed the integrated attitude into the resolver's root pose
+(\srcf{docs/PartPlacementDesignLatex/sections/09-sixdof.tex}). Zero schema change, zero
+signature change, no second resolver.
+
+That is the shape of this whole chapter, and the review closes with the image that fits it:
+the hard structural machinery --- composite inertia, placement resolution, Barrowman
+composition, adaptive integration, the termination taxonomy --- is built, tested, and
+waiting behind seams that name their consumers. In the review's words, ``the rooms are
+framed and inspected; the remaining work is opening the doors between them''
+(\srcf{docs/ArchitectureReviewLatex/sections/11-roadmap.tex}).

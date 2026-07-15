@@ -1,0 +1,596 @@
+\section{User interfaces}\label{sec:interfaces}
+
+QtRocket presents three user-facing surfaces, all built over the same Qt-free core
+(\cref{sec:overview}) but at very different levels of maturity. The Qt6 Widgets application
+\code{qtrocket} is a \emph{motor-and-launch} front end: it imports motors, stages a point-mass
+launch, flies it, and plots the result --- but it cannot author, open, or save a rocket design.
+The headless command-line interface (CLI) \code{qtrocket-cli} is the most complete surface and
+the only one that can author designs: a line-oriented read-eval-print loop (REPL) whose
+stdout doubles as a machine-parseable protocol, making it scriptable from a pipe or a test
+harness. The standalone \code{qtrocket-visualizer} is a self-contained OpenGL viewer for saved
+\code{.qrd} design files that positions every rendered part with the \emph{same} placement
+resolver the simulator's mass pass consumes (\cref{sec:placement}). This section walks each
+surface in turn and closes with the asymmetry between them;
+\cref{fig:interfaces-components} maps the classes involved and the core services each
+surface actually drives.
+
+\tikzfig{component-interfaces}{The three front ends and the core services each one drives.
+Solid edges are the load-bearing call paths at the pinned commit; the GUI's missing edge to
+the design serializer --- its File actions ship disabled --- is the maturity asymmetry this
+section documents.}{fig:interfaces-components}
+
+\subsection{The Qt6 Widgets GUI}\label{sec:interfaces-gui}
+
+The \srcf{gui/} directory is the only Qt-dependent code in the main tree --- roughly a
+thousand lines of hand-written widget code compiled directly into the \code{qtrocket}
+executable (\src{CMakeLists.txt}{159}), plus the vendored 43{,}000-line QCustomPlot 2.1.1
+plotting library (\src{gui/qcustomplot.h}{23}), which is compiled with \code{-w} so the rest
+of the project can keep \code{-Werror} (\src{CMakeLists.txt}{152}) and is excluded from
+coverage metrics (\src{CMakeLists.txt}{262}). No GUI source is ever built into a library or a
+test binary; no test links \code{Qt6::Widgets} (\cref{sec:testing}).
+
+\subsubsection{The entry point: \code{QApplication} on a spawned thread}
+\label{sec:interfaces-gui-thread}
+
+\code{main()} creates the \code{Logger} and the \code{QtRocket} controller singleton on the
+process main thread --- no Qt yet (\src{main.cpp}{20}) --- and then blocks in
+\cppinline|gui::run(qtrocket, argc, argv)| (\src{main.cpp}{25}). The entire GUI entry point is
+seven lines (\cref{lst:interfaces-guirun}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+int run(QtRocket* qtRocket, int argc, char* argv[])
+{
+   int ret = 0;
+   std::thread guiThread(guiWorker, qtRocket, argc, argv, std::ref(ret));
+   guiThread.join();
+   return ret;
+}
+\end{minted}
+\caption{The whole GUI entry point: spawn a worker thread, join it immediately, and return
+the exit code through an out-parameter. \code{QApplication} is constructed inside
+\code{guiWorker}, on the spawned thread. \srccap{gui/GuiRunner.cpp}{59}}
+\label{lst:interfaces-guirun}
+\end{listing}
+
+\code{guiWorker} constructs \code{QApplication} on that spawned thread
+(\src{gui/GuiRunner.cpp}{30}), shows the \code{MainWindow}, and runs the entire Qt event loop
+there (\src{gui/GuiRunner.cpp}{51}); the exit code travels back through an \cppinline|int&|
+passed via \cppinline|std::ref| (\src{gui/GuiRunner.cpp}{62}). The reason is layering, not
+concurrency, and the header says so: the function ``lives in the gui layer so the QtRocket
+controller stays Qt-free and links into the headless CLI'' (\src{gui/GuiRunner.h}{11}).
+Keeping every Qt construction out of \code{main()}'s call chain is what lets the same
+controller object serve \code{qtrocket-cli} without a display.
+
+\begin{keyinsight}[Qt's GUI thread is not the process main thread]
+Qt treats whichever thread constructs \code{QCoreApplication} as its main/GUI thread; the
+documented convention is to construct it in \code{main()}'s thread. QtRocket inverts this:
+the spawned thread owns the event loop (\src{gui/GuiRunner.cpp}{30}) while the true main
+thread does nothing but sleep in \code{join()} (\src{gui/GuiRunner.cpp}{63}). Because the
+join is immediate, there is no concurrency benefit --- the process is behaviorally
+single-threaded-at-a-time. The pattern buys layering purity and imports a portability risk:
+it works on Linux/xcb, but platforms whose native event loop must own the first thread
+(macOS/Cocoa) do not support a GUI on a secondary thread.
+\end{keyinsight}
+
+Two smaller facts about \code{guiWorker} are worth recording. The application-level icon is
+set from \code{:/qtrocket.png} (\src{gui/GuiRunner.cpp}{31}), a path absent from the
+resource file --- the only embedded image is \code{:/images/resources/rocket64.png}
+(\src{qtrocket.qrc}{4}), which the window-level icon in the \code{.ui} correctly uses
+(\src{gui/MainWindow.ui}{16}) --- so the application icon is silently null. And the
+translation loop tries to load \code{:/i18n/} resources the \code{qrc} does not contain
+(\src{gui/GuiRunner.cpp}{40}, \src{qtrocket.qrc}{1}): internationalization is dead plumbing
+at this commit (\cref{sec:incomplete}).
+
+\subsubsection{MainWindow: the shell, the disabled File menu, and the stub panes}
+\label{sec:interfaces-gui-mainwindow}
+
+\code{MainWindow}'s constructor builds the \code{.ui} skeleton and adds its two working tabs
+programmatically: \code{CannonballTab} and \code{SimOptionsTab}
+(\src{gui/MainWindow.cpp}{30}). The skeleton around them is a vertical splitter holding a
+horizontal splitter --- a \code{RocketTreeView} beside the tab widget
+(\src{gui/MainWindow.ui}{49}) --- above a \code{RocketModelerView}
+(\src{gui/MainWindow.ui}{66}). Both custom widgets are Qt Designer promoted classes
+(\src{gui/MainWindow.ui}{187}), and both are verified constructor stubs: each \code{.cpp} is
+six lines with an empty constructor body (\src{gui/RocketTreeView.cpp}{3},
+\src{gui/RocketModelerView.cpp}{3}). No \code{setModel} call exists anywhere in \srcf{gui/},
+so the tree view renders an empty pane and the modeler view a blank widget. More broadly,
+nothing in the GUI observes part-tree edits at all: a repository-wide search for any
+structure-changed callback --- and for callback members in \srcf{QtRocket.h} or
+\srcf{model/RocketModel.h} --- comes back empty at this commit. The rocket-structure UI is
+a frame with nothing wired behind it (\cref{sec:incomplete}).
+
+The File menu makes the same point from the other direction. It lists New, Open, Save, Save
+As, Close, and Quit (\src{gui/MainWindow.ui}{82}), but five of the six ship permanently
+disabled in the \code{.ui} --- \code{actionNew} (\src{gui/MainWindow.ui}{117}),
+\code{actionOpen} (\src{gui/MainWindow.ui}{129}), \code{actionSave}
+(\src{gui/MainWindow.ui}{141}), \code{actionClose} (\src{gui/MainWindow.ui}{153}), and
+\code{actionSave\_As} (\src{gui/MainWindow.ui}{170}) --- and none has a slot. Only Quit is
+live, wired to \code{close()} (\src{gui/MainWindow.cpp}{102}). The consequence is stated
+plainly: \emph{the GUI cannot open a \code{.qrd} design}. The shared
+\code{model::DesignSerializer} (\cref{sec:persistence}) is consumed by the CLI
+(\src{cli/Repl.cpp}{957}) and the visualizer (\src{visualizer/VisualizerWindow.cpp}{184}), and
+a search of \srcf{gui/} for any design-persistence reference returns nothing.
+
+The two menus that do work are small: Tools\,$\to$\,Save Motor Database opens a
+\code{*.qmd} save dialog (start directory hard-coded to the literal \code{/home},
+\src{gui/MainWindow.cpp}{76}), appends the \code{.qmd} suffix when missing
+(\src{gui/MainWindow.cpp}{84}), and calls \code{saveMotorDatabase} inside a try/catch that
+surfaces failures in a message box (\src{gui/MainWindow.cpp}{91}); Help\,$\to$\,About shows
+a modal copyright dialog (\src{gui/MainWindow.cpp}{66}).
+
+\subsubsection{CannonballTab and SimOptionsTab}\label{sec:interfaces-gui-tabs}
+
+\textbf{CannonballTab} is the launch panel for the point-mass (``cannonball'') flight model:
+the rocket is a mass with one drag coefficient and one reference area, so the tab exposes
+exactly five numbers and a motor. The line edits and their shipped defaults are: initial
+velocity 5.0\,m/s (\src{gui/CannonballTab.ui}{29}), launch angle 0.0$^\circ$
+(\src{gui/CannonballTab.ui}{46}), mass 1.0\,kg (\src{gui/CannonballTab.ui}{60}), drag
+coefficient 0.5 (\src{gui/CannonballTab.ui}{74}), and reference area
+0.001134\,$\mathrm{m^2}$ --- the cross-section of a 38\,mm-diameter airframe
+(\src{gui/CannonballTab.ui}{91}). Only two fields carry validators: the angle is clamped to
+$[0,90]$ degrees measured \emph{from vertical}, so the default $0^\circ$ means straight up
+(\src{gui/CannonballTab.cpp}{34}), and the area's validator bottom is zero
+(\src{gui/CannonballTab.cpp}{39}). The other three parse through
+\code{QString::toDouble()}, which silently yields 0.0 on junk; the model-side mass setter then
+silently ignores non-positive values (\src{model/RocketModel.h}{87}) and the area setter
+negative ones (\src{model/RocketModel.h}{74}), so the display and the model can disagree with
+no feedback.
+
+Calculate Trajectory reads the five fields, decomposes the initial speed by the
+angle-from-vertical convention,
+\begin{equation}\label{eq:interfaces-angle}
+v_x = v_0\sin\theta, \qquad v_y = 0, \qquad v_z = v_0\cos\theta,
+\end{equation}
+with degrees converted through the rounded constant 57.2958 $\approx 180/\pi$
+(\src{gui/CannonballTab.cpp}{105}), builds the initial \code{StateData} at the origin
+(\src{gui/CannonballTab.cpp}{107}), pushes mass, drag coefficient, and reference area into the
+\code{RocketModel} (\src{gui/CannonballTab.cpp}{111}), and then calls
+\code{setInitialState} followed by \code{launchRocket}
+(\src{gui/CannonballTab.cpp}{115}). The launch is fully synchronous: the entire ODE
+integration (\cref{sec:simcore}) runs inside the button slot
+(\src{QtRocket.cpp}{54}), so the window is frozen for the duration of the flight. On return
+the tab opens the \code{AnalysisWindow}; the \code{setModal(false)} preceding
+\code{exec()} is ineffective, since \code{QDialog::exec()} always runs application-modal
+(\src{gui/CannonballTab.cpp}{118}).
+
+The tab's enable logic is deliberately centralized: the launch button is enabled iff the
+rocket has a motor, \cppinline|isMotorSet()| (\src{gui/CannonballTab.cpp}{85}, contract at
+\src{gui/CannonballTab.h}{47}), and every motor-selection path re-invokes the same helper
+rather than toggling the button ad hoc (\src{gui/CannonballTab.cpp}{77},
+\src{gui/CannonballTab.cpp}{170}, \src{gui/CannonballTab.cpp}{241}). The motor paths all
+route through the \code{MotorModelDatabase} (\cref{sec:motors}): a file loader that
+dispatches on extension (\code{.eng} to the RASP importer, everything else to the RockSim
+\code{.rse} importer, \src{gui/CannonballTab.cpp}{136}), \code{.qmd} database load/save
+dialogs (\src{gui/CannonballTab.cpp}{173}), and a Set Motor button that resolves the combo's
+common name against the database (\src{gui/CannonballTab.cpp}{231}). The engine combo is
+always rebuilt from \code{listMotors()} and cleared first --- the database is the single
+source of truth for its contents (\src{gui/CannonballTab.cpp}{153}, contract at
+\src{gui/CannonballTab.h}{44}).
+
+\textbf{SimOptionsTab} applies every field live --- there is no Ok/Apply button
+(\src{gui/SimOptionsTab.h}{19}). The timestep validator is strictly positive because a
+non-positive $dt$ would hang the run loop (\src{gui/SimOptionsTab.cpp}{25}). The three
+combos are populated from the model registries --- the source of truth for valid names:
+atmosphere \{Constant Atmosphere, US Standard 1976, Vacuum\} and gravity \{Constant
+Gravity, Spherical Gravity\} from \code{sim::Environment} (\src{sim/Environment.h}{103};
+\cref{sec:environment}), integrator \{Runge-Kutta 4th Order, Runge-Kutta-Fehlberg\} from
+\code{sim::Integrator} (\src{sim/Integrator.h}{32}; \cref{sec:simcore}). Signals are
+connected only \emph{after} population so the \code{addItem} calls do not fire spurious
+applies, and one apply of all four displayed values is forced at construction so the engine
+always matches the display (\src{gui/SimOptionsTab.cpp}{48},
+\src{gui/SimOptionsTab.cpp}{69}). The atmosphere and gravity slots mutate the shared
+\code{Environment} \emph{in place} --- changing the atmosphere model must not clobber
+gravity, and the rest of the application holds the same \code{shared\_ptr}
+(\src{gui/SimOptionsTab.cpp}{89}); timestep and integrator forward through the controller to
+the propagator (\src{gui/SimOptionsTab.cpp}{101}, \src{QtRocket.h}{36}).
+
+\subsubsection{Motor search over the network}\label{sec:interfaces-gui-motorsearch}
+
+\code{ThrustCurveMotorSelector} is the dialog behind the Get Thrustcurve Motor Data button:
+three facet combos (manufacturer, diameter, impulse class), a search button, a motor list, and
+an embedded QCustomPlot thrust-curve preview
+(\src{gui/ThrustCurveMotorSelector.ui}{71}). Get Metadata fetches the search facets from
+thrustcurve.org and appends them to the combos (\src{gui/ThrustCurveMotorSelector.cpp}{48});
+the combos are never cleared first, so repeated clicks duplicate every entry, and the
+manufacturer facet displays the API's short \emph{code} rather than the display name because
+the search API keys on the code (\src{model/MotorModelDatabase.cpp}{151}). Search builds a
+\code{MotorQuery} from the non-empty combos only, leaving unset facets unconstrained
+(\src{gui/ThrustCurveMotorSelector.cpp}{63}); every result is merged into the local database
+(\src{model/MotorModelDatabase.cpp}{171}), which is why Set Motor can later resolve it by
+common name and plot its curve (\src{gui/ThrustCurveMotorSelector.cpp}{83}).
+
+The network path beneath those slots is fully synchronous, end to end, on the GUI thread.
+The dialog calls \code{MotorModelDatabase}, which lazily constructs the real
+\code{ThrustCurveClient} behind the \code{ThrustCurveAPI} interface
+(\src{model/MotorModelDatabase.cpp}{137}; \cref{sec:motors}); the client issues HTTP GETs
+through \code{utils::CurlConnection::get} (\src{model/ThrustCurveClient.cpp}{270},
+\src{model/ThrustCurveClient.cpp}{301}), which is a blocking
+\code{curl\_easy\_perform} with a 10\,s connect timeout and a 30\,s total timeout
+(\src{utils/CurlConnection.cpp}{54}, \src{utils/CurlConnection.cpp}{58}).
+
+\begin{keyinsight}[One click, up to 101 blocking round trips]
+\code{searchMotors} fans out: after the search response it loops the results and fetches each
+motor's thrust-curve samples with a separate \code{download.json} request
+(\src{model/ThrustCurveClient.cpp}{320}), and the default result cap is
+\code{maxResults=100} (\src{model/ThrustCurveClient.cpp}{298}). One Search click is therefore
+$1 + N$ blocking HTTP round trips with $N \le 100$, each bounded only by the 30\,s libcurl
+timeout, all executed in the slot body on the Qt event-loop thread. The code states this
+plainly on both sides of the seam: ``each result costs one download.json round trip below,
+performed synchronously on the caller's (often GUI) thread''
+(\src{model/ThrustCurveClient.cpp}{293}), and ``these calls run synchronously on the caller's
+thread (including the GUI thread), so a hung connection must time out rather than wedge the
+app'' (\src{utils/CurlConnection.cpp}{52}). There is no \code{QThread},
+\code{QtConcurrent}, or \code{QNetworkAccessManager} anywhere in \srcf{gui/}: the timeouts
+are the only thing standing between a slow server and a multi-minute frozen window.
+\end{keyinsight}
+
+\subsubsection{AnalysisWindow: exactly three fixed plots}\label{sec:interfaces-gui-analysis}
+
+\code{AnalysisWindow} is the post-flight view: three buttons drawing into a single promoted
+QCustomPlot widget (\src{gui/AnalysisWindow.ui}{16}), each clearing the previous graph and
+enabling drag/zoom. Plot Altitude reads the recorded $(t, \code{StateData})$ history from
+\code{QtRocket::getStates()} (\src{gui/AnalysisWindow.cpp}{39}) and plots
+\cppinline|position[2]| --- altitude $z$ in meters --- against time
+(\src{gui/AnalysisWindow.cpp}{49}). Plot Velocity plots \cppinline|velocity[2]|, the vertical
+velocity component, not speed (\src{gui/AnalysisWindow.cpp}{74}). Motor Curve plots the
+motor's thrust samples in Newtons against time (\src{gui/AnalysisWindow.cpp}{86}). These
+three are the entire analysis surface: the plotted variables are hard-coded, and there is no
+downrange, speed, acceleration, or mass plot. Axis ranges are spanned from the data
+(\src{gui/AnalysisWindow.cpp}{55}); the labels are minimal (the altitude axis is labeled
+literally ``Z'', \src{gui/AnalysisWindow.cpp}{54}). Since only the three linear degrees of
+freedom are integrated at this commit (\cref{sec:simcore}), the plot set matches what the
+state actually contains --- but the CSV the CLI exports carries strictly more
+(\cref{sec:interfaces-cli-launch}).
+
+\subsection{The command-line REPL}\label{sec:interfaces-cli}
+
+\code{qtrocket-cli} is the headless front end: a 26-line \code{main}
+(\srcf{cli/CliMain.cpp}) wrapping \code{cli::Repl} (\srcf{cli/Repl.cpp}, 985 lines), a
+line-oriented REPL over the same \code{QtRocket} API the GUI drives. It reads line by line,
+so the identical binary works interactively, from a pipe, or from a redirected script
+(\src{cli/Repl.h}{22}). The Repl is compiled into its own \code{cli} static library
+(\src{CMakeLists.txt}{235}) so that the test suites drive the exact object code a user types
+into (\cref{sec:testing}); the executable links that library and nothing else
+(\src{CMakeLists.txt}{297}).
+
+\subsubsection{Process model and the stdout protocol}\label{sec:interfaces-cli-protocol}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+int main(int /*argc*/, char* /*argv*/[])
+{
+   // Logger shares stdout with the CLI's machine-readable output, so run at ERROR. The "[ERROR]"
+   // prefix keeps those lines distinct from the CLI's own "OK"/"ERR"/"CSV".
+   utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
+\end{minted}
+\caption{The CLI's first act is pinning the Logger to ERROR: stdout is a protocol surface,
+and log chatter would corrupt it. The rest of the 26-line \code{main} prints the
+\code{\#}-prefixed banner and hands \code{std::cin}/\code{std::cout} to the Repl
+(\srccap{cli/CliMain.cpp}{13}).}
+\label{lst:interfaces-climain}
+\end{listing}
+
+The stdout contract is simple and consistently enforced. Every command's first response line
+is machine-parseable: \code{OK <cmd>[: detail]} on success or \code{ERR <cmd>: reason} (or
+\code{ERR usage: ...}) on failure. Payload rows --- motor listings, model-name lists, CSV
+rows, the part tree, the \code{status} block --- follow the \code{OK} line unprefixed.
+Human commentary is \code{\#}-prefixed: the startup banner
+(\src{cli/CliMain.cpp}{21}) and the entire \code{help} text, which itself ends with
+\code{OK help} (\src{cli/Repl.cpp}{259}). Input lines beginning with \code{\#} are treated
+as script comments (\src{cli/Repl.cpp}{256}). Two extra line types exist only for
+\code{launch}: a \code{WARN:} line on non-nominal termination (\src{cli/Repl.cpp}{737}) and a
+\code{CSV <absolute-path>} line naming the flight artifact (\src{cli/Repl.cpp}{740}). This is
+why the Logger is pinned to ERROR before anything else runs
+(\src{cli/CliMain.cpp}{15}): the protocol and the log share one stream, so the log must be
+nearly silent and visually distinct when it does speak.
+
+Parsing is equally deliberate. Only the command word is lowercased --- arguments keep their
+case so motor codes like \code{G80T} and file paths survive (\src{cli/Repl.cpp}{252}).
+Numeric arguments parse strictly: trailing garbage (e.g.\ \code{0.5abc}) rejects the token
+rather than truncating it (\src{cli/Repl.cpp}{119}). An unknown \emph{command} is an
+\code{ERR} (\src{cli/Repl.cpp}{981}), but an unknown \emph{design key} in
+\code{newdesign}/\code{addpart} warns and continues, so a newer file or CLI's extra keys do
+not break an older one (\src{cli/Repl.cpp}{205}).
+
+\begin{keyinsight}[Automation must parse \code{ERR}, not \code{\$?}]
+The Repl's run loop reads until EOF or \code{quit}/\code{exit} and then unconditionally
+returns 0 (\src{cli/Repl.cpp}{232}), which \code{main} returns as the process exit code
+(\src{cli/CliMain.cpp}{25}). A script consisting entirely of failing commands still exits 0.
+Pipelines therefore cannot use the shell exit status to detect failure; they must scan stdout
+for \code{ERR} lines. One edge case complicates even that: \code{launch} is the one command
+that can emit both --- if the hardcoded CSV artifact cannot be opened, an
+\code{ERR launch: cannot open ...} line prints and the \code{OK launch:} summary still
+follows (\src{cli/Repl.cpp}{717}), so a strict ``first line decides'' parser must treat
+\code{launch} specially.
+\end{keyinsight}
+
+\subsubsection{The command inventory}\label{sec:interfaces-cli-commands}
+
+The dispatch chain in \code{Repl::execute} (\src{cli/Repl.cpp}{245}) contains 32 handler
+branches accepting 33 command words --- \code{quit} and \code{exit} are aliases sharing one
+branch (\src{cli/Repl.cpp}{975}). \Cref{tab:interfaces-commands} is the complete inventory,
+grouped by function. Two session contracts pinned in the \code{help} text apply across the
+groups: part ids reset on reload, and the launch/atmosphere settings are session
+configuration, never saved in a design file (\src{cli/Repl.cpp}{294}); and drag uses the
+active atmosphere's density, so selecting the Vacuum atmosphere reduces the force model to
+thrust plus gravity (\src{cli/Repl.cpp}{298}).
+
+\begingroup\small
+\begin{longtable}{@{}>{\ttfamily}p{4.6cm}>{\raggedright\arraybackslash}p{9.0cm}r@{}}
+\caption{The complete \code{qtrocket-cli} command inventory at commit \code{254cd41}: 33
+command words across 32 handler branches. Angle brackets mark required arguments, square
+brackets optional ones. The right column gives the opening line of each command's handler
+branch in \srcfcap{cli/Repl.cpp}.}\label{tab:interfaces-commands}\\
+\toprule
+\textrm{\textbf{Command and arguments}} & \textbf{Semantics} & \textbf{Line}\\
+\midrule
+\endfirsthead
+\multicolumn{3}{@{}l}{\small\emph{Table \ref{tab:interfaces-commands}, continued}}\\
+\toprule
+\textrm{\textbf{Command and arguments}} & \textbf{Semantics} & \textbf{Line}\\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\small\emph{continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\multicolumn{3}{@{}l}{\textbf{Session and output}}\\
+\addlinespace[2pt]
+help & Prints the \code{\#}-prefixed command list, then \code{OK help}. & 259\\
+status & Dumps the staged configuration: motor, dry mass (kg), drag coefficient, reference
+  area ($\mathrm{m^2}$), velocity (m/s), angle (deg from vertical), atmosphere, gravity,
+  integrator, database size. & 652\\
+states [stride] & Prints the last run's state series as CSV to stdout, keeping every
+  stride-th sample (clamped $\ge 1$); \code{ERR} when no run exists. & 744\\
+save <path.csv> & Writes the full series (stride 1) to a caller-chosen file; echoes the
+  absolute path. & 759\\
+quit | exit & Prints \code{OK bye} and ends the session. & 975\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{Motor database}}\\
+\addlinespace[2pt]
+loadmotors <file.rse|file.eng> & Imports a motor file; \code{.eng} dispatches to the RASP
+  importer, anything else to the RockSim \code{.rse} importer; reports the count added. & 303\\
+savedb <file.qmd> & Saves the motor database as XML. & 327\\
+loaddb <file.qmd> & Additive database load; reports new and total motor counts. & 348\\
+tcfacets & Fetches the thrustcurve.org search facets (manufacturers, diameters, impulse
+  classes). & 371\\
+tcsearch <k=v>... & Online search; keys \code{manufacturer}, \code{diameter},
+  \code{impulseClass}. Results merge into the local database. & 392\\
+listmotors [substr] & Lists common names with average thrust (N) and total impulse
+  ($\mathrm{N\,s}$); optional substring filter. & 429\\
+setmotor <code> & Exact common-name lookup; installs the motor on the rocket and stages the
+  session mirror. & 453\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{Staged flight configuration}}\\
+\addlinespace[2pt]
+setmass <kg> & Must be $> 0$; applied immediately as a direct mass override on the root
+  part. & 479\\
+setdrag <cd> & Drag coefficient; no range check; applied immediately. & 497\\
+setarea <m\textasciicircum 2> & Must be $\ge 0$; applied immediately and sets the manual-override flag. & 510\\
+setvelocity <m/s> & Staged in the Repl; consumed at \code{launch}. & 528\\
+setangle <deg> & Degrees from vertical ($0$ = straight up); staged. & 540\\
+settimestep <s> & Must be $> 0$; forwarded to the propagator. & 552\\
+listatmospheres & Lists the atmosphere-model registry names. & 569\\
+setatmosphere <name> & Validates the (possibly multi-word) name against the registry, then
+  applies it to the shared environment. & 577\\
+listgravity & Lists the gravity-model registry names. & 596\\
+setgravity <name> & Validated against the registry; applied in place. & 604\\
+listintegrators & Lists the integrator registry names. & 623\\
+setintegrator <name> & Validated; forwarded to the propagator. & 632\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{Simulation control}}\\
+\addlinespace[2pt]
+launch & Flies the staged configuration; prints a summary block, an optional \code{WARN:}
+  line, and a \code{CSV <path>} artifact line (\cref{sec:interfaces-cli-launch}). & 671\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{Design authoring}}\\
+\addlinespace[2pt]
+newdesign <type> [k=v...] & Builds a new root part via the factory and installs it with
+  \code{setRoot}; drops any staged motor. & 784\\
+addpart <parentId|root> <type> [k=v...] [z=<m>] & Builds a child via the factory and
+  attaches it to the parent with \code{abut(z)}. & 825\\
+listparts & Prints the indented part tree (one \code{[id] type "name" m=<kg>} line per
+  part) plus a composite mass/CG footer at $t = 0$. & 880\\
+removepart <id> & Removes a subtree by id; refuses the root; re-checks the motor, which may
+  have been in the removed subtree. & 894\\
+cleardesign & Resets the rocket to the boot placeholder part and clears the staged motor. & 817\\
+savedesign <file.qrd> & Writes the design via \code{DesignSerializer}
+  (\cref{sec:persistence}). & 926\\
+loaddesign <file.qrd> & Atomic load via \code{DesignSerializer}; re-syncs the staged
+  mirrors (drag, area, motor) from the loaded rocket. & 946\\
+\end{longtable}
+\endgroup
+
+\subsubsection{Launching and the CSV artifact}\label{sec:interfaces-cli-launch}
+
+\code{launch} guards on a staged motor (\src{cli/Repl.cpp}{673}), decomposes the staged speed
+and angle exactly as the GUI does --- \cref{eq:interfaces-angle}, with the same rounded
+57.2958 constant (\src{cli/Repl.cpp}{35}) --- and then calls the same two controller entry
+points, \code{setInitialState} and \code{launchRocket} (\src{cli/Repl.cpp}{687}). The summary
+statistics are read back from the propagator's live-tracked trajectory statistics rather than
+re-derived (\src{cli/Repl.cpp}{701}), and the summary block prints steps, final time, apogee,
+maximum speed, downrange distance $\sqrt{x^2+y^2}$, and landing position at fixed
+three-decimal precision (\src{cli/Repl.cpp}{728}).
+
+Every successful launch also writes a hardcoded side effect: the full state series goes to
+\code{qtrocket\_run.csv} in the current working directory
+(\src{cli/Repl.cpp}{712}), and the \code{CSV} protocol line reports its absolute path. One
+writer serves the \code{launch} artifact, the \code{states} stdout dump, and the
+\code{save} export (\src{cli/Repl.cpp}{102}), so all three emit the identical schema at
+nine significant digits: \code{t,x,y,z,vx,vy,vz,mass,cg\_x,cg\_y,cg\_z,Ixx,Iyy,Izz} ---
+time in seconds, position in meters, velocity in m/s, mass in kg, center of gravity in
+meters, and the inertia-tensor diagonal in $\mathrm{kg\,m^2}$, all SI
+(\src{cli/Repl.cpp}{104}). Note that the CSV already carries the time-varying mass, CG, and
+inertia diagonal that the GUI's three plots never show.
+
+Non-nominal terminations map to text through an exhaustive switch with no default case, so a
+new \code{TerminationReason} enumerator fails to compile in the CLI until it is handled
+(\src{cli/Repl.cpp}{40}); the \code{NoLiftoff} message even carries its diagnostic criterion
+in prose --- ``never cleared 1 m after 3 s (check thrust vs weight)''
+(\src{cli/Repl.cpp}{46}).
+
+\subsubsection{Design authoring from the REPL}\label{sec:interfaces-cli-design}
+
+The design commands make the CLI the only surface that can author a rocket. Geometry
+arrives as whitespace-delimited \code{key=value} tokens parsed into the shared
+\code{PartParams} struct --- the same vocabulary the factory, the serializer, and the disk
+format use, so field names cannot drift between front ends (\cref{sec:parts});
+\code{newdesign} and \code{addpart} then drive \code{model::part::makePart}, whose
+exceptions (missing required field, unknown type) surface directly as \code{ERR} lines
+(\src{cli/Repl.cpp}{803}, \src{cli/Repl.cpp}{863}).
+
+Attachment, however, has exactly one spelling. \code{addpart} always seats the child with
+\cppinline|model::part::abut(offset.z())| --- the child abuts its parent's aft plane with an
+optional forward standoff \code{z} (\src{cli/Repl.cpp}{872}); the \code{x=}/\code{y=} tokens
+are parsed into a full vector and then dropped, since off-axis placement is meaningless in
+3-DOF (\src{cli/Repl.cpp}{189}). The other two placement verbs, \code{nestInBore} and
+\code{seatOnWall}, exist in the model layer (\src{model/parts/Placement.h}{134}) and
+round-trip through the file format, but have no REPL spelling: the \code{.qrd} format is
+ahead of the CLI's authoring vocabulary (\cref{sec:persistence}).
+
+\code{savedesign} and \code{loaddesign} are thin wrappers over the shared
+\code{DesignSerializer} (\src{cli/Repl.cpp}{936}, \src{cli/Repl.cpp}{957});
+\cref{sec:persistence} covers the format and its fail-safe atomic load. After a successful
+load the Repl re-syncs its staged mirrors \emph{from} the rocket --- drag coefficient,
+reference area, and the motor name (\src{cli/Repl.cpp}{964}); the displayed dry mass is not
+re-synced, one of several small session/model seams inventoried in \cref{sec:incomplete}.
+Structural edits keep the motor sound throughout: \code{newdesign} clears the staged motor
+because \code{setRoot} drops it (\src{cli/Repl.cpp}{812}), and \code{removepart} re-checks
+\code{isMotorSet()} because the motor may have been in the removed subtree
+(\src{cli/Repl.cpp}{921}).
+
+\subsection{The standalone visualizer}\label{sec:interfaces-viz}
+
+\code{qtrocket-visualizer} is a separate executable under \srcf{visualizer/} (namespace
+\code{viz}): a Qt6 OpenGL viewer for \code{.qrd} design files that links
+\code{Qt6::Widgets}, \code{Qt6::OpenGLWidgets}, \code{Qt6::OpenGL}, and
+\code{qtrocket\_core} --- and, by stated design, never touches \srcf{gui/} or \srcf{cli/}
+code (\src{visualizer/CMakeLists.txt}{27}, \src{visualizer/CMakeLists.txt}{5}). It shares
+exactly two things with the rest of the system, and they are the two that matter: the design
+loader and the placement resolver.
+
+\subsubsection{Startup and the GL-context workaround}\label{sec:interfaces-viz-startup}
+
+The 41-line \code{main} does three deliberate things. It disables
+Qt's rendering-hardware-interface (RHI) widget backing store, which on EGL/NVIDIA otherwise
+tries and fails to create a GLES2 context before the viewport exists
+(\src{visualizer/main.cpp}{22}). It installs a minimal default surface format --- a 24-bit
+depth buffer and nothing else: no OpenGL version, no core profile, no multisampling
+(\src{visualizer/main.cpp}{24}). And it opens an optional \code{.qrd} path from
+\code{argv[1]} (\src{visualizer/main.cpp}{35}). The empty format request is the point, not an
+omission: forcing a 3.3 core profile as the application-wide default poisons every context Qt
+creates, and on EGL (Wayland plus the NVIDIA driver) the driver then has no matching window
+\code{EGLConfig} --- context creation fails with \code{EGL\_BAD\_MATCH} and the 3D view goes
+black, while GLX honors the same request, so the app would run on one machine and not another
+(\src{visualizer/main.cpp}{8}).
+
+Accepting whatever context the platform grants has two consequences the renderer carries
+throughout. Every shader ships as a twin pair --- desktop GLSL~1.20 and OpenGL~ES~1.00
+(GLSL is the OpenGL Shading Language), written in the common
+\code{attribute}/\code{varying} subset --- selected at initialization by
+\cppinline|context()->isOpenGLES()| (\src{visualizer/RocketGLWidget.cpp}{23},
+\src{visualizer/RocketGLWidget.cpp}{314}), with attribute locations bound by name before
+linking since neither dialect has layout qualifiers
+(\src{visualizer/RocketGLWidget.cpp}{201}). And wireframe mode is implemented by expanding
+every triangle into its three edges as explicit \code{GL\_LINES} vertices, because
+\code{glPolygonMode} does not exist on GLES2 (\src{visualizer/RocketGLWidget.cpp}{518}).
+
+\subsubsection{From \code{.qrd} to pixels: the shared loader and the shared resolver}
+\label{sec:interfaces-viz-mesh}
+
+\code{VisualizerWindow} owns a headless \code{model::RocketModel} and a deliberately
+\emph{empty} \code{MotorModelDatabase}: a design whose motor cannot be re-resolved loads
+anyway, with the miss reduced to a harmless warning
+(\src{visualizer/VisualizerWindow.h}{29}). \code{openFile} delegates to the same static
+\code{model::DesignSerializer::load} the CLI uses (\src{visualizer/VisualizerWindow.cpp}{184};
+\cref{sec:persistence}) inside a try/catch --- a failed load pops a warning box and leaves
+any currently displayed model in place (\src{visualizer/VisualizerWindow.h}{41}). On success
+the window rebuilds the render list via \code{viz::buildRocketMeshes} and updates the status
+bar with the file, the rocket name, and a recursive part count
+(\src{visualizer/VisualizerWindow.cpp}{284}). The side panel offers four preset color
+schemes, a per-type color picker, and grid/axes/wireframe toggles wired directly to the
+viewport's slots (\src{visualizer/VisualizerWindow.cpp}{105}).
+
+\code{RocketMesh} turns the part tree into triangles. Each part type maps to a primitive
+builder --- cone, tube (solid or annular), UV sphere, or fin prism set --- via
+\code{dynamic\_cast} dispatch; a \code{Motor} or unknown type produces no geometry
+(\src{visualizer/RocketMesh.cpp}{450}). All primitives are built in local coordinates
+centered on the origin with $+z$ forward (\src{visualizer/RocketMesh.h}{70}), so positioning
+is a pure translation. The positions themselves come from the placement resolver
+(\cref{lst:interfaces-resolver}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   // Consume the same absolute placement the simulator does: resolve every part's pose once, then
+   // translate each origin-centered primitive so its fore plane lands at the resolved fore-plane
+   // origin (the build* primitives are centered about mid-length, half an axialLength forward of
+   // the aft plane).
+   const std::vector<model::part::Placed> placed =
+      model::part::resolvePlacements(*root, model::part::Pose{});
+\end{minted}
+\caption{The visualizer asks the model layer's resolver --- not its own arithmetic --- where
+every part is. The comment names the contract. \srccap{visualizer/RocketMesh.cpp}{429}}
+\label{lst:interfaces-resolver}
+\end{listing}
+
+\begin{designrule}[Rendered geometry cannot diverge from simulated geometry]
+\code{resolvePlacements} is documented as ``the single authority for absolute placement:
+intent (StationLink) in, geometry (Pose) out. Both the simulator and the visualizer consume
+its output, so the two cannot disagree'' (\src{model/parts/Placement.h}{148}). The simulator
+side consumes it inside \code{Part::ensurePlacementCache}, which feeds the composite
+mass/CM/inertia pass (\src{model/parts/Part.cpp}{160}; \cref{sec:placement}); the visualizer
+side is \cref{lst:interfaces-resolver}. What the user sees on screen and what the propagator
+integrates are, by construction, the same poses --- there is no second placement computation
+that could go stale.
+\end{designrule}
+
+Since a resolved \code{Pose::origin} is the part's \emph{fore-plane} origin and a part
+occupies $z \in [-\code{axialLength}, 0]$ in its own frame (\src{model/parts/Part.h}{144}),
+while the primitives are centered about mid-length, each mesh is translated by
+\cppinline|p.pose.origin + Vector3(0.0, 0.0, -part.axialLength() / 2.0)|
+(\src{visualizer/RocketMesh.cpp}{482}) --- the mesh center lands half an axial length aft of
+the fore plane.
+
+The overlap verdict is shared the same way. The mesh walk reads the cached
+\code{SolveResult} from \code{placementDiagnostics()}
+(\src{visualizer/RocketMesh.cpp}{440}); where the simulator refuses a failed solve by
+throwing from the composite pass (\src{model/parts/Part.cpp}{189}), the visualizer instead
+\emph{renders} the failure: every offending part is painted a fixed error red
+$(0.90, 0.10, 0.10)$ regardless of the active color scheme --- the viewer ships four,
+\code{Classic} (contractually first, as the default), \code{Hi-Vis}, \code{Carbon}, and
+\code{Pastel} (\src{visualizer/ColorScheme.cpp}{28}) --- ``so a self-intersecting design
+is unmistakable under any scheme'' (\src{visualizer/RocketGLWidget.cpp}{617}), and each
+located diagnostic is also logged (\src{visualizer/RocketMesh.cpp}{446}). Same verdict
+object, two consumer policies --- exactly as the \code{SolveResult} documentation prescribes
+(\src{model/parts/Placement.h}{112}). The per-offender message text is carried on the render
+item but not yet surfaced in the UI --- only the boolean reaches the GPU mesh
+(\src{visualizer/RocketGLWidget.cpp}{515}; \cref{sec:incomplete}).
+
+The rest of the pipeline is conventional and compact: two-sided directional lighting
+(culling is off because thin fins and tube bores expose back faces,
+\src{visualizer/RocketGLWidget.cpp}{305}), a stand-up transform rotating body $+z$ onto
+world $+Y$ so the rocket points up on screen (\src{visualizer/RocketGLWidget.cpp}{171}), and
+an orbit/pan/zoom camera that frames the model's bounding sphere on load
+(\src{visualizer/RocketGLWidget.cpp}{261}). One absence completes the picture: the
+visualizer has no automated test --- its CMake declares only the executable
+(\srcf{visualizer/CMakeLists.txt}), no test binary references any \code{viz} symbol, and the
+coverage harness aggregates neither \srcf{visualizer/} nor \srcf{gui/}
+(\src{CMakeLists.txt}{248}). The poses and overlap verdicts it renders are pinned upstream
+by the resolver and sweep tests (\cref{sec:testing}); the meshing, GL, and widget code paths
+are eyeball-verified against the committed \code{.qrd} fixtures only.
+
+\subsection{The maturity asymmetry}\label{sec:interfaces-asymmetry}
+
+Read together, the three surfaces invert the usual expectation. The scriptable, headless CLI
+is the flagship: complete motor management, full design authoring, a disciplined stdout
+protocol, a documented flight artifact, and two test suites driving the identical object
+code (\cref{sec:testing}). The desktop GUI --- the surface a newcomer would reach for first
+--- is a capable motor-and-launch panel wrapped in the frame of a design tool that is not
+yet there: five permanently disabled File actions, two empty panes, and no path to a
+\code{.qrd}. The visualizer is complete for its narrow job and exemplary in how it stays
+consistent with the simulator, but ships without a single test. The gaps named in place here
+--- the disabled menu, the stub views, the missing structure-change notification, the
+synchronous network and launch calls on the GUI thread --- are collected in
+\cref{sec:incomplete}.

@@ -1,0 +1,43 @@
+QtRocket is an open-source model-rocket simulator: a C++23 simulation core shared by a
+Qt6 Widgets GUI, a Qt-free headless REPL, and a standalone OpenGL design viewer. This
+whitepaper is the project's design reference --- a rigorous exposition of how the
+software works, written for an engineer joining the project with or without a rocketry
+background. It describes the working tree at commit \code{254cd41}: the architecture,
+the data model, the algorithms, and the physics underneath them, with every claim about
+the code pinned to a \code{file:line} citation into that revision.
+
+The document opens with a first-principles primer on model-rocket flight --- forces,
+stability, the atmosphere, and why simulation means numerical integration --- and then
+descends through the system: the strict four-layer link graph under three executables;
+the composite part tree with its lazily cached, time-aware mass, center-of-mass, and
+inertia composition; the placement system that stores physical intent and derives all
+geometry through a single resolver; the motor subsystem that turns three ingest formats
+into thrust and mass curves; the propagator with its fixed-step RK4 and embedded-pair
+adaptive RKF45 solvers and typed termination taxonomy; the seven-layer US Standard
+Atmosphere 1976 and pluggable gravity models; the live quadratic-drag force path beside
+the fully built but dormant Barrowman stability layer; the three user-facing surfaces;
+the versioned XML persistence formats; and the 246-test, five-platform verification
+infrastructure. UML class, sequence, and component diagrams accompany each subsystem.
+
+QtRocket is not a finished simulator, and the document says so precisely: each chapter
+marks what is dormant, partial, or absent where it lives, and a consolidated inventory
+orders the distance to a full-featured flight simulator --- flight dynamics first,
+recovery second --- around the seams the architecture has already built and tested.
+Four appendices compare QtRocket with OpenRocket, the de facto standard the project
+treats as a calibration baseline rather than a specification: comparison intent and
+project histories, a sixteen-area feature matrix, simulation methods side by side, and
+the two software architectures.
+
+The text was produced from full deep-reads of every subsystem and verified
+adversarially: every citation re-opened against the source, every listing diffed
+verbatim, every equation re-derived, every figure checked element-by-element
+(\cref{app:repro}). The companion Architecture Review assesses the same revision's
+capabilities and gaps; this document is the map of how it works.
+
+\vspace{0.5em}
+\begin{designrule}[The document in one sentence]
+A thesis-style reference that teaches QtRocket's layered core --- part tree, placement
+resolver, motors, propagator, environment, aerodynamics, interfaces, persistence, and
+tests --- from the physics up, marks every not-yet-built area in place, and calibrates
+the whole against OpenRocket in four appendices.
+\end{designrule}

@@ -1,0 +1,435 @@
+\section{A model-rocket flight, from first principles}\label{sec:primer}
+
+This chapter is for the engineer who has never flown a model rocket. It builds, from first
+principles, every physical concept the rest of the document leans on. Pure theory is set
+apart in \emph{Physical background} boxes so it is never conflated with claims about the
+code; every statement about what QtRocket actually does carries a source citation into the
+pinned commit \code{254cd41}, and the chapter closes with a table mapping each concept to
+the class that implements it and the chapter that examines it.
+
+\subsection{Anatomy of a rocket, anatomy of a flight}\label{sec:primer-anatomy}
+
+A sport model rocket is a slender axisymmetric stack: a \emph{nose cone} at the top, one or
+more cylindrical \emph{body tubes}, a set of three or four \emph{fins} at the aft end, and a
+replaceable solid-propellant \emph{motor} in a mount at the tail. Real airframes also carry a
+recovery device (parachute or streamer) packed in the body tube and a launch lug or rail
+button that guides the rocket along a rod or rail for its first meter of flight, before the
+fins have enough airspeed to work. QtRocket's part catalog covers the structural core of this anatomy
+--- nose cone, body tube, fin set, plus a hollow sphere and the motor leaf --- assembled
+into an ownership tree (\cref{sec:parts}); recovery devices and launch guides are among the
+part types that do not exist yet (\cref{sec:incomplete}).
+
+A flight divides into four phases punctuated by one instant, and the vocabulary recurs
+throughout this document (\cref{fig:primer-flight-phases}):
+
+\begin{description}
+\item[Pad.] The rocket sits on the launch rod at altitude zero until the igniter fires.
+  QtRocket models the pad as a kinematic clamp: until the first time step that ends above
+  $z = 0$ under power, position and velocity are held at rest, standing in for the normal
+  force a real pad exerts \src{sim/Propagator.cpp}{105}. A rocket that cannot lift off is
+  detected --- more than $3\unit{s}$ without exceeding $1\unit{m}$ --- and the run ends with a
+  typed \code{NoLiftoff} verdict rather than silently \src{sim/Propagator.cpp}{146},
+  \src{sim/Propagator.h}{26}.
+\item[Boost.] The motor burns, typically for half a second to a few seconds, producing a
+  thrust force that varies strongly over the burn. Production code ignites the motor at
+  exactly $t = 0$ \src{model/RocketModel.cpp}{108}. During boost the rocket both
+  accelerates and \emph{lightens}: the propellant leaves through the nozzle.
+\item[Coast.] After burnout the rocket is a projectile decelerating under gravity and drag.
+  In a real motor a slow-burning \emph{delay charge} smolders through this phase; QtRocket's
+  motor model reports zero thrust after the last thrust sample \src{model/ThrustCurve.cpp}{51}
+  and the vehicle simply coasts.
+\item[Apogee.] The instant of peak altitude, where vertical velocity passes through zero.
+  This is where a real flight fires the ejection charge and deploys recovery. QtRocket
+  records apogee as a running maximum folded into the flight statistics every step
+  \src{sim/TrajectoryStatistics.h}{26}; nothing else happens there.
+\item[Descent.] A real rocket descends under parachute at a few meters per second. QtRocket
+  has no recovery events at the pinned commit: every flight descends \emph{ballistically},
+  under the same drag law as ascent, and terminates when the model reports that it is both
+  below the launch site and descending --- $z < 0$ and $v_z < 0$
+  \src{model/RocketModel.cpp}{65}. Ejection-delay data is parsed by the local motor-file
+  loaders and persisted, but no flight logic consumes it \src{model/MotorModel.h}{303}. The consolidated
+  inventory of unbuilt flight events lives in \cref{sec:incomplete}.
+\end{description}
+
+\tikzfig{flight-phases}{The phases of a model-rocket flight, annotated with the code that
+observes each one. QtRocket holds the vehicle on the pad until the first powered step ends
+above $z=0$ \srccap{sim/Propagator.cpp}{105}, ignites the motor at $t=0$
+\srccap{model/RocketModel.cpp}{108}, tracks apogee as a running maximum
+\srccap{sim/TrajectoryStatistics.h}{26}, and --- because no recovery events exist at the
+pinned commit --- flies the descent ballistically until the termination predicate $z<0$ and
+$v_z<0$ fires \srccap{model/RocketModel.cpp}{65}.}{fig:primer-flight-phases}
+
+\subsection{The three forces}\label{sec:primer-forces}
+
+Three forces act on a rocket in flight, and QtRocket's production force model assembles
+exactly these three terms and no others \src{model/RocketModel.cpp}{68}.
+
+\paragraph{Thrust.} A solid motor's thrust is not a constant; it is a measured function of
+time $F(t)$, published as a \emph{thrust curve} --- a table of (time, force) samples from a
+certification test stand. A typical curve spikes to its peak in the first tenth of a second
+(high initial acceleration gets the rocket moving fast enough for fin stabilization), then
+settles to a sustainer plateau, then tails off at burnout. QtRocket stores the curve as
+sampled pairs and interpolates linearly between samples, returning zero outside the burn
+window \src{model/ThrustCurve.cpp}{47}. In flight, the thrust force is applied along the
+world vertical and assumed to act through the center of mass
+\src{model/RocketModel.cpp}{71}; since no attitude state exists in the dynamics
+(\cref{sec:primer-ode}), the rocket's axis and the world $z$-axis are the same thing.
+
+\paragraph{Weight.} Weight is $m(t)\,g$ --- and the time argument matters. The propellant
+that produces the thrust leaves the vehicle as it burns, so the mass in Newton's second law
+falls throughout boost: propellant can be up to half of a small motor's loaded mass. QtRocket obtains $m(t)$ from the part tree's composite mass, with the motor as a
+time-aware leaf part
+(\cref{sec:parts,sec:motors}), and evaluates gravity through a pluggable model --- uniform
+$-g_0\hat{z}$ or Newtonian inverse-square --- at the integrator's trial position
+\src{model/RocketModel.cpp}{77} (\cref{sec:environment}).
+
+\paragraph{Drag.} Air resistance is the force a newcomer is most likely to underestimate:
+for a lightweight airframe at a hundred meters per second it can rival or exceed the
+rocket's weight, and it is the reason drag-free vacuum apogees run to multiples of real
+ones.
+
+\begin{physbox}[The quadratic drag law, symbol by symbol]
+For a blunt body moving faster than a slow walk, drag is well modeled by
+\begin{equation}
+  D = \tfrac{1}{2}\,\rho\,v^{2}\,C_d\,A .
+\end{equation}
+Each symbol earns its place:
+\begin{itemize}
+\item $\rho$ is the local \emph{air density} (kg/m$^3$). Drag is momentum transferred to
+  the air the vehicle displaces, so it scales with how much air mass occupies each swept
+  meter; density falls with altitude (\cref{sec:primer-atmosphere}).
+\item $v^{2}$: the vehicle sweeps through air proportionally to $v$ and imparts to that air
+  a velocity change also proportional to $v$ --- hence the square, which makes the equation
+  of motion nonlinear (\cref{sec:primer-integration}).
+\item $C_d$ is the dimensionless \emph{drag coefficient}, the shape's efficiency at evading
+  the momentum bill: about 1.2 for a flat disc, 0.3--0.75 for typical model rockets.
+\item $A$ is the \emph{reference area} (m$^2$) --- a bookkeeping convention, not
+  independent physics: $C_d$ is only meaningful relative to a stated area, and the hobby
+  convention is the airframe's maximum frontal cross-section (the widest body disc, never
+  inflated by fin span).
+\end{itemize}
+A useful corollary is \emph{terminal velocity}, the speed at which drag balances weight in
+steady descent: $v_t = \sqrt{2mg/(\rho C_d A)}$.
+\end{physbox}
+
+QtRocket implements the vector form of this law in one line, written with $|v|\,\vec v$
+rather than $v^2\hat v$ so that zero velocity produces exactly zero drag with no division
+\src{model/RocketModel.cpp}{88}:
+\begin{equation}
+  \vec F_{\text{drag}} \;=\; -\tfrac{1}{2}\,\rho(z)\;\lVert\vec v\rVert\;
+  \mathtt{dragCoefficient}\cdot\mathtt{referenceArea}\;\vec v ,
+\end{equation}
+where $\rho(z)$ is sampled from the selected atmosphere model at the trial altitude, clamped
+to $z \ge 0$ \src{model/RocketModel.cpp}{85}. Both coefficients are user-set scalars with
+defaults $C_d = 1.0$ \src{model/RocketModel.h}{138} and $A = 1.134\times10^{-3}\unit{m^2}$
+--- the frontal disc of a 38\,mm body tube \src{model/RocketModel.h}{141}. A helper that
+derives the reference area from the assembled geometry under the max-frontal-disc convention
+exists \src{model/RocketModel.cpp}{48}, but its wiring status belongs to \cref{sec:aero}.
+The drag term is also the best-tested physics in the tree: the terminal-velocity force
+balance above is pinned analytically by an integration test
+\src{tests/PhysicsIntegrationTests.cpp}{262}, and drag-versus-vacuum apogee sweeps run across
+every reference airframe and the full motor ladder \src{tests/DesignMatrixTests.cpp}{515}.
+
+\tikzfig{freebody-stability}{Left: the free-body diagram of the point-mass flight model ---
+thrust $F(t)$ along the world vertical \srccap{model/RocketModel.cpp}{71}, weight $m(t)g$
+\srccap{model/RocketModel.cpp}{77}, and quadratic drag opposing the velocity vector
+\srccap{model/RocketModel.cpp}{88}. Right: the geometry of static stability --- when a gust
+tilts the rocket to a small angle of attack, the fins' normal force acts at the center of
+pressure (CP); with the CP aft of the center of gravity (CG) the resulting moment restores
+the rocket toward zero angle, and the CP--CG gap measured in body diameters is the static
+margin. QtRocket computes both stations on a shared datum (\srccap{sim/Aero.h}{25}) but no
+torque acts in flight at the pinned commit (\srccap{model/RocketModel.cpp}{94});
+\cref{sec:aero} carries the analysis.}{fig:primer-freebody}
+
+\subsection{Newton's second law as the equation the simulator integrates}%
+\label{sec:primer-ode}
+
+Summing the three forces gives the equation of motion. Because the mass changes, it is worth
+writing carefully:
+\begin{equation}
+  \dot{\vec x} = \vec v, \qquad
+  \dot{\vec v} = \frac{\vec F_{\text{thrust}}(t) + \vec F_{\text{gravity}}(\vec x, t)
+                      + \vec F_{\text{drag}}(\vec x, \vec v)}{m(t)} .
+  \label{eq:primer-ode}
+\end{equation}
+The second-order law $\ddot{\vec x} = \vec F/m$ has been reduced to a coupled first-order
+pair --- the standard trick that lets a general-purpose ODE (ordinary differential equation)
+solver advance position and velocity together. The pair
+$(\vec x, \vec v) \in \mathbb{R}^6$ is the \emph{state vector}: the minimal set of numbers
+from which the future of the system is computable. QtRocket builds
+\cref{eq:primer-ode} verbatim, as a lambda constructed once in the propagator's constructor
+(\cref{lst:primer-ode}); this closure \emph{is} the entire integrated physics, and
+\cref{sec:simcore} dissects the loop that drives it.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// Linear ODEs: dx/dt = v, dv/dt = F/m. t is passed through so getForces() can evaluate a
+// time-dependent forcing function (motor thrust curve) at the actual simulation time.
+std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> linearODEs = [this](double t, Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
+{
+    Vector3 dPosition;
+    Vector3 dVelocity;
+    dPosition = rate;
+    dVelocity = object->getForces(t, state, rate, *environment) / object->getMass(t);
+
+    return std::make_pair(dPosition, dVelocity);
+};
+\end{minted}
+\caption{Newton's second law with time-varying mass, as QtRocket states it
+\srccap{sim/Propagator.cpp}{36}. The time argument is threaded through so the thrust curve
+and the burning mass are sampled at each solver stage's node time rather than frozen at the
+step start.}\label{lst:primer-ode}
+\end{listing}
+
+\begin{keyinsight}[Where the rocket equation went]
+Textbook treatments of variable-mass motion add a momentum-flux term $\dot m\,v_e$ (exhaust
+mass flow times exhaust velocity) --- the term that becomes the Tsiolkovsky rocket equation.
+QtRocket carries no such term, and that is correct, not an omission: the thrust curve is a
+\emph{measured force} from a test stand, so the momentum flux is already embedded in $F(t)$.
+Mass loss enters the dynamics only through the divisor $m(t)$
+\srccap{sim/Propagator.cpp}{41} and the weight term \srccap{model/RocketModel.cpp}{77};
+adding the flux on top of a measured curve would double-count it.
+\end{keyinsight}
+
+\paragraph{Degrees of freedom, precisely.} A \emph{3-DOF (degree-of-freedom) point-mass}
+model integrates the three translational coordinates only: the state is
+$(\vec x, \vec v) \in \mathbb{R}^6$, forces are applied at a single point, and the vehicle
+has no orientation --- it cannot pitch, yaw, roll, fly at an angle of attack, or respond to
+a torque. A \emph{6-DOF rigid-body} model adds the three rotational degrees of freedom: an
+attitude (conventionally a unit quaternion) and an angular velocity, giving a
+thirteen-element state, with torques and the time-varying inertia tensor entering through
+Euler's rigid-body equations. This is the single most important fidelity boundary in flight
+simulation: stability, weathercocking, gravity turns, and spin all live on the rotational
+side.
+
+QtRocket today integrates exactly the three linear degrees of freedom
+(\cref{lst:primer-ode}). The rotational half exists as deliberate, typed scaffolding with
+no writers: the state record reserves quaternion, direction-cosine-matrix, and Euler-angle
+slots that no code writes \src{sim/StateData.h}{46}; the model's torque accessor returns the
+zero vector and has no caller in the simulation loop \src{model/RocketModel.cpp}{94}; and
+the orientation integrator is a commented-out member with a design note
+\src{sim/Propagator.h}{103}. One rotational input \emph{is} live: composite mass, center of
+gravity, and inertia tensor are recorded into every state sample, expressly as ``the seam
+the 6-DOF rotational ODE will read'' \src{sim/StateData.h}{59}. \Cref{sec:simcore} covers
+the integrated path; \cref{sec:incomplete} inventories the dormant half.
+
+\subsection{Stability: the center of gravity, the center of pressure, and the
+arrow}\label{sec:primer-stability}
+
+Nothing about a finless tube makes it fly straight. Point-mass simulation sidesteps the
+question by construction; understanding what it sidesteps requires two points on the
+airframe.
+
+\begin{physbox}[Static stability and the Barrowman method]
+The \emph{center of gravity} (CG) is where the vehicle's mass balances; the rocket rotates
+about it. The \emph{center of pressure} (CP) is where the net aerodynamic \emph{normal}
+force --- the sideways lift that appears when the airflow meets the body at a small
+\emph{angle of attack} $\alpha$ --- effectively acts. The classic intuition is the arrow:
+feathers at the back add lifting area far aft, dragging the CP behind the CG, so any
+disturbance that tilts the arrow produces a force behind the pivot that weathervanes it back
+into the wind. Fins are the rocket's feathers. If the CP sits \emph{ahead} of the CG, the
+same moment amplifies the disturbance and the rocket tumbles.
+
+The gap is quoted in \emph{calibers} --- body diameters:
+$\mathrm{SM} = (x_{CP} - x_{CG})/d$ with stations measured tip-aft-positive; the hobby rule
+of thumb is one to two calibers of positive margin. The same mechanism has a cost:
+\emph{weathercocking}. A stable rocket leaving the rod in a crosswind flies at a momentary
+angle of attack, and its own restoring moment turns it \emph{into} the wind, trading
+altitude for upwind travel.
+
+Computing the CP from geometry alone was solved for hobby rockets by James and Judith
+Barrowman (1966). Their method linearizes each component's normal force at small $\alpha$
+--- only the slope $C_{N_\alpha}$ per radian matters --- and applies slender-body theory: a
+constant-diameter tube contributes zero normal-force slope; any nose cone contributes
+exactly $C_{N_\alpha} = 2$ referenced to its base area, with its CP at a fixed fraction of
+its length; fins contribute a closed-form term with a body-interference factor. Because all
+components share one $\alpha$ and one reference area, the slopes add, and the composite CP
+is the slope-weighted average of the component CPs. The result is a closed-form,
+microsecond-cheap calculation that is accurate in exactly the regime sport rockets occupy
+--- slender, axisymmetric, small $\alpha$ --- which is why essentially every hobby
+simulator, OpenRocket included, is built on it.
+\end{physbox}
+
+QtRocket implements the Barrowman method faithfully at the component level --- the cone's
+$C_{N_\alpha} = 2$ at base area \src{model/parts/ConicalNoseCone.cpp}{64}, the $N$-fin term
+with the interference factor \src{model/parts/FinSet.cpp}{77} --- and composes the pieces
+onto the same datum as the composite CG so that the static margin is literally a
+subtraction, \code{cp()}~$-$~\code{cg()} \src{sim/Aero.h}{25},
+\src{model/parts/Part.cpp}{231}. At the pinned commit this machinery is \emph{dormant}:
+built and unit-tested with zero production consumers --- the test suite states ``nothing in
+production consumes this'' \src{model/tests/AeroTests.cpp}{18} --- and since no torque acts
+and no angle of attack is ever computed, no flight is affected by stability or its absence.
+Weathercocking is doubly out of reach: it needs both the restoring moment and a wind field,
+and the wind model is a zero-returning stub with no call sites \src{sim/WindModel.cpp}{16}.
+\Cref{sec:aero} gives the Barrowman layer the full treatment, including a verified sign
+defect in the fin-set frame that must be fixed before the seam is consumed.
+
+\subsection{The atmosphere}\label{sec:primer-atmosphere}
+
+Drag needs $\rho(z)$, and $\rho$ is not a constant: a rocket that climbs $3\unit{km}$ flies
+through air about a quarter thinner than at the pad.
+
+\begin{physbox}[Hydrostatic balance and the standard atmosphere]
+Air density falls with altitude because each layer of the atmosphere must carry the weight
+of all the air above it. A static column obeys the \emph{hydrostatic equation}
+\begin{equation}
+  \frac{dP}{dh} = -\rho\, g ,
+\end{equation}
+and the ideal gas law $P = \rho \frac{R^{*}}{M} T$ ties pressure, density, and temperature
+together. Substituting one into the other shows pressure decaying roughly exponentially with
+altitude, with a scale height near $8\unit{km}$ --- but the exact profile depends on the
+temperature $T(h)$, which real weather varies daily. A \emph{standard atmosphere} resolves
+this by decree: it prescribes a fixed, piecewise-linear temperature profile (the troposphere
+cools at $6.5\unit{K/km}$; the stratosphere is first isothermal, then warms as ozone absorbs
+ultraviolet), which makes the hydrostatic equation integrable in closed form layer by layer
+--- an exponential in the isothermal layers, a power law in the gradient layers. The result
+is a reproducible reference profile, the same for every user on every day, which is exactly
+what a simulator wants.
+\end{physbox}
+
+QtRocket ships three pluggable atmospheres --- constant sea-level, vacuum, and the US
+Standard Atmosphere 1976 --- selectable at runtime behind one interface, with constant
+sea-level as the default \src{sim/Environment.h}{31}. The US Standard 1976 implementation
+codes the seven layer tables \src{sim/USStandardAtmosphere.cpp}{21} and the closed-form
+per-layer solutions \src{sim/USStandardAtmosphere.cpp}{93}, and is validated against the
+published NOAA report tables at $0.1$--$0.5$\% relative tolerance from $0$ to $80\unit{km}$
+\srcf{sim/tests/USStandardAtmosphereTests.cpp}. Of the five properties the atmosphere
+interface exposes, the flight path consumes exactly one --- density
+\src{model/RocketModel.cpp}{86}; temperature, pressure, speed of sound, and viscosity are
+computed and await a Mach- or Reynolds-aware drag model. \Cref{sec:environment} covers the
+environment layer, including gravity models and the geoid.
+
+\subsection{Why numerical integration}\label{sec:primer-integration}
+
+\Cref{eq:primer-ode} has no closed-form solution for any realistic flight. Three
+ingredients each independently destroy solvability: the drag term is quadratic in $v$
+(nonlinear), the thrust forcing $F(t)$ is an arbitrary tabulated curve (not an elementary
+function), and both $m(t)$ and $\rho(z)$ vary along the trajectory. Even the drastically
+simplified case --- vertical flight, constant thrust, constant mass, constant density ---
+yields hyperbolic-tangent and logarithmic expressions that fall apart the moment thrust
+varies. So every flight simulator marches the state forward numerically, and the craft lies
+in doing so accurately and cheaply.
+
+\begin{physbox}[From Euler to Runge--Kutta, and why steps adapt]
+The simplest scheme is Euler's: sample the derivative at the step start and walk straight
+along it, $x_{n+1} = x_n + h\,f(t_n, x_n)$. Its global error shrinks only linearly with the
+step size $h$ --- halving the error costs double the work. The classical fourth-order
+Runge--Kutta method (RK4) instead probes the derivative four times per step (at the start,
+twice at midpoint estimates, and at the end) and takes a weighted average; the leading
+error terms cancel, so global error scales as $h^4$: halving $h$ buys sixteen times the
+accuracy. The remaining inefficiency is the \emph{fixed} step: a flight needs tiny steps
+during the violent first tenth of a second of the burn and could take huge ones during a
+placid coast. \emph{Embedded} methods such as Runge--Kutta--Fehlberg 4(5) compute a fourth-
+and a fifth-order estimate from the same six derivative samples; their difference is a free
+estimate of the local error, which a controller compares against a tolerance --- shrinking
+the step where the physics is fast, growing it where it is smooth.
+\end{physbox}
+
+QtRocket provides both: a textbook fixed-step RK4 \src{sim/RK4Solver.h}{45} and an adaptive
+Runge--Kutta--Fehlberg 4(5) with the classical tableau \src{sim/RK45Solver.h}{75}, at a
+default tolerance of $10^{-6}$ that no production caller overrides \src{sim/RK45Solver.h}{158}, selectable by name
+at runtime from either front end. The payoff of adaptivity is measured in the tree: the
+same test flight that costs RK4 roughly 4\,050 steps costs the adaptive solver about 530
+\src{tests/PhysicsIntegrationTests.cpp}{163}. Two details from the box above are
+load-bearing in the code. First, every solver stage passes its own node time into the ODE,
+so the thrust curve is sampled at the right instants within a step \src{sim/RK4Solver.h}{55}
+--- freezing thrust at the step start once inflated adaptive-run apogees by roughly 8\%
+\src{tests/PhysicsIntegrationTests.cpp}{149}. Second, adaptive step growth must be capped
+\src{sim/RK45Solver.h}{144}: coasting in vacuum is integrated \emph{exactly} by both
+embedded orders, the error estimate collapses to zero, and an uncapped controller would
+grow the step without bound and leap past apogee and the ground. \Cref{sec:simcore}
+examines both solvers, the run loop, and its typed termination taxonomy
+\src{sim/Propagator.h}{35}.
+
+\subsection{Motors: impulse classes, designations, and the thrust
+curve}\label{sec:primer-motors}
+
+\begin{physbox}[Reading a motor designation]
+Hobby motors are certified and labeled by \emph{total impulse}, the area under the thrust
+curve, $I_{\text{tot}} = \int F\,dt$ in newton-seconds. Impulse classes are letters, and
+each full letter doubles the ceiling of the one before: class A tops out at
+$2.5\unit{N\,s}$, B at $5$, C at $10$, and so on up through G ($160$, the top of the
+``model rocket'' range), H--I (level-1 high power), J--L (level 2), and M ($10\,240$,
+level 3); fractional classes 1/4A and 1/2A sit below A. A designation like \emph{C6-5}
+reads: class C (total impulse in the 5--10$\unit{N\,s}$ bracket), average thrust
+$6\unit{N}$, and a $5\unit{s}$ ejection delay between burnout and the recovery charge.
+Manufacturer suffixes, such as the T in \emph{G80T}, name the propellant formulation. Two
+motors of the same class can fly very differently: a high-thrust short burn and a gentle
+long burn deliver the same impulse with different peak accelerations --- which is why
+simulators consume the full thrust curve, never just the letter.
+\end{physbox}
+
+QtRocket's motor subsystem (\cref{sec:motors}) mirrors this taxonomy directly. The impulse
+class is derived from the leading letter of the motor code, with the fractional classes
+1/4A and 1/2A special-cased \src{model/MotorModel.cpp}{112}; the heavy test suite flies the
+complete 1/4A$\to$M ladder across every reference airframe
+\src{tests/DesignMatrixTests.cpp}{515}. Delay options are parsed from the local ingest
+formats and stored --- with $1000$ as the sentinel for a plugged motor
+\src{model/MotorModel.h}{303} --- though, as \cref{sec:primer-anatomy} noted, no flight
+logic yet consumes them. The thrust curve is sampled with linear interpolation and careful
+edge handling: curves whose first published sample sits at $t > 0$ ramp from an implicit
+origin \src{model/ThrustCurve.cpp}{76}. And because $m(t)$ matters
+(\cref{sec:primer-forces}), the motor also derives a burning-mass curve: a 128-point table
+that depletes propellant in proportion to the fraction of total impulse delivered --- the
+standard constant-specific-impulse assumption \src{model/MotorModel.cpp}{132},
+\src{model/MotorModel.cpp}{141} --- so mass falls fastest exactly when the curve burns
+hardest. The motor's three mass regimes --- loaded before ignition, depleting during the
+burn, casing after burnout \src{model/MotorModel.cpp}{28} --- are the single time-varying
+input the part tree's composite mass walk sees (\cref{sec:parts}).
+
+\subsection{From concept to code}\label{sec:primer-map}
+
+\Cref{tab:primer-map} closes the primer by mapping each physical concept introduced above
+to the code that owns it and the chapter that examines it. The table doubles as a capability
+summary at the pinned commit: the point-mass rows are complete and consumed; the rotational
+and recovery rows name machinery that is built but dormant, or absent outright.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.28\textwidth}%
+                             >{\raggedright\arraybackslash}X l@{}}
+\toprule
+\textbf{Physical concept} & \textbf{Where QtRocket implements it} & \textbf{Chapter} \\
+\midrule
+Thrust curve $F(t)$ & \code{ThrustCurve} sampling + \code{MotorModel} burnout latch
+  \srcf{model/ThrustCurve.cpp} & \cref{sec:motors} \\
+\addlinespace
+Burning mass $m(t)$ & 128-point impulse-proportional mass curve; \code{part::Motor} leaf
+  in the tree \srcf{model/MotorModel.cpp} & \cref{sec:motors} \\
+\addlinespace
+Mass, CG, inertia of the airframe & \code{Part} composite tree, two-pass walk behind the
+  mass-delta cache \srcf{model/parts/Part.cpp} & \cref{sec:parts} \\
+\addlinespace
+Geometry: where parts sit & \code{StationLink} intent + the placement resolver
+  \srcf{model/parts/Placement.cpp} & \cref{sec:placement} \\
+\addlinespace
+Weight / gravity field & \code{ConstantGravityModel}, \code{SphericalGravityModel}
+  \srcf{sim/GravityModel.h} & \cref{sec:environment} \\
+\addlinespace
+Air density $\rho(z)$ & \code{AtmosphericModel} registry; US Standard Atmosphere 1976
+  \srcf{sim/USStandardAtmosphere.cpp} & \cref{sec:environment} \\
+\addlinespace
+Quadratic drag & Three-term force model in \code{RocketModel::getForces()}
+  \srcf{model/RocketModel.cpp} & \cref{sec:aero} \\
+\addlinespace
+Newton's law, state, flight phases & \code{Propagator} run loop, pad hold, typed
+  termination \srcf{sim/Propagator.cpp} & \cref{sec:simcore} \\
+\addlinespace
+Numerical integration & \code{RK4Solver} (fixed), \code{RK45Solver} (adaptive) behind
+  \code{DESolver} \srcf{sim/RK45Solver.h} & \cref{sec:simcore} \\
+\addlinespace
+CP, static margin (Barrowman) & \code{Part::getCompositeAero()} onto the shared datum ---
+  dormant \srcf{sim/Aero.h} & \cref{sec:aero} \\
+\addlinespace
+Attitude / 6-DOF, wind & Reserved seams: unwritten \code{StateData} slots, zero torques,
+  stub \code{WindModel} & \cref{sec:incomplete} \\
+\addlinespace
+Recovery events, ejection delays & Delays parsed and persisted; no flight logic consumes
+  them & \cref{sec:incomplete} \\
+\bottomrule
+\end{tabularx}
+\caption{The primer's concepts mapped to their implementations at commit \code{254cd41}.
+Every row's owning chapter carries the citations and the analysis; rows marked dormant or
+absent are consolidated in \cref{sec:incomplete}.}\label{tab:primer-map}
+\end{table}

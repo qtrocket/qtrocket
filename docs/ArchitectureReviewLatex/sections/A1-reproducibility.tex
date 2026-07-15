@@ -1,0 +1,61 @@
+\section{Reproducing this document (toolchain)}\label{sec:repro}
+
+This whitepaper is itself a small, self-contained build: a contributor who clones the
+repository should be able to regenerate the PDF, with every diagram, from the sources
+checked into \srcf{docs/ArchitectureReviewLatex/}. The layout and style contract are
+inherited from the Part Placement design whitepaper
+(\srcf{docs/PartPlacementDesignLatex/}), so the two documents read as one series; this
+appendix records the small ways this build differs and how the review itself was produced.
+
+\subsection{Directory layout and pipeline}
+
+The master file \srcf{ArchitectureReview.tex} carries only the document scaffolding ---
+title block, front matter, and an ordered list of \cppinline|\input| directives --- while
+the prose lives in \srcf{sections/}, one file per section. The shared style contract is
+isolated in \srcf{preamble.tex}: the color palette, the fonts (XCharter text,
+\code{newtxmath}, Inconsolata mono), the callout environments, and the domain macros
+(\code{\textbackslash src}, \code{\textbackslash srcf}, \code{\textbackslash tikzfig}, the
+feature-status markers) that the section files depend on. A section file is just a body,
+never a standalone \LaTeX{} program.
+
+Unlike the Part Placement whitepaper, this document has no PlantUML stage: every figure is
+hand-built Ti\emph{k}Z under \srcf{diagrams/tikz/}, included directly by
+\code{\textbackslash tikzfig} and compiled in line by the main engine. The Makefile is
+correspondingly simpler --- no Java, no \code{rsvg-convert}, no fetched jar:
+
+\begin{minted}{text}
+make            # latexmk -pdf -shell-escape ArchitectureReview.tex
+make clean      # remove LaTeX aux files and the minted cache
+make veryclean  # clean, and also remove ArchitectureReview.pdf
+\end{minted}
+
+The document engine is \code{pdflatex}, driven by \code{latexmk} so the multi-pass dance
+(cross-references, the table of contents, \code{cleveref}, the bookmark tree) converges
+automatically. The one non-default requirement is \code{-shell-escape}: listings are
+typeset by \code{minted}, which shells out to \code{pygmentize} for syntax highlighting.
+Prerequisites are a \TeX{} distribution providing \code{latexmk}, \code{pdflatex}, and
+\code{minted} with its \code{pygmentize} helper.
+
+\subsection{How this review was produced}
+
+The review is pinned to one tree state: commit \code{254cd41} (``Major comment cleanup''),
+a clean working tree, reviewed on 2026-07-06. Every \code{\textbackslash src} citation in
+this document refers to that revision; line numbers will drift as the tree moves, so a
+reader on a later commit should treat them as anchors, not absolutes.
+
+The analysis behind the document was performed as a fan-out of independent subsystem
+reviews --- part tree and placement, motors, simulation core, aerodynamics, GUI and
+visualizer, CLI and persistence, build/test infrastructure, and a dedicated
+incompleteness sweep --- each grounded in a full read of its files, followed by an
+independent adversarial verification pass that re-checked every citation and status claim
+against the source. The OpenRocket comparison baseline (\cref{sec:comparison}) was
+researched from primary sources (\texttt{openrocket.info}, the OpenRocket documentation
+and technical papers, and the \texttt{openrocket/openrocket} repository), then reconciled
+against the verified QtRocket findings. Documents under \srcf{docs/} were deliberately
+treated as claims to test, not facts to inherit: where a design document and the code
+disagree, this review reports the code and flags the discrepancy.
+
+Two behaviors were additionally confirmed by execution rather than reading: the CLI
+command inventory of \cref{sec:interfaces} was captured from a live
+\code{build/qtrocket-cli} session, and end-to-end flight behavior was exercised through
+the same REPL against a bundled design.

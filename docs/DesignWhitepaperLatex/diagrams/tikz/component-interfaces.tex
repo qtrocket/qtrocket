@@ -1,0 +1,102 @@
+% Component map: the three front ends and the core services each one drives.
+% Facts: CannonballTab.cpp:116 (launchRocket in slot), ThrustCurveMotorSelector ->
+% MotorModelDatabase (blocking HTTP), Repl commands -> QtRocket/PartFactory/
+% DesignSerializer/MotorModelDatabase, VisualizerWindow -> DesignSerializer,
+% RocketMesh -> resolvePlacements. The GUI has no edge to the serializer or the
+% factory: File actions ship disabled and authoring is CLI-only.
+\begin{tikzpicture}[node distance=5mm and 6mm]
+
+  % ---------------- GUI front end ----------------
+  \node[consumer,text width=27mm] (cannon)
+    {\textbf{CannonballTab}\\\footnotesize launch panel};
+  \node[consumer,text width=27mm,right=4mm of cannon] (simopt)
+    {\textbf{SimOptionsTab}\\\footnotesize model \& solver choices};
+  \node[consumer,text width=27mm,below=4mm of cannon] (tcsel)
+    {\textbf{ThrustCurve-}\\\textbf{MotorSelector}\\\footnotesize motor search dialog};
+  \node[consumer,text width=27mm,below=4mm of simopt] (analysis)
+    {\textbf{AnalysisWindow}\\\footnotesize three fixed plots};
+  \node[comp,text width=58mm,above=4mm of $(cannon.north)!0.5!(simopt.north)$,fill=qrGray!8,draw=qrGray] (guirun)
+    {\textbf{GuiRunner} \textbullet\ \texttt{MainWindow}\\\footnotesize
+     \texttt{QApplication} on a spawned thread; File actions disabled};
+
+  % ---------------- CLI front end ----------------
+  \node[comp,text width=30mm,right=12mm of simopt,yshift=9mm,fill=qrGray!8,draw=qrGray] (climain)
+    {\textbf{CliMain}\\\footnotesize logger pinned to ERROR};
+  \node[consumer,text width=30mm,below=4mm of climain] (repl)
+    {\textbf{Repl}\\\footnotesize 33 commands\\OK/ERR protocol};
+  \node[io,text width=24mm,below=5mm of repl,xshift=6mm] (csv)
+    {\footnotesize\texttt{qtrocket\_run.csv}\\14 columns};
+
+  % ---------------- Visualizer front end ----------------
+  \node[comp,text width=31mm,right=11mm of climain,fill=qrGray!8,draw=qrGray] (vizwin)
+    {\textbf{VisualizerWindow}\\\footnotesize opens \texttt{.qrd}};
+  \node[consumer,text width=31mm,below=4mm of vizwin] (glwidget)
+    {\textbf{RocketGLWidget}\\\footnotesize offenders in error red};
+  \node[consumer,text width=31mm,below=4mm of glwidget] (mesh)
+    {\textbf{RocketMesh}\\\footnotesize meshes each part type};
+
+  % ---------------- core services ----------------
+  \node[comp,text width=30mm,below=32mm of tcsel] (motordb)
+    {\textbf{MotorModelDatabase}\\\footnotesize search \textbullet\ ingest \textbullet\ \texttt{.qmd}};
+  \node[resolver,text width=26mm,right=6mm of motordb] (qtrocket)
+    {QtRocket\\\normalfont\footnotesize launchRocket()\\getStates()};
+  \node[comp,text width=22mm,right=6mm of qtrocket] (factory)
+    {\textbf{PartFactory}\\\footnotesize addpart};
+  \node[comp,text width=27mm,right=6mm of factory] (serializer)
+    {\textbf{DesignSerializer}\\\footnotesize \texttt{.qrd} save/load};
+  \node[resolver,text width=27mm,right=6mm of serializer] (resolve)
+    {resolvePlacements\\\normalfont\footnotesize one geometry authority};
+
+  % headroom coordinates so the group titles clear the top nodes
+  \coordinate (guitop)  at ($(guirun.north)+(0,4.5mm)$);
+  \coordinate (clitop)  at ($(climain.north)+(0,4.5mm)$);
+  \coordinate (viztop)  at ($(vizwin.north)+(0,4.5mm)$);
+  \coordinate (coretop) at ($(motordb.north)+(0,4.5mm)$);
+
+  % ---------------- group boxes ----------------
+  \begin{pgfonlayer}{background}
+    \titledbox{(guitop)(guirun)(cannon)(simopt)(tcsel)(analysis)}{qtrocket (GUI)}{qrDeep}
+    \titledbox{(clitop)(climain)(repl)(csv)}{qtrocket-cli}{qrBlue}
+    \titledbox{(viztop)(vizwin)(glwidget)(mesh)}{qtrocket-visualizer}{qrTeal}
+    \titledbox{(coretop)(motordb)(qtrocket)(factory)(serializer)(resolve)}{Qt-free core: qtrocket\_core\ +\ model/}{qrGray}
+  \end{pgfonlayer}
+
+  % ---------------- GUI edges ----------------
+  \draw[uses] (cannon.west) -- ++(-3.5mm,0) |- ([yshift=3mm]qtrocket.west)
+      node[flowlbl,pos=0.28,left,align=right]{launchRocket()}
+      node[flowlbl,pos=0.40,left]{(synchronous)};
+  \draw[uses] ($(simopt.south)+(-4mm,0)$) -- ($(qtrocket.north)+(-3mm,0)$)
+      node[flowlbl,pos=0.56,left]{model \& solver setters};
+  \draw[uses] (analysis.south) -- ($(qtrocket.north)+(5mm,0)$)
+      node[flowlbl,pos=0.52,right]{getStates()};
+  \draw[uses] (tcsel.south) -- (tcsel.south |- motordb.north)
+      node[flowlbl,pos=0.42,right]{searchMotors()}
+      node[flowlbl,pos=0.62,right]{blocking HTTP};
+
+  % ---------------- CLI edges ----------------
+  \draw[flow] (climain.south) -- (repl.north);
+  \draw[flow] ($(repl.south)+(4mm,0)$) -- (csv.north)
+      node[flowlbl,midway,right]{launch};
+  \draw[uses] (repl.south west) .. controls +(-6mm,-12mm) and +(16mm,10mm)
+      .. ($(qtrocket.north)+(1mm,0)$)
+      node[flowlbl,pos=0.42,above,sloped]{launch \textbullet\ setmotor};
+  \draw[uses] ($(repl.west)+(0,-2mm)$) .. controls +(-18mm,-10mm) .. (motordb.east)
+      node[flowlbl,pos=0.88,above right]{loadmotors \textbullet\ tcsearch};
+  \draw[uses] ($(repl.south)+(-4mm,0)$) -- (factory.north)
+      node[flowlbl,pos=0.68,left]{addpart};
+  \draw[uses] (repl.south east) .. controls +(4mm,-8mm) .. (serializer.north)
+      node[flowlbl,pos=0.8,left]{savedesign \textbullet\ loaddesign};
+
+  % ---------------- visualizer edges ----------------
+  \draw[uses] ($(vizwin.west)+(0,-1mm)$) .. controls +(-9mm,-22mm) .. (serializer.north east)
+      node[flowlbl,pos=0.8,above right]{loadDesign()};
+  \draw[uses] (mesh.south) -- (mesh.south |- resolve.north)
+      node[flowlbl,midway,right]{resolved poses};
+
+  % ---------------- the missing edge ----------------
+  \node[umlnote,text width=64mm,anchor=north west] (nogui)
+    at ($(motordb.south west)+(0,-5mm)$)
+    {\footnotesize no GUI edge to \texttt{DesignSerializer} or \texttt{PartFactory}:
+     design authoring is CLI-only};
+
+\end{tikzpicture}

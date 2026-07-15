@@ -1,0 +1,86 @@
+% =============================================================================
+%  QtRocket -- Architecture & Design: How the Simulator Works
+%  A design-reference whitepaper for QtRocket.
+%
+%  Build:  make            (latexmk -pdf -shell-escape DesignWhitepaper.tex)
+% =============================================================================
+\documentclass[11pt,letterpaper]{article}
+\input{preamble}
+
+\begin{document}
+
+% ----------------------------- Title page ------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[qrDeep] (current page.north west) rectangle ([yshift=-3.2cm]current page.north east);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large]
+    at ([xshift=1in,yshift=-1.05cm]current page.north west) {QtRocket};
+  \node[anchor=north west,text=qrRule,font=\sffamily\small]
+    at ([xshift=1in,yshift=-1.7cm]current page.north west)
+    {Open-source model-rocket simulator \textbullet\ simulation-core design series};
+  \fill[qrTeal] ([yshift=-3.2cm]current page.north west) rectangle ([yshift=-3.32cm]current page.north east);
+\end{tikzpicture}
+
+\vspace*{5.2cm}
+{\sffamily
+  {\color{qrGray}\large Design Whitepaper}\\[0.3em]
+  {\color{qrDeep}\fontsize{30}{34}\selectfont\bfseries Architecture \& Design}\\[0.35em]
+  {\color{qrBlue}\LARGE\bfseries How the QtRocket\\[0.15em] Simulator Works}\\[1.1em]
+  {\color{qrInk}\large A rigorous exposition of the QtRocket simulation core --- its
+   layered\\ architecture, its data model, the physics behind its algorithms, and\\
+   the areas still to be built --- written as a reference for engineers\\
+   joining the project.}\par
+}
+
+\vfill
+\noindent\begin{tikzpicture}\draw[qrRule,line width=0.6pt] (0,0)--(\linewidth,0);\end{tikzpicture}
+
+\vspace{0.7em}
+\noindent{\sffamily\small\color{qrGray}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+  \textbf{Status} & Describes the working tree at commit \code{254cd41} (``Major comment cleanup'')\\
+  \textbf{Scope}  & Every layer: \code{model/}, \code{sim/}, \code{utils/}, \code{gui/}, \code{cli/}, \code{visualizer/}, build, tests, CI\\
+  \textbf{Target} & QtRocket simulation core (C++23); baseline branch \code{development}\\
+  \textbf{Audience} & Engineers new to the project, with or without a rocketry background\\
+\end{tabularx}}
+\end{titlepage}
+
+% ----------------------------- Abstract --------------------------------------
+\pagenumbering{roman}
+\setcounter{page}{2}
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+\input{sections/00-abstract}
+
+\clearpage
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ----------------------------- Body ------------------------------------------
+\input{sections/01-introduction}
+\input{sections/02-primer}
+\input{sections/03-overview}
+\input{sections/04-parts}
+\input{sections/05-placement}
+\input{sections/06-motors}
+\input{sections/07-simcore}
+\input{sections/08-environment}
+\input{sections/09-aero}
+\input{sections/10-interfaces}
+\input{sections/11-persistence}
+\input{sections/12-testing}
+\input{sections/13-incomplete}
+
+% ----------------------------- Appendices ------------------------------------
+\appendix
+\input{sections/A1-openrocket-context}
+\input{sections/A2-openrocket-features}
+\input{sections/A3-openrocket-methods}
+\input{sections/A4-openrocket-architecture}
+\input{sections/A5-glossary}
+\input{sections/A6-reproducibility}
+
+\end{document}

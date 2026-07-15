@@ -1,0 +1,292 @@
+\section{Aerodynamics and flight-physics fidelity}\label{sec:aero}
+
+This is the keystone section of the review, because it is where the document's recurring motif is
+sharpest. QtRocket's flight physics splits cleanly into two halves that share a codebase but not a
+call graph: a small, honest, well-guarded three-degree-of-freedom point-mass model that every
+flight actually runs, and a substantially more ambitious aerodynamic layer --- per-part Barrowman
+normal-force slopes, a composite center of pressure on the CG's own datum, per-part drag fields,
+wind, torques --- that is built, unit-tested, and consumed by nothing. \Cref{fig:aero-forcepath}
+shows both halves at once; this section describes each precisely, then the latent defects that
+must be repaired before the dormant half can be wired in, and finally the flight-envelope features
+for which no machinery exists at all.
+
+\tikzfig{force-path}{The flight-physics force path at commit \code{254cd41}. Three terms ---
+world-vertical thrust, pluggable gravity, and a single quadratic drag law --- are assembled by
+\code{getForces()} and integrated as three linear degrees of freedom. The red-edged layer below is
+built and tested but has no production caller.}{fig:aero-forcepath}
+
+\subsection{The consumed force path}\label{sec:aero-consumed}
+
+The single production force model is \cppinline|RocketModel::getForces()|
+(\src{model/RocketModel.cpp}{68}), taking the trial position and velocity plus the environment,
+and invoked from the ODE lambda the propagator builds at construction:
+$\dot{v} = F(t,x,v)/m(t)$ with the time-varying mass supplied by the burning motor
+(\src{sim/Propagator.cpp}{36}). Exactly three terms are summed.
+
+\begin{description}
+  \item[Thrust.] Applied along world $+z$ for the entire burn, ``assumed through the CM''
+  (\src{model/RocketModel.cpp}{70}). The comment says ``along the rocket's $z$-axis,'' but since no
+  attitude state exists anywhere in the dynamics, the rocket's $z$-axis \emph{is} the world
+  $z$-axis, permanently.
+  \item[Gravity.] \cppinline|gravityModel->getAccel(position) * getMass(t)|, evaluated at the
+  integrator's trial position so every Runge--Kutta stage sees a consistent state
+  (\src{model/RocketModel.cpp}{77}); the model is pluggable between constant and spherical
+  inverse-square via \code{sim::Environment} (\src{sim/Environment.h}{60}).
+  \item[Drag.] A single quadratic point-mass term opposing the full velocity vector, with a
+  user-set constant drag coefficient and a user-set constant reference area
+  (\src{model/RocketModel.cpp}{88}):
+\end{description}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+    // Clamp altitude to >= 0: trial states crossing z=0 fall outside the atmosphere models' domain.
+    const double altitude = position[2] > 0.0 ? position[2] : 0.0;
+    const double rho = atmosphere->getDensity(altitude);
+    const double speed = velocity.norm();
+    const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
+\end{minted}
+\caption{The entire production drag model (\srccap{model/RocketModel.cpp}{84}). One constant
+$C_d$, one constant reference area; the $|v|\,\vec{v}$ form gives zero drag at rest with no
+division, and the altitude clamp keeps trial states below ground inside the atmosphere models'
+domain.}\label{lst:aero-draglaw}
+\end{listing}
+
+\code{dragCoefficient} defaults to $1.0$ (\src{model/RocketModel.h}{138}) and
+\code{referenceArea} to $1.134\times10^{-3}\unit{m^2}$ --- a $38\unit{mm}$ disc
+(\src{model/RocketModel.h}{141}). Density comes from the pluggable \code{AtmosphericModel}:
+constant $1.225\unit{kg/m^3}$ (\src{sim/ConstantAtmosphere.h}{15}), a genuinely layered US Standard
+1976 implementation with lapse-rate and isothermal branches (\src{sim/USStandardAtmosphere.cpp}{93}),
+or vacuum (\src{sim/VacuumAtmosphere.h}{17}); the surrounding integration loop, its guards, and the
+environment plumbing are \cref{sec:sim}'s subject. This consumed path is the best-tested physics in
+the tree: an analytic terminal-velocity force balance is derived from the live models and checked
+for sign and magnitude (\src{tests/PhysicsIntegrationTests.cpp}{246}), and drag-versus-vacuum
+sweeps run across every reference airframe and the full 1/4A--M motor ladder under both integrators
+(\src{tests/DesignMatrixTests.cpp}{524}).
+
+Two structural consequences of this force path deserve plain statement. First, \emph{launch angle
+is a velocity, not an attitude}. Both front ends implement an angled launch by splitting the
+user-supplied initial speed into $v_x/v_z$ components --- the GUI at
+\src{gui/CannonballTab.cpp}{105}, the CLI's launch handler consuming the \code{setangle}-stored
+value at \src{cli/Repl.cpp}{680} --- and nothing else in the dynamics knows the angle exists. With
+zero initial speed, setting a launch angle changes nothing at all. With nonzero initial speed,
+thrust is permanently misaligned with the velocity vector for the whole burn --- there is no
+gravity turn and no thrust-along-body-axis, so the model is physically consistent only for
+vertical flights. The one angled-launch test asserts only the kinematic downrange displacement of
+the tilted initial velocity (\src{tests/PhysicsIntegrationTests.cpp}{182}).
+
+Second, the reference area that the drag law multiplies is never connected to the rocket's
+geometry, despite the geometry-derived value existing and being correct.
+
+\begin{hardfail}[Geometry-derived reference area never reaches the drag law]
+\code{RocketModel::deriveReferenceAreaFromGeometry()} (\src{model/RocketModel.cpp}{48}) implements
+the max-frontal-disc convention over the part tree via \code{Part::maxFrontalReferenceArea()}
+(\src{model/parts/Part.cpp}{251}), with fin sets deliberately reporting the body disc rather than
+tip extent (\src{model/parts/FinSet.h}{71}) --- the same convention OpenRocket uses
+(\cref{sec:comparison}). It has no production caller. The drag law reads the stored \code{referenceArea} scalar; the header's promise
+that ``the geometry default applies only when it [the override] hasn't''
+(\src{model/RocketModel.h}{76}) is implemented by nothing; and design-file load applies the saved
+area only when \code{referenceAreaOverridden="true"} (\src{model/DesignSerializer.cpp}{265}). All
+25 bundled reference designs say \code{"false"}, so every one of them --- including the
+$75\unit{mm}$ \code{xl75} airframe --- flies with whatever area was last set, by default the
+$38\unit{mm}$ disc. Drag therefore does not scale with airframe class, and the sweep-test comment
+claiming the ``design's own geometry-derived reference area \ldots\ is used''
+(\src{tests/DesignMatrixTests.cpp}{518}) does not match the code. \fail
+\end{hardfail}
+
+\subsection{The dormant Barrowman layer}\label{sec:aero-barrowman}
+
+Alongside the scalar drag law sits a real stability-analysis seam. Its value types live in
+\srcf{sim/Aero.h}: \code{AeroComponent} carries \code{cnAlpha} (the normal-force-coefficient slope
+per radian, normalized to a shared reference area), \code{cnAlphaXcp} (the slope-weighted CP
+moment, stored as a product so zero-lift parts drop out of the weighted average), and \code{cd}
+(\src{sim/Aero.h}{32}); \code{AeroProfile} folds components additively and exposes
+$x_{cp} = \sum C_{N_\alpha} x_{cp} \,/\, \sum C_{N_\alpha}$ behind a \code{cpValid} guard
+(\src{sim/Aero.h}{51}).
+
+The per-part mathematics is genuine Barrowman, not placeholder. The conical nose cone reports
+$C_{N_\alpha} = 2$ referenced to its base area and rescaled by $\pi R^2/A_{\mathrm{ref}}$, with the
+CP at the textbook two-thirds of the length aft of the tip, converted to the part's own CM datum
+($x_{cp}$ from CM $= L/3 - \bar{h}$: $+L/12$ for a solid cone, $0$ for a shell)
+(\src{model/parts/ConicalNoseCone.cpp}{64}) --- self-consistent with the documented \zfwd\ part
+frame in which each part spans $z \in [-L, 0]$ (\src{model/parts/Part.h}{130}). The trapezoidal fin
+set implements the standard $N$-fin term with the mid-chord line $l_m$ and the fin--body
+interference factor $K_{fb} = 1 + r_b/(s + r_b)$, referenced to the body disc and rescaled
+(\src{model/parts/FinSet.cpp}{77}), with the degenerate on-axis case $r_b = 0$ guarded rather than
+allowed to go singular (\src{model/parts/FinSet.cpp}{63}) and the fin CP taken from the root
+leading edge by the usual trapezoid formula (\src{model/parts/FinSet.cpp}{84}). A constant-diameter
+body tube correctly contributes zero normal force (\src{model/parts/BodyTube.cpp}{38}), and the
+base-class default is aerodynamically inert (\src{model/parts/Part.h}{117}), so motors and
+placeholder parts drop out.
+
+Composition is a pure-geometry pass, separate from the time-aware mass walk:
+\code{Part::getCompositeAero(refArea)} walks the resolved placement cache and re-expresses every
+part's CM-datum $x_{cp}$ onto the tree-root tip datum (\src{model/parts/Part.cpp}{231}) --- the
+same datum as the composite CM.
+
+\begin{keyinsight}[The static margin is a subtraction by construction]
+Because \code{getCompositeAero} and \code{getCompositeCm} share one datum, the composite
+\cppinline|cp()| and \cppinline|cg()| are directly comparable and the static margin is literally
+\cppinline|cp() - cg()| --- the design intent is stated in the seam's own documentation
+(\src{sim/Aero.h}{25}). The moment-weighted storage (\code{cnAlphaXcp} as a product) makes
+composition pure addition, and unit tests pin the datum correctness across nested trees
+(\src{model/tests/NoseConeTests.cpp}{175}, \src{tests/PlacementInvarianceTests.cpp}{106}). The
+machinery for a live CP/CG/stability readout exists end to end --- except for a caller.
+\end{keyinsight}
+
+And that is the finding: none of it is consumed. \code{getCompositeAero} has zero production call
+sites --- its callers are three test files, and the aero suite's own header says so in as many
+words: ``NOTE: nothing in production consumes this in P2 -- these tests pin the seam for P5''
+(\src{model/tests/AeroTests.cpp}{18}). The \cppinline|sim::Aero aeroData| member on the
+model--sim bridge is a default-constructed, admittedly unread back-compatibility shim
+(\src{model/Propagatable.h}{61}, \src{sim/Aero.h}{63}). No angle of attack is computed anywhere, no
+normal force or restoring moment ever acts on the trajectory, and no stability margin --- in meters
+or in calibers --- is surfaced by the GUI or the CLI; the word ``caliber'' appears nowhere in the
+tree, and the placement-invariance suite deliberately excludes static margin from its
+legacy-baseline comparison (\src{tests/PlacementInvarianceTests.cpp}{318}). Status: \fpartial\ ---
+the mathematics is present and tested; the flight it should inform is untouched by it.
+
+\subsection{Latent defects that must precede consumption}\label{sec:aero-latent}
+
+Wiring the Barrowman layer into flight is not purely additive work; one verified frame defect sits
+inside the fin set, and it is the kind that a future consumer would inherit silently because the
+test suite currently enforces it.
+
+\begin{hardfail}[The fin set's chordwise frame is mirrored]
+The documented part frame is \zfwd\ (\src{model/parts/Part.h}{130}); the cone converts its
+base-relative centroid into that frame correctly (\src{model/parts/ConicalNoseCone.cpp}{51}), and
+the visualizer draws the fin root leading edge at the fore plane, sweeping the tip aft
+(\src{visualizer/RocketMesh.cpp}{350}). The fin set's mass and aero math, however, uses
+aft-positive from-root-LE distances directly as $+z$ offsets: \code{finSetCmOffset} returns
+$x_{c} - c_r/2$ where the LE-forward frame implies $c_r/2 - x_{c}$
+(\src{model/parts/FinSet.cpp}{57}), and the CP conversion in \cref{lst:aero-finsign} has the same
+mirrored sign. The two errors do not cancel when \code{getCompositeAero} threads the CM offset
+(\src{model/parts/Part.cpp}{244}): the composite fin CP lands $c_r - 2x_{cp,\mathrm{LE}}$ aft of
+truth ($25.6\unit{mm}$ for the reference test fin with $c_r = 100\unit{mm}$, $c_t = 50\unit{mm}$,
+sweep $40\unit{mm}$; half a chord for an unswept rectangular fin), and the fin-set mass sits
+$2x_{c} - c_r$ forward of truth ($13.3\unit{mm}$ for that fin) in the composite CM and inertia.
+The unit tests pin the mirrored values as literal regression anchors
+(\src{model/tests/FinSetTests.cpp}{207}), so the suite enforces the defect rather than detecting
+it. \fail
+\end{hardfail}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   // Barrowman fin CP, from the root LE, converted to the set's own CM (the composite datum):
+   // x_cp(from CM) = x_cp(from root LE) - (axial mass centroid from root LE).
+   const double xcpFromRootLE = (sweep / 3.0) * (rootChord + 2.0 * tipChord) / sumc
+                              + (1.0 / 6.0) * (sumc - rootChord * tipChord / sumc);
+   const double xcMass = (rootChord * rootChord + rootChord * tipChord + tipChord * tipChord
+                          + sweep * (rootChord + 2.0 * tipChord)) / (3.0 * sumc);
+   const double xcpFromCm = xcpFromRootLE - xcMass;
+   return {cnAlpha, cnAlpha * xcpFromCm, 0.0};
+\end{minted}
+\caption{The fin CP conversion (\srccap{model/parts/FinSet.cpp}{84}). Both \code{xcpFromRootLE}
+and \code{xcMass} are aft-positive distances from the leading edge, used directly as offsets in
+the \zfwd\ frame --- internally consistent only if the fin flew leading-edge-aft.}
+\label{lst:aero-finsign}
+\end{listing}
+
+The consequences split by time horizon. The mass half is live \emph{today}: every swept-fin design
+carries its fin mass slightly forward of truth in the composite CM and inertia tensor --- small in
+absolute terms because fins are light, but a real error in the mass properties the integrator
+consumes. The CP half is latent only because nothing consumes the aero profile; once something
+does, the aft-displaced fin CP would \emph{inflate} the apparent static margin --- fins dominate
+the aft CP, so the error direction is non-conservative for exactly the stability readout the seam
+was built to provide. A closely related dormant-frame assumption --- the composite-inertia walk
+combining child tensors without the $R\,I\,R^{T}$ rotation, identity-only today and flagged in the
+code (\src{model/parts/Part.cpp}{220}) --- belongs to the part-tree discussion in \cref{sec:model}.
+
+\subsection{Degrees of freedom: the rotational half does not exist}\label{sec:aero-dof}
+
+The 3-DOF/6-DOF question has a crisp answer at this commit: the simulator is three-linear-DOF in
+fact, not merely in configuration. \code{getTorques()} exists on the \code{Propagatable} bridge
+interface (\src{model/Propagatable.h}{30}), the rocket's override returns the zero vector
+(\src{model/RocketModel.cpp}{96}), and --- decisively --- it has no caller anywhere in the
+simulation loop; the only other implementation is a test mock, also zero
+(\src{tests/PropagatorTests.cpp}{43}). The orientation integrator is a commented-out member
+sitting beside the live linear one (\cref{lst:aero-orientation}). \code{StateData} carries the full
+6-DOF scaffolding --- orientation and orientation-rate quaternions, a direction-cosine matrix, and
+Euler angles (\src{sim/StateData.h}{45}) --- none of which is ever written by any code, and the
+quaternions are zero-initialized to $(0,0,0,0)$, which is not the identity rotation or any rotation
+at all (\src{sim/StateData.h}{46}); the first real consumer inherits an invalid orientation plus a
+documented convention hazard, since the member's ``(vector, scalar)'' annotation contradicts
+Eigen's $(w,x,y,z)$ constructor order. The scaffolding is nonetheless deliberate: the composite
+mass, CG, and inertia tensor are recorded into every state sample expressly as ``the seam the
+6-DOF rotational ODE will read'' (\src{sim/StateData.h}{59}), while the integrator advances only
+position and velocity (\src{sim/Propagator.cpp}{36}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   std::unique_ptr<sim::Integrator> linearIntegrator;
+   // The 6-DOF orientation integrator will use the same DESolver<Quaternion> interface, with a
+   // time-keyed ODE callback so getTorques() can be sampled at each stage's node time like getForces().
+//   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
+\end{minted}
+\caption{The clearest single statement of the 3-DOF reality: the orientation integrator is a
+pre-designed, commented-out member beside the live linear one
+(\srccap{sim/Propagator.h}{100}).}\label{lst:aero-orientation}
+\end{listing}
+
+\subsection{The rest of the flight envelope}\label{sec:aero-envelope}
+
+Beyond attitude, several envelope features have either dead code or no code. Each is presented
+here as a finding; severity ranking and consolidation belong to \cref{sec:roadmap}.
+
+\begin{description}
+  \item[Wind: dead code. \fabsent] \code{sim::WindModel} is compiled into the sim library
+  (\src{sim/CMakeLists.txt}{24}) and shaped as a virtual extension point
+  (\src{sim/WindModel.h}{16}), but its one implementation returns $(0,0,0)$ with all three
+  position arguments ignored (\src{sim/WindModel.cpp}{16}), and no other file in the repository
+  references it: \code{Environment} has no wind slot (\src{sim/Environment.h}{101}) and
+  \code{getForces} takes \cppinline|velocity.norm()| directly (\src{model/RocketModel.cpp}{87}).
+  Relative airspeed therefore equals ground velocity by construction --- and even with wind
+  plumbed in, weathercocking would remain impossible without the attitude and normal-force
+  machinery of \cref{sec:aero-dof,sec:aero-barrowman}.
+
+  \item[Flight phases and recovery: nothing changes at apogee. \fabsent] The only flight-phase
+  logic in the simulator is the terminate predicate --- descending below the launch site,
+  \cppinline|position[2] < 0.0 && velocity[2] < 0.0| (\src{model/RocketModel.cpp}{65}).
+  \code{getForces} has no apogee or phase branch (\src{model/RocketModel.cpp}{68}); there is no
+  deployment event, no parachute or streamer, no $C_d\,A$ switch, and descent is ballistic under
+  the same constant drag law that governed ascent. Apogee exists only as a running maximum in the
+  trajectory statistics (\src{sim/TrajectoryStatistics.h}{29}). Motor ejection delays are parsed
+  from RSE files (\src{model/RSEDatabaseLoader.cpp}{59}) and stored on the motor model
+  (\src{model/MotorModel.h}{303}) but consumed by no flight logic --- and the thrustcurve.org
+  import does not populate them at all (\src{model/ThrustCurveClient.cpp}{198}); the motor-side
+  detail is \cref{sec:motors}'s.
+
+  \item[Per-part drag: the field exists, every value is zero. \fpartial] \code{AeroComponent.cd}
+  was designed for an additive per-part drag build-up normalized to the shared reference area
+  (\src{sim/Aero.h}{36}), and the composite sums it --- but every concrete part returns
+  $c_d = 0$: the body tube's comment says ``cd stays 0 -- skin friction over getWettedArea() is
+  its eventual contribution'' (\src{model/parts/BodyTube.cpp}{41}), and the cone and fin set
+  return literal zeros (\src{model/parts/ConicalNoseCone.cpp}{67},
+  \src{model/parts/FinSet.cpp}{89}). Wetted-area getters exist for the purpose
+  (\src{model/parts/BodyTube.h}{51}, \src{model/parts/FinSet.h}{70}) with no consumer. There is
+  no skin-friction, base-drag, or pressure-drag decomposition of any kind.
+
+  \item[Launch rod or rail: only a pad clamp. \fpartial] The propagator holds the rocket at
+  $z = 0$ with zero velocity until a step genuinely lifts it (\src{sim/Propagator.cpp}{111}) and
+  aborts a flight that never does (\src{sim/Propagator.cpp}{146}) --- useful guards, described
+  with the rest of the loop in \cref{sec:sim}. But there is no guided phase: no rod length, no
+  rod-departure velocity, no direction constraint --- and since attitude does not exist, a rod
+  could not constrain the thrust direction anyway.
+
+  \item[Mach and Reynolds dependence: computed inputs, no consumer. \fabsent] The atmosphere
+  interface exposes \code{getSpeedOfSound} and \code{getDynamicViscosity}
+  (\src{sim/AtmosphericModel.h}{17}), and the US Standard 1976 model implements both correctly
+  ($\sqrt{\gamma R^{*} T / M}$ at \src{sim/USStandardAtmosphere.cpp}{143}, Sutherland-law
+  viscosity at \src{sim/USStandardAtmosphere.cpp}{150}) --- yet those two US Standard overrides
+  have no callers at all, production or test; only the constant and vacuum overrides of the same
+  interface are exercised. No Mach or Reynolds number is computed anywhere
+  (\src{sim/VacuumAtmosphere.h}{21} even warns hypothetical Mach callers to guard against a zero
+  speed of sound), so $C_d$ is speed-independent: a flight on an upper-class motor from the
+  1/4A--M ladder will pass Mach~1 under subsonic-constant drag without comment.
+\end{description}
+
+The pattern across this section is uniform and worth naming once: the consumed physics is small
+and trustworthy, and nearly every missing capability already has its seam built --- value types,
+interface methods, recorded state, even correct formulas --- with the final wiring left undone.
+That is a deliberate staging strategy, and the in-tree comments say so; but until the wiring
+lands, QtRocket's aerodynamic fidelity is a constant-$C_d$ point mass flying straight up, and it
+should be evaluated as exactly that.

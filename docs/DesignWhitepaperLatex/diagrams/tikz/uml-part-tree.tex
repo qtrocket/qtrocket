@@ -1,0 +1,147 @@
+% UML class diagram: the Part composite tree (model/parts/).
+% Abstract Part with a self-composition (childParts, one StationLink per child edge,
+% drawn as an association class), five concrete leaves, and PartFactory.
+% Bare tikzpicture; the section wraps it in a figure + \resizebox.
+\begin{tikzpicture}[node distance=8mm and 10mm]
+
+  % ------------------------------------------------------- abstract root ----
+  \node[umlabstract, text width=54mm] (part) {%
+    \textit{\textbf{Part}}
+    \nodepart{two}
+    name : std::string\\
+    parent : Part* \textcolor{qrGray}{(back-pointer)}\\
+    mass : double\ \ \ cm : Vector3\\
+    inertiaTensor : Matrix3 \textcolor{qrGray}{(m\textsuperscript{2})}\\
+    caches: compositeMass, compositeCm,\\
+    \ \ compositeInertiaTensor \textcolor{qrGray}{(kg\,m\textsuperscript{2})}\\
+    needsRecomputing,\\
+    \ \ placementDirty : bool \textcolor{qrGray}{(dirty flags)}\\
+    childParts : vector<pair<\\
+    \ \ shared\_ptr<Part>, StationLink>>
+    \nodepart{three}
+    addChildPart(child, link) \textcolor{qrGray}{(by move)}\\
+    clone() : shared\_ptr<Part> \textcolor{qrGray}{(deep)}\\
+    getCompositeMass(t) : double\\
+    getCompositeCm(t) : Vector3\\
+    getCompositeI(t) : Matrix3\\
+    getCompositeAero(refArea) : AeroProfile\\
+    \textit{typeName() = 0\ \ \ cloneShallow() = 0}
+  };
+
+  % ---------------------------------------------- factory (left of Part) ----
+  \node[umlclass, text width=38mm, left=12mm of part] (factory) {%
+    \textbf{PartFactory}
+    \nodepart{two}
+    PartParams \textcolor{qrGray}{(named-param.}\\
+    \textcolor{qrGray}{struct, optional<double>}\\
+    \textcolor{qrGray}{geometry fields)}
+    \nodepart{three}
+    makePart(type, p)\\
+    \ \ : shared\_ptr<Part>\\
+    params(part) : PartParams\\
+    \textit{\scriptsize Motor not factory-built}
+  };
+
+  % ------------------------- StationLink: association class on the edge ----
+  \node[umlclass, text width=32mm, right=6mm of part] (slink) {%
+    \textbf{StationLink}
+    \nodepart{two}
+    parentStation01 : double\\
+    childStation01 : double\\
+    gap : double \textcolor{qrGray}{(m)}\\
+    seat : SeatKind\\
+    childRot : Quaternion
+    \nodepart{three}
+    \scriptsize SeatKind: Abut,\\
+    \scriptsize NestInBore, OnSurface\\
+    \scriptsize\textit{stations: 0 = aft plane,}\\
+    \scriptsize\textit{1 = fore plane}\\
+    \scriptsize\textit{childRot identity in 3-DOF}
+  };
+
+  % -------------------------------------------------------------- note ----
+  \node[umlnote, above=7mm of factory] (note) {%
+    per-unit-mass tensors (m\textsuperscript{2}) on leaves;
+    mass-weighted (kg\,m\textsuperscript{2}) composites;
+    placement resolved from \texttt{StationLink} intent, never stored as coordinates};
+  \draw[draw=qrGray, dash pattern=on 2pt off 2pt, line width=0.4pt]
+    (note.south east) -- (part.north west);
+
+  % ------------------------- children self-composition + assoc. class ----
+  \draw[compose] ([xshift=-13mm]part.north) -- ++(0,6mm) -| ([xshift=13mm]part.north);
+  \node[umllbl] at ([xshift=-7mm, yshift=6mm]part.north) {childParts};
+  \node[mult, anchor=west] at ([xshift=14mm, yshift=2.5mm]part.north) {0..*};
+  \draw[draw=qrGray, dash pattern=on 2pt off 2pt, line width=0.4pt]
+    ([yshift=6mm]part.north) -- ++(0,4mm) -| (slink.north);
+
+  % -------------------------------------------------------- creates dep ----
+  \draw[umldep] (factory.east) -- (part.west)
+    node[umllbl, midway, above] {\guillemotleft creates\guillemotright};
+
+  % ----------------------------------------------------- concrete leaves ----
+  \node[umlclass, text width=27mm, font=\sffamily\scriptsize, below=18mm of part] (fin) {%
+    \textbf{FinSet}
+    \nodepart{two}
+    finCount : unsigned\\
+    rootChord, tipChord,\\
+    span, sweep : double
+    \nodepart{three}
+    getAero() : Barrowman\\
+    fin term\\
+    \textit{N-fin rotate-and-sum}\\
+    \textit{baked into one tensor}
+  };
+  \node[umlclass, text width=27mm, font=\sffamily\scriptsize, left=3mm of fin] (nose) {%
+    \textbf{ConicalNoseCone}
+    \nodepart{two}
+    baseRadius : double\\
+    length : double\\
+    wallThickness : double\\
+    solid : bool
+    \nodepart{three}
+    getAero() : Barrowman\\
+    cone, $C_{N\alpha} = 2$
+  };
+  \node[umlclass, text width=27mm, font=\sffamily\scriptsize, left=3mm of nose] (bt) {%
+    \textbf{BodyTube}
+    \nodepart{two}
+    innerRadius : double\\
+    outerRadius : double\\
+    length : double\\
+    density : double
+    \nodepart{three}
+    getAero() : $C_{N\alpha} = 0$\\
+    \textit{(constant diameter)}
+  };
+  \node[umlclass, text width=27mm, font=\sffamily\scriptsize, right=3mm of fin] (hs) {%
+    \textbf{HollowSphere}
+    \nodepart{two}
+    innerRadius : double\\
+    outerRadius : double\\
+    density : double
+    \nodepart{three}
+    radiusOuterAt(zLocal)\\
+    radiusInnerAt(zLocal)\\
+    \textit{spherical silhouette}
+  };
+  \node[umlclass, text width=27mm, font=\sffamily\scriptsize, right=3mm of hs] (motor) {%
+    \textbf{Motor}
+    \nodepart{two}
+    mm : MotorModel\\
+    \textcolor{qrGray}{(held by value)}
+    \nodepart{three}
+    getMass(t) : double\\
+    \textcolor{qrGray}{(burning mass)}\\
+    motorTensor(motor)\\
+    \textit{DB dims in mm;}\\
+    \textit{/1000 to metres}
+  };
+
+  % ------------------------------------------------- inheritance (bus) ----
+  \coordinate (bus) at ($(part.south)+(0,-8mm)$);
+  \draw[inherit] (bus) -- (part.south);
+  \draw[qrInk, line width=0.6pt] (bt.north |- bus) -- (motor.north |- bus);
+  \foreach \c in {bt, nose, fin, hs, motor}
+    \draw[qrInk, line width=0.6pt] (\c.north) -- (\c.north |- bus);
+
+\end{tikzpicture}

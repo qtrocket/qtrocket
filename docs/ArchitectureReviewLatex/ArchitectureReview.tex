@@ -1,0 +1,78 @@
+% =============================================================================
+%  QtRocket -- Architecture Review: Current Capabilities and Functional Gaps
+%  A technical review whitepaper for QtRocket.
+%
+%  Build:  make            (latexmk -pdf -shell-escape ArchitectureReview.tex)
+% =============================================================================
+\documentclass[11pt,letterpaper]{article}
+\input{preamble}
+
+\begin{document}
+
+% ----------------------------- Title page ------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[qrDeep] (current page.north west) rectangle ([yshift=-3.2cm]current page.north east);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large]
+    at ([xshift=1in,yshift=-1.05cm]current page.north west) {QtRocket};
+  \node[anchor=north west,text=qrRule,font=\sffamily\small]
+    at ([xshift=1in,yshift=-1.7cm]current page.north west)
+    {Open-source model-rocket simulator \textbullet\ simulation-core design series};
+  \fill[qrTeal] ([yshift=-3.2cm]current page.north west) rectangle ([yshift=-3.32cm]current page.north east);
+\end{tikzpicture}
+
+\vspace*{5.2cm}
+{\sffamily
+  {\color{qrGray}\large Technical Review Whitepaper}\\[0.3em]
+  {\color{qrDeep}\fontsize{30}{34}\selectfont\bfseries Architecture Review}\\[0.35em]
+  {\color{qrBlue}\LARGE\bfseries Current Capabilities and\\[0.15em] Functional Gaps}\\[1.1em]
+  {\color{qrInk}\large A whole-system survey of the QtRocket simulation core, its three\\
+   front ends, and its distance from a full-featured flight simulator,\\
+   with OpenRocket as the comparison baseline.}\par
+}
+
+\vfill
+\noindent\begin{tikzpicture}\draw[qrRule,line width=0.6pt] (0,0)--(\linewidth,0);\end{tikzpicture}
+
+\vspace{0.7em}
+\noindent{\sffamily\small\color{qrGray}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+  \textbf{Status} & Review of the working tree at commit \code{254cd41} (``Major comment cleanup'')\\
+  \textbf{Scope}  & Every layer: \code{model/}, \code{sim/}, \code{utils/}, \code{gui/}, \code{cli/}, \code{visualizer/}, build, tests, CI\\
+  \textbf{Target} & QtRocket simulation core (C++23); baseline branch \code{development}\\
+  \textbf{Audience} & Maintainers and future contributors of the simulation core\\
+\end{tabularx}}
+\end{titlepage}
+
+% ----------------------------- Abstract --------------------------------------
+\pagenumbering{roman}
+\setcounter{page}{2}
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+\input{sections/00-abstract}
+
+\clearpage
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ----------------------------- Body ------------------------------------------
+\input{sections/01-introduction}
+\input{sections/02-system-overview}
+\input{sections/03-model-parts}
+\input{sections/04-motors}
+\input{sections/05-sim-core}
+\input{sections/06-aero}
+\input{sections/07-interfaces}
+\input{sections/08-persistence}
+\input{sections/09-testing}
+\input{sections/10-comparison}
+\input{sections/11-roadmap}
+
+% ----------------------------- Appendices ------------------------------------
+\appendix
+\input{sections/A1-reproducibility}
+
+\end{document}

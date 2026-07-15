@@ -1,0 +1,176 @@
+% UML class diagram: sim::Environment holds the pluggable physics models --
+% gravity, atmosphere, geoid -- behind string-keyed registries; WindModel is
+% compiled but dormant (zero call sites). Bare tikzpicture; the whitepaper
+% wraps it in a figure and \resizebox{\linewidth}. Names verified against
+% notes/environment.md (sim/Environment.h and friends).
+\begin{tikzpicture}[node distance=8mm and 9mm]
+
+  % ---- container (top center) ----
+  \node[umlclass,text width=46mm,anchor=north] (env) at (74mm,0mm) {%
+    \textbf{Environment}\\
+    {\scriptsize non-copyable; one per app, owned by QtRocket}
+    \nodepart{two}{\scriptsize\ttfamily
+      - gravityModels : map<string,\\
+      \hspace*{2.5mm}shared\_ptr<GravityModel>>\\
+      - atmosphereModels : map<string,\\
+      \hspace*{2.5mm}shared\_ptr<AtmosphericModel>>\\
+      - gravityModel : string {\sffamily\color{qrGray}(selection)}\\
+      - atmosphereModel : string\\
+      - geoidModel :\\
+      \hspace*{2.5mm}shared\_ptr<GeoidModel>}
+    \nodepart{three}{\scriptsize\ttfamily
+      + setGravityModel(name : string)\\
+      + setAtmosphereModel(name : string)\\
+      + getGravityModel()\\
+      \hspace*{2.5mm}: shared\_ptr<GravityModel>\\
+      + getAtmosphericModel()\\
+      \hspace*{2.5mm}: shared\_ptr<AtmosphericModel>\\
+      + getGeoidModel()\\
+      \hspace*{2.5mm}: shared\_ptr<GeoidModel>}};
+
+  % ---- registry note (right of the container) ----
+  \node[umlnote,text width=40mm,right=5mm of env] (regnote) {%
+    model registries are string-keyed:\\[1pt]
+    {\ttfamily "Constant Gravity",\\ "Spherical Gravity"}\\[1pt]
+    {\ttfamily "Constant Atmosphere",\\ "US Standard 1976", "Vacuum"}\\[2pt]
+    {\color{qrGray}unknown name $\Rightarrow$ silent no-op; each
+     \texttt{set*Model} call re-creates a fresh instance}};
+  \draw[qrGray,line width=0.4pt,dash pattern=on 2pt off 2pt]
+    (regnote.west) -- (env.east);
+
+  % ---- abstract bases (one per column) ----
+  \node[umlabstract,text width=42mm,anchor=north]
+      (grav) at ($(env.south)+(-51.4mm,-12mm)$) {%
+    {\scriptsize\guillemotleft abstract\guillemotright}\\
+    \textit{\textbf{GravityModel}}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getAccel(x, y, z) : Vector3\\
+      + getAccel(Vector3) : Vector3\\
+      {\sffamily\color{qrGray}accel in m/s$^2$, local launch frame}}};
+
+  \node[umlabstract,text width=36mm,anchor=north]
+      (geoid) at ($(env.south)+(0mm,-12mm)$) {%
+    {\scriptsize\guillemotleft abstract\guillemotright}\\
+    \textit{\textbf{GeoidModel}}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getGroundLevel(lat, lon)\\
+      \hspace*{2.5mm}: double\\
+      {\sffamily\color{qrGray}ground distance from Earth's center, m}}};
+
+  \node[umlabstract,text width=42mm,anchor=north]
+      (atmo) at ($(env.south)+(51.4mm,-12mm)$) {%
+    {\scriptsize\guillemotleft abstract\guillemotright}\\
+    \textit{\textbf{AtmosphericModel}}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getDensity(altitude)\\
+      + getPressure(altitude)\\
+      + getTemperature(altitude)\\
+      + getSpeedOfSound(altitude)\\
+      + getDynamicViscosity(altitude)\\
+      {\sffamily\color{qrGray}all pure virtual; altitude in m above
+       MSL, all return double}}};
+
+  % ---- gravity implementations (left column) ----
+  \node[umlclass,text width=42mm,below=6mm of grav] (cgrav) {%
+    \textbf{ConstantGravityModel}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getAccel(x, y, z) : Vector3\\
+      {\sffamily\color{qrGray}uniform $(0,\,0,\,-g_0)$;
+       $g_0$ = 9.80665 m/s$^2$}}};
+
+  \node[umlclass,text width=42mm,below=6mm of cgrav] (sgrav) {%
+    \textbf{SphericalGravityModel}
+    \nodepart{two}{\scriptsize\ttfamily
+      - geoid : shared\_ptr<GeoidModel>\\
+      - groundLevel : double\\
+      \hspace*{2.5mm}{\sffamily\color{qrGray}geoid radius, cached at ctor}}
+    \nodepart{three}{\scriptsize\ttfamily
+      + SphericalGravityModel(geoid)\\
+      + getAccel(x, y, z) : Vector3\\
+      {\sffamily\color{qrGray}$\vec a = -GM\,\vec r_{geo}/r^3$, geocentric
+       via $z + \mathrm{groundLevel}$; finite at the pad}}};
+
+  % ---- geoid implementation (middle column) ----
+  \node[umlclass,text width=36mm,below=6mm of geoid] (sgeoid) {%
+    \textbf{SphericalGeoidModel}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getGroundLevel(lat, lon)\\
+      {\sffamily\color{qrGray}always WGS84 mean radius\\
+       6\,371\,008.8 m; ignores lat/lon}}};
+
+  % ---- atmosphere implementations (right column) ----
+  \node[umlclass,text width=42mm,below=6mm of atmo] (catmo) {%
+    \textbf{ConstantAtmosphere}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\sffamily\color{qrGray}
+      all five getters return sea-level\\
+      constants at any altitude\\
+      (1.225 kg/m$^3$, 101\,325 Pa, 288.15 K)}};
+
+  \node[umlclass,text width=42mm,below=6mm of catmo] (usatmo) {%
+    \textbf{USStandardAtmosphere}
+    \nodepart{two}{\scriptsize\ttfamily
+      - temperatureLapseRate : Bin\\
+      - standardTemperature : Bin\\
+      - standardPressure : Bin\\
+      - standardDensity : Bin\\
+      {\sffamily\color{qrGray}static 7-layer 1976 tables}}
+    \nodepart{three}{\scriptsize\sffamily\color{qrGray}
+      overrides all five getters;\\
+      analytic lapse-rate / isothermal\\
+      formulas; throws below 0 m}};
+
+  \node[umlclass,text width=42mm,below=6mm of usatmo] (vacatmo) {%
+    \textbf{VacuumAtmosphere}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\sffamily\color{qrGray}
+      all five getters return 0.0;\\
+      Mach callers must guard $a = 0$}};
+
+  % ---- wind: a seam with no consumer (middle column, standalone) ----
+  \node[umlclass,text width=36mm,below=11mm of sgeoid] (wind) {%
+    \textbf{WindModel}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getWindSpeed(x, y, z)\\
+      \hspace*{2.5mm}: Vector3\\
+      {\sffamily\color{qrGray}virtual, not pure ---\\
+       base returns $(0,\,0,\,0)$}}};
+
+  \node[umlnote,text width=36mm,below=5mm of wind] (windnote) {%
+    dormant --- zero call sites\\[1pt]
+    {\color{qrGray}compiled into \texttt{sim/} but never instantiated;
+     not held by Environment. drag treats the airmass as at rest.}};
+  \draw[qrGray,line width=0.4pt,dash pattern=on 2pt off 2pt]
+    (windnote.north) -- (wind.south);
+
+  % ---- inheritance (arrows point at the base) ----
+  \draw[inherit] (cgrav.north) -- (grav.south);
+  \draw[inherit] (sgrav.west) -- ++(-4mm,0) |- (grav.west);
+  \draw[inherit] (sgeoid.north) -- (geoid.south);
+  \draw[inherit] (catmo.north) -- (atmo.south);
+  \draw[inherit] (usatmo.east) -- ++(4mm,0) |- (atmo.east);
+  \draw[inherit] (vacatmo.east) -- ++(4mm,0) |- (atmo.east);
+
+  % ---- aggregation: Environment holds the models by shared_ptr; the
+  % multiplicities are the registry sizes (2 gravity / 3 atmosphere keys) ----
+  \draw[aggregate] ([xshift=-16mm]env.south) -- ++(0,-5mm)
+    -| node[umllbl,pos=0.25,above]{\ttfamily gravityModels}
+       node[mult,pos=0.92,right=1pt]{2} (grav.north);
+  \draw[aggregate] (env.south) -- (geoid.north)
+    node[umllbl,midway,right=1pt]{\ttfamily geoidModel}
+    node[mult,pos=0.8,left=1pt]{1};
+  \draw[aggregate] ([xshift=16mm]env.south) -- ++(0,-5mm)
+    -| node[umllbl,pos=0.25,above]{\ttfamily atmosphereModels}
+       node[mult,pos=0.92,left=1pt]{3} (atmo.north);
+
+  % ---- SphericalGravityModel takes the geoid at construction ----
+  \draw[assoc] (sgrav.east) -- ++(4mm,0) |-
+    node[umllbl,pos=0.72,above,xshift=-2.5mm]{\ttfamily geoid} (geoid.west);
+
+\end{tikzpicture}

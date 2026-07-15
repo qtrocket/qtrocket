@@ -1,0 +1,60 @@
+% Component diagram: three executables over one Qt-free core; strict downward layering.
+% Consumed by the system-overview section. Bare tikzpicture; the section wraps it in a figure.
+\begin{tikzpicture}[node distance=7mm and 8mm]
+
+  % --- executables (top) ---
+  \node[consumer,text width=40mm] (gui)
+    {\textbf{qtrocket} (GUI)\\[1pt]\footnotesize\ttfamily gui/ GuiRunner, MainWindow\\
+     \rmfamily Qt6 Widgets \textbullet\ qcustomplot\\\footnotesize the only Qt-dependent layer};
+  \node[consumer,text width=38mm,right=of gui] (cli)
+    {\textbf{qtrocket-cli} (REPL)\\[1pt]\footnotesize\ttfamily cli/ Repl\\
+     \rmfamily headless, Qt-free\\\footnotesize scriptable via stdin};
+  \node[consumer,text width=38mm,right=of cli] (viz)
+    {\textbf{visualizer} (OpenGL)\\[1pt]\footnotesize\ttfamily visualizer/ RocketMesh\\
+     \rmfamily standalone 3D viewer\\\footnotesize reads the same part tree};
+
+  % --- controller / core lib ---
+  \node[resolver,text width=104mm,below=11mm of cli] (core)
+    {qtrocket\_core \textcolor{qrGray}{(static lib)}\\[2pt]
+     \normalfont\footnotesize QtRocket controller singleton: owns (RocketModel, Propagator) pair,\\
+     Environment, MotorModelDatabase \textbullet\ launchRocket() / setInitialState() / getStates()};
+
+  % --- model + sim (side by side) ---
+  \node[comp,text width=50mm,below=11mm of core.south west,anchor=north west] (model)
+    {\textbf{model/} \footnotesize physical description\\[1pt]
+     \footnotesize Part composite tree \textbullet\ placement resolver\\
+     MotorModel + ThrustCurve \textbullet\ motor DB\\
+     RSE / RASP / thrustcurve.org ingest\\
+     DesignSerializer (.qrd)};
+  \node[comp,text width=50mm,below=11mm of core.south east,anchor=north east] (sim)
+    {\textbf{sim/} \footnotesize numerics\\[1pt]
+     \footnotesize Propagator ODE loop \textbullet\ RK4 / RKF45\\
+     Environment: gravity, atmosphere,\\
+     geoid, wind \textbullet\ Aero value types\\
+     TrajectoryStatistics};
+
+  % --- utils (foundation) ---
+  % anchored off the model box (the taller of the two mid-layer boxes), not a fixed
+  % distance from core, so the box can never paint over the layer above it.
+  \node[comp,text width=104mm,below=7mm of model.south west,anchor=north west,fill=qrGray!8,draw=qrGray] (utils)
+    {\textbf{utils/} \footnotesize Logger singleton \textbullet\ math typedefs over Eigen
+     (\texttt{Vector3}, \texttt{Matrix3}, \texttt{Quaternion}) \textbullet\ CurlConnection (libcurl)\\
+     \footnotesize never includes model/ or sim/ --- keeps the dependency graph acyclic};
+
+  % --- model <-> sim bridge note ---
+  \node[draw=qrTeal,fill=qrTeal!7,rounded corners=2pt,line width=0.5pt,
+        text width=36mm,font=\footnotesize,right=8mm of core.east,anchor=west] (bridge)
+    {\textbf{Propagatable} is the model$\leftrightarrow$sim bridge: \texttt{getForces()},
+     \texttt{getTorques()}, \texttt{getMass(t)}, \texttt{terminateCondition()}.};
+
+  % --- edges ---
+  \draw[uses] (gui.south) -- (core.north -| gui.south) node[flowlbl,midway]{links};
+  \draw[uses] (cli.south) -- (core.north);
+  \draw[uses] (viz.south) -- (core.north -| viz.south) node[flowlbl,midway]{links};
+  \draw[dep] (core.south -| model.north) -- (model.north);
+  \draw[dep] (core.south -| sim.north) -- (sim.north);
+  \draw[dep] (model.south) -- (model.south |- utils.north);
+  \draw[dep] (sim.south) -- (sim.south |- utils.north);
+  \draw[->,qrTeal,line width=0.6pt,dashed] (bridge.west) -- (core.east);
+
+\end{tikzpicture}

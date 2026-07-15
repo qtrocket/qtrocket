@@ -1,0 +1,327 @@
+\section{The simulation core}\label{sec:sim}
+
+The simulation core is where the codebase's central habit --- build the seam first, wire in the
+consumer later --- is most visible. What actually flies today is a three-degree-of-freedom point
+mass: the integrated state is center-of-mass position and velocity, nothing more. Around that
+modest physics sits a genuinely pluggable machine: two interchangeable ODE solver backends selected
+by name at runtime, a string-keyed registry of three atmosphere and two gravity models, a
+hang-proof run loop that maps every possible exit onto a typed verdict, and per-step trajectory
+statistics. The scaffolding for more --- quaternion attitude state, a torque interface, per-step
+inertia recording, a wind model class --- is present, typed, and in several cases tested, but has
+no consumer. This section reviews what is integrated, how the loop terminates, how the two solvers
+differ, what the environment registry offers, and how the Qt-free \code{QtRocket} controller
+drives it all.
+
+\subsection{The injected ODE and what is actually integrated}\label{sec:sim-ode}
+
+The physics enters the solver as a closure built once in the \code{Propagator} constructor
+(\src{sim/Propagator.cpp}{36}):
+
+\begin{minted}{cpp}
+std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> linearODEs = [this](double t, Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
+{
+    Vector3 dPosition;
+    Vector3 dVelocity;
+    dPosition = rate;
+    dVelocity = object->getForces(t, state, rate, *environment) / object->getMass(t);
+
+    return std::make_pair(dPosition, dVelocity);
+};
+\end{minted}
+
+\noindent This lambda is the entire integrated physics: $\dot{x}=v$, $\dot{v}=F(t,x,v)/m(t)$ over
+a coupled pair of \code{Vector3}s. Time is threaded through deliberately, so that the motor thrust
+curve is sampled at each Runge--Kutta stage's node time rather than frozen at the step start
+(\src{sim/Propagator.cpp}{34}, \src{sim/DESolver.h}{41}). The \code{model::Propagatable} behind
+\code{object} is in practice \code{RocketModel}, the model$\leftrightarrow$sim bridge described in
+\cref{sec:model}.
+
+\begin{designrule}[Environment by injection, not by singleton]
+The \code{Propagator} holds the \code{Environment} and passes \cppinline|*environment| into every
+\code{getForces} call (\src{sim/Propagator.h}{106}, \src{sim/Propagator.cpp}{41}). The force path
+never reaches back to a global for its physics models, which is what lets tests swap atmospheres
+and gravity per-run and keeps the \code{utils}$\rightarrow$controller back-call cycle out of the
+dependency graph.
+\end{designrule}
+
+The force model itself (\src{model/RocketModel.cpp}{68}) is three terms: motor thrust applied
+along world $+z$ regardless of any launch angle (\src{model/RocketModel.cpp}{70}), gravity
+evaluated at the integrator's \emph{trial} position so each stage sees a consistent state
+(\src{model/RocketModel.cpp}{77}), and quadratic drag with a single user-set scalar $C_d$ and
+reference area (defaults $C_d=1.0$, $A=1.134\times10^{-3}\unit{m^2}$;
+\src{model/RocketModel.h}{138}):
+
+\begin{minted}{cpp}
+// Clamp altitude to >= 0: trial states crossing z=0 fall outside the atmosphere models' domain.
+const double altitude = position[2] > 0.0 ? position[2] : 0.0;
+const double rho = atmosphere->getDensity(altitude);
+const double speed = velocity.norm();
+const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
+\end{minted}
+
+\noindent The $|v|\cdot v$ formulation gives zero drag at $v=0$ with no division, and the altitude
+clamp exists because the table-backed atmosphere throws \cppinline|std::out_of_range| below its
+lowest bin (\src{model/RocketModel.cpp}{84}, \src{utils/Bin.cpp}{51}). What this force model does
+\emph{not} contain --- angle of attack, normal force, a stability moment, the Barrowman machinery
+that the model layer already composes but the force path never reads
+(\src{model/Propagatable.h}{61}) --- is the subject of \cref{sec:aero}.
+
+The six-degree-of-freedom scaffolding deserves explicit accounting because it is easy to mistake
+for capability. \code{StateData} carries orientation and orientation-rate quaternions (initialized
+to the degenerate all-zero quaternion, not identity), a DCM, and 3-2-1 Euler angles
+(\src{sim/StateData.h}{46}); a repository-wide search finds no code that writes or reads any of
+those fields. The orientation integrator is a commented-out member with a design note about the
+future \cppinline|DESolver<Quaternion>| ODE (\src{sim/Propagator.h}{103}), and
+\code{RocketModel::getTorques} returns \cppinline|Vector3{0.0, 0.0, 0.0}|
+(\src{model/RocketModel.cpp}{94}). One piece of the seam is already live: every recorded step
+snapshots composite mass, CG, and inertia via \code{writeMassProperties}
+(\src{model/RocketModel.cpp}{53}), with the header naming these fields ``the seam the 6-DOF
+rotational ODE will read'' (\src{sim/StateData.h}{59}). Attitude propagation is therefore
+\fabsent{} at commit \code{254cd41}, but the interfaces it will need are in place and typed.
+
+\subsection{The run loop and typed termination}\label{sec:sim-runloop}
+
+\tikzfig{propagator-loop}{The \code{runUntilTerminate} flight loop
+(\srccap{sim/Propagator.cpp}{58}): one integrator step, a finiteness check, the launch-pad hold,
+state recording, and the guard cascade that maps every exit onto one of the five typed termination
+reasons. The \code{IntegratorError} path is the loop-scope catch that converts an RKF45 step-size
+underflow throw into a verdict.}{fig:sim-loop}
+
+\code{Propagator::runUntilTerminate} (\src{sim/Propagator.cpp}{58}) begins every run clean --- a
+fresh \code{Nominal} verdict and zeroed statistics (\src{sim/Propagator.cpp}{63}) --- then loops:
+read the current state, take one integrator step, and run a guard cascade
+(\cref{fig:sim-loop}). The first guard rejects a non-finite state \emph{before} it is recorded or
+read by the termination predicate, because a NaN coordinate fails every comparison and the $z<0$
+test would never trip (\src{sim/Propagator.cpp}{94}). The second is the launch-pad hold: thrust
+curves begin with an implicit $(0,0)$ sample, so over the first step a from-rest rocket sees
+essentially zero thrust, accelerates downward, and would cross $z<0$ and terminate after one step.
+Until the rocket first achieves $z>0$ under power it is therefore clamped to $z=0$ at rest ---
+physically, the pad's normal force cancels the downward force
+(\src{sim/Propagator.cpp}{105}). A rocket that can never lift stays put with
+$\text{maxAltitude}=0$, which is what arms the \code{NoLiftoff} guard instead of letting the run
+end silently.
+
+The five \code{TerminationReason} values (\src{sim/Propagator.h}{35}) partition every exit:
+
+\begin{description}
+  \item[\code{Nominal}] the model's own predicate fired. \code{RocketModel} defines end of flight
+    as \emph{descending below the launch site}: \cppinline|position[2] < 0.0 && velocity[2] < 0.0|
+    (\src{model/RocketModel.cpp}{62}). There are no recovery or staging events; every flight ends
+    ballistic at that crossing.
+  \item[\code{NoLiftoff}] more than $3\unit{s}$ elapsed without the peak altitude exceeding
+    $1\unit{m}$ (thresholds at \src{sim/Propagator.h}{26}; guard at
+    \src{sim/Propagator.cpp}{146}) --- an underpowered motor or a hover-balance flight.
+  \item[\code{NonFiniteState}] NaN/Inf state caught before recording, so the poisoned sample never
+    enters the history (\src{sim/Propagator.cpp}{97}).
+  \item[\code{MaxSimTimeExceeded}] the hard backstops: simulated time past \code{maxSimTime}
+    (default $7200\unit{s}$, settable; \src{sim/Propagator.h}{115}) \emph{or} $10^{8}$ iterations
+    (\src{sim/Propagator.h}{28}).
+  \item[\code{IntegratorError}] the whole loop is wrapped in try/catch, so an RKF45 step-size
+    underflow throw becomes a verdict instead of escaping (\src{sim/Propagator.cpp}{81},
+    \src{sim/Propagator.cpp}{169}).
+\end{description}
+
+\begin{hardfail}[Iteration-cap abort is misreported]
+The sim-time cap and the $10^{8}$-iteration cap share one branch and one verdict:
+\cppinline{if(currentTime > maxSimTime || ++iterations >= maxIterations)} sets
+\code{MaxSimTimeExceeded} (\src{sim/Propagator.cpp}{157}), and the enum has no distinct
+iteration-cap value (\src{sim/Propagator.h}{40}). A run killed by adaptive step collapse ---
+millions of vanishingly small steps at low simulated time --- reports a time-cap exceedance even
+when simulated time is nowhere near \code{maxSimTime}. The abort is correct; the diagnosis is
+wrong. \fail
+\end{hardfail}
+
+Recording is gated by a \code{saveStates} flag: when saving, each accepted step snapshots mass
+properties and appends \code{(time, StateData)} to the history stored on the \code{Propagatable}
+(\src{sim/Propagator.cpp}{128}, \src{model/Propagatable.h}{47}). Two details matter downstream.
+First, the timestamp convention lags one step: \cppinline|appendState(currentTime, nextState)|
+records the state reached at $t+h$ against timestamp $t$, because \cppinline|currentTime| advances
+by the step actually taken only \emph{after} recording (\src{sim/Propagator.cpp}{133},
+\src{sim/Propagator.cpp}{166}). Every consumer of the history --- plots, CSV export, apogee times
+--- inherits the offset; a propagator test widens its apogee-time tolerance to $3\,dt$ and names
+``the recorder's one-step time-stamp offset'' rather than pinning the convention as intended
+(\src{tests/PropagatorTests.cpp}{181}). Second, the \code{saveStates=false} path the loop
+carefully supports is dead: \code{retainStates} has no callers anywhere
+(\src{sim/Propagator.h}{62}).
+
+\code{TrajectoryStatistics} is updated on every step regardless of \code{saveStates}, so the
+flight summary and the no-liftoff guard work even without a retained history
+(\src{sim/Propagator.cpp}{127}). The fold uses strict $>$ comparisons --- first attainment wins,
+and NaN samples are ignored by construction --- tracking peak altitude and its time, peak speed
+($|v|$ norm) and its time, and total flight time as the last sample time
+(\src{sim/TrajectoryStatistics.h}{26}).
+
+\subsection{The Integrator facade and the two solver backends}\label{sec:sim-solvers}
+
+Both solvers derive from \cppinline|DESolver<T>| (with \code{T} restricted to \code{Vector3} or
+\code{Quaternion} by \cppinline|static_assert|; \src{sim/RK4Solver.h}{33},
+\src{sim/RK45Solver.h}{51}) and advance the coupled (state, rate) pair, returning a
+\cppinline|StepResult{state, rate, stepSize}| so the caller advances its clock by the step the
+solver \emph{actually} took (\src{sim/DESolver.h}{21}). The \code{Quaternion} instantiation is
+never used --- another finished seam with zero consumers.
+
+\code{RK4Solver} is textbook fixed-step RK4 with stages at $t$, $t+dt/2$, $t+dt/2$, $t+dt$
+(\src{sim/RK4Solver.h}{45}); its timestep starts as NaN, and calling \code{step()} before
+\code{setTimeStep()} is a logged error returning a zero result rather than undefined behavior
+(\src{sim/RK4Solver.h}{49}). \code{RK45Solver} implements the classical Fehlberg tableau --- six
+stages with the Butcher coefficients as \cppinline|constexpr| arrays
+(\src{sim/RK45Solver.h}{169}), each stage evaluated at its node time $t + C_n h$
+(\src{sim/RK45Solver.h}{92}) so a thrust transient is visible to the error estimate. The
+controller is a single absolute norm over state and rate,
+$\mathrm{err}=\sqrt{\lVert y_5 - y_4\rVert^2_{\text{state}}+\lVert y_5 - y_4\rVert^2_{\text{rate}}}$
+(\src{sim/RK45Solver.h}{120}): a rejected step shrinks $h$ by $(\mathrm{tol}/\mathrm{err})^{1/4}$
+floored at $0.1\times$ (\src{sim/RK45Solver.h}{124}); an accepted step grows the next guess by
+$(\mathrm{tol}/\mathrm{err})^{1/5}$ capped at $5\times$ (\src{sim/RK45Solver.h}{132}); below
+$h_{\min}=10^{-15}$ it throws (\src{sim/RK45Solver.h}{80}); and the fifth-order estimate is
+returned as the result (\src{sim/RK45Solver.h}{150}).
+
+\begin{keyinsight}[The vacuum step-runaway clamp]
+The next-step guess is clamped to $h_{\max}$, by default $10\times$ the seeded timestep
+(\src{sim/RK45Solver.h}{144}, \src{sim/RK45Solver.h}{165}). This is not a tuning nicety but a
+correctness requirement peculiar to embedded-pair steppers: constant-acceleration vacuum coasting
+is integrated \emph{exactly} by both embedded orders, so $\mathrm{err}\approx 0$ every step, the
+$5\times$ growth applies indefinitely, and the integrator leaps past apogee and the ground in a
+few giant steps. The failure was real and is now regression-guarded
+(\src{sim/tests/RK45SolverTests.cpp}{75}).
+\end{keyinsight}
+
+The adaptive solver's tuning surface stops at its own header. \code{setErrorTolerance} and
+\code{setMaxStepSize} exist on the concrete class (\src{sim/RK45Solver.h}{70}), but
+\code{Integrator} stores its solvers as \cppinline|unique_ptr<DESolver<Vector3>>|
+(\src{sim/Integrator.h}{86}) and exposes neither, and neither do \code{Propagator},
+\code{QtRocket}, the GUI, or the CLI. Users get the hardcoded $10^{-6}$ absolute tolerance
+(\src{sim/RK45Solver.h}{46}) and the $10\times$-seed $h_{\max}$, full stop; the header itself
+flags the unscaled absolute norm as ``a possible refinement'' (\src{sim/RK45Solver.h}{36}).
+
+Selection is a string-keyed facade: \code{Integrator} maps \code{Runge-Kutta 4th Order} (the
+default) and \code{Runge-Kutta-Fehlberg} to freshly constructed solvers on each
+\code{setIntegratorModel} call, and an unknown name is a \emph{logged} no-op that keeps the
+current model usable (\src{sim/Integrator.h}{52}). The name travels from the GUI's integrator
+combo (populated from \code{getAvailableIntegratorModels()};
+\src{gui/SimOptionsTab.cpp}{74}) or the CLI \code{setintegrator} command
+(\src{cli/Repl.cpp}{647}) through \code{QtRocket::setIntegratorModel}
+(\src{QtRocket.h}{36}) to \code{Propagator::setIntegratorModel} (\src{sim/Propagator.h}{90}). The
+facade has one sharp edge: \code{setIntegratorFunction} only stores the lambda
+(\src{sim/Integrator.h}{72}), so the active solver keeps whatever function it captured at
+construction --- the constructor even builds its default RK4 with a null ODE function
+(\src{sim/Integrator.h}{28}) --- and a freshly selected solver needs its timestep re-seeded. The
+required call order is documented in a test rather than enforced by the API
+(\src{sim/tests/IntegratorTests.cpp}{36}); \code{Propagator} gets it right and re-asserts the
+configured step at the top of every run (\src{sim/Propagator.cpp}{60}).
+
+\subsection{The Environment registry}\label{sec:sim-env}
+
+\code{Environment} is a string-keyed registry constructed with \code{Constant Gravity} and
+\code{Constant Atmosphere} defaults (\src{sim/Environment.h}{31}). All of its models are genuinely
+runtime-selectable from both front ends --- GUI combos populated from the registries
+(\src{gui/SimOptionsTab.cpp}{72}) and the CLI \code{setatmosphere}/\code{setgravity} commands
+(\src{cli/Repl.cpp}{591}, \src{cli/Repl.cpp}{618}). \Cref{tab:sim-envmodels} summarizes the
+inventory.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}llXl@{}}
+\toprule
+Family & Registry key & Behavior & Status \\
+\midrule
+Atmosphere & \code{Constant Atmosphere} & sea-level ISA constants at every altitude
+  ($\rho=1.225$, $p=101325$, $T=288.15$; \srccap{sim/ConstantAtmosphere.h}{15}) & \fpresent \\
+Atmosphere & \code{US Standard 1976} & seven-layer USSA76 closed forms, 0--80$\unit{km}$
+  validated (\srccap{sim/USStandardAtmosphere.cpp}{93}) & \fpresent \\
+Atmosphere & \code{Vacuum} & all properties zero; the drag-free baseline
+  (\srccap{sim/VacuumAtmosphere.h}{17}) & \fpresent \\
+Gravity & \code{Constant Gravity} & $(0,0,-9.80665)$ (\srccap{sim/ConstantGravityModel.h}{18})
+  & \fpresent \\
+Gravity & \code{Spherical Gravity} & Newtonian inverse-square over the geoid ground radius
+  (\srccap{sim/SphericalGravityModel.cpp}{28}) & \fpresent \\
+Geoid & (fixed member) & WGS84 mean radius for any lat/lon
+  (\srccap{sim/SphericalGeoidModel.cpp}{18}) & \fpartial \\
+Wind & (not registered) & zero-vector stub, zero call sites (\srccap{sim/WindModel.cpp}{16})
+  & \fabsent \\
+\bottomrule
+\end{tabularx}
+\caption{The \code{Environment} inventory at commit \code{254cd41}. The three atmospheres and two
+gravity models are live and selectable from both front ends; the geoid is a single hardwired
+member; the wind class is compiled but unreachable.}
+\label{tab:sim-envmodels}
+\end{table}
+
+The US Standard Atmosphere is the core's showpiece of physical fidelity: seven layers with bases
+at 0/11/20/32/47/51/71$\unit{km}$ held in static \code{utils::Bin} tables of base temperature,
+density, pressure, and lapse rate (\src{sim/USStandardAtmosphere.cpp}{21}), evaluated in closed
+form within each layer --- the exponential barometric formula in isothermal layers and the
+power-law form with exponent $gM/(R^{*}L)$ in gradient layers
+(\src{sim/USStandardAtmosphere.cpp}{93}) --- rather than by table interpolation. Density,
+pressure, and temperature are validated against published NOAA report values to 0.1\% (most rows)
+and 0.5\% (a few density rows) up to $80\unit{km}$ (\srcf{sim/tests/USStandardAtmosphereTests.cpp}).
+Speed of sound ($\sqrt{\gamma R^{*}T/M}$) and Sutherland viscosity are implemented
+(\src{sim/USStandardAtmosphere.cpp}{143}) but sit unconsumed: the force path samples only density,
+and no test asserts either property for this model --- the only speed-of-sound assertions anywhere
+target the Constant and Vacuum models. The edges are soft in both directions: below $0\unit{m}$
+the \code{Bin} lookup throws (guarded by the force-path altitude clamp;
+\src{utils/Bin.cpp}{51}), while above $71\unit{km}$ the last layer's formula extrapolates
+indefinitely because falling off the table's end returns the last bin
+(\src{utils/Bin.cpp}{57}) --- the real USSA76 regime change above $80\unit{km}$ is not modeled,
+and the header still carries an unresolved verification TODO
+(\src{sim/USStandardAtmosphere.h}{18}).
+
+Spherical gravity is a true Newtonian inverse square: the launch frame maps to geocentric
+coordinates as $(x, y, z + \text{groundLevel})$ and $a = -GM\,\vec{r}/|\vec{r}|^{3}$ with
+$GM=3.986004418\times10^{14}$ (\src{sim/SphericalGravityModel.cpp}{28},
+\src{utils/math/Constants.h}{26}). Its geoid, however, is a placeholder twice over: the single
+\code{SphericalGeoidModel} accepts latitude and longitude and ignores both, returning the WGS84
+mean radius $6371008.8\unit{m}$ unconditionally (\src{sim/SphericalGeoidModel.cpp}{18},
+\src{utils/math/Constants.h}{24}), and the gravity model queries it once at construction with
+literal $(0,0)$ --- the comment reads ``(0, 0) is a placeholder until a real launch site is
+plumbed in'' (\src{sim/SphericalGravityModel.cpp}{19}). There is no launch-site concept anywhere
+in \code{Environment} or the controller, so altitude above the pad is implicitly altitude above
+sea level in every atmosphere lookup.
+
+One registry behavior is inconsistent with the integrator facade and worth stating plainly:
+\code{setGravityModel} and \code{setAtmosphereModel} have no else branch, so an unrecognized name
+is a \emph{silent} no-op (\src{sim/Environment.h}{60}) --- tests pin the no-op
+(\src{sim/tests/EnvironmentTests.cpp}{94}) --- whereas the same mistake on
+\code{setIntegratorModel} is logged as an error (\src{sim/Integrator.h}{64}). Today both front ends
+populate their choices from the registries themselves, so a typo cannot arise; a future config
+file or save format would make it invisible.
+
+Wind is the purest specimen of the seam-without-consumer motif. The class exists and compiles into
+the sim library (\src{sim/CMakeLists.txt}{24}); its entire behavior is
+
+\begin{minted}{cpp}
+Vector3 WindModel::getWindSpeed(double /* x */, double /* y */ , double /* z */)
+{
+   return Vector3(0.0, 0.0, 0.0);
+}
+\end{minted}
+
+\noindent (\src{sim/WindModel.cpp}{16}), and a repository-wide search finds zero call sites: it is
+never instantiated, has no slot in the \code{Environment} registry
+(\src{sim/Environment.h}{103}), and never enters \code{getForces} --- drag uses ground-relative
+velocity only (\src{model/RocketModel.cpp}{88}). Wind cannot affect any simulation at this
+commit; what that costs in flight fidelity is discussed in \cref{sec:aero}.
+
+\subsection{The QtRocket controller}\label{sec:sim-controller}
+
+\code{QtRocket} is the Qt-free controller singleton whose ownership, API surface, and racy
+double-checked initialization are examined in \cref{sec:overview}; what matters here is how it
+runs a flight. \code{launchRocket()} (\src{QtRocket.cpp}{54}) runs the four launch steps of
+\cref{sec:overview} synchronously, end to end, on the calling thread
+(\code{RocketModel::launch} copies the initial state to current and ignites at $t=0$;
+\src{model/RocketModel.cpp}{105}). There is no worker thread, no progress reporting, and no cancellation:
+the simulation runs to completion on whichever thread calls it --- the Qt event thread when the
+GUI's launch button fires (\src{gui/CannonballTab.cpp}{116}), so the UI freezes for the run's
+duration, and the REPL loop for the CLI (\src{cli/Repl.cpp}{688}). Nothing reads the state history
+concurrently today and no lock protects it. The GUI's own threading arrangement --- the entire
+\code{QApplication} runs on a spawned \cppinline|std::thread| while \code{main()} blocks on join
+(\src{gui/GuiRunner.cpp}{62}) --- is examined in \cref{sec:interfaces}.
+
+Results flow back by const reference: \code{getStates()} exposes the \code{(time, StateData)}
+history stored on the \code{Propagatable} (\src{model/Propagatable.h}{47}), alongside
+\code{getTrajectoryStatistics()} and \code{getTerminationReason()} (\src{QtRocket.h}{48}). Two
+loose ends round out the picture. \code{addRocket} --- the API that would swap in a fresh
+model/propagator pair --- has no call sites (\src{QtRocket.h}{41}), joining
+\code{retainStates} in the dead-API column, and \code{setInitialState}'s doc comment still
+describes a stale twelve-element pitch/yaw/roll state vector that the 3-DOF core never consumes
+(\src{QtRocket.h}{66}). Both are consolidated with the other incompleteness findings in
+\cref{sec:roadmap}.

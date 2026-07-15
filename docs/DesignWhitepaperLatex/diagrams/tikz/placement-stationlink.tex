@@ -1,0 +1,106 @@
+% Placement intent vs resolved pose: parent BodyTube and child NoseCone in their
+% own fore-plane local frames with fractional stations 0/0.5/1; one StationLink
+% (parentStation01=1.0 -> childStation01=0.0, Abut, gap) bound between them; below,
+% placeChild's childOriginZ = p.z + signedGap - c.z as a dimline chain on the root
+% fore-plane (+z forward, tip) datum. Bare tikzpicture; the section wraps it.
+% Worked numbers: L_p = 0.90 m, L_c = 0.30 m, gap = 0.10 m; scale 1 m = 10 cm.
+\begin{tikzpicture}[font=\sffamily\small]
+
+  % panel extent markers (control the titledbox bounds)
+  \node[inner sep=0pt] (iNW) at (-0.55, 6.45) {};
+  \node[inner sep=0pt] (iSE) at (14.90,-2.20) {};
+  \node[inner sep=0pt] (rNW) at (-0.85,-3.55) {};
+  \node[inner sep=0pt] (rSE) at (14.90,-9.45) {};
+
+  % ================= panel 1: stored intent =================
+  % parent BodyTube in its own local frame: origin at the fore plane (right edge)
+  \draw[part] (0,0) rectangle (9,1.2);
+  \foreach \x/\lab in {0/{s = 0 (aft)}, 4.5/{0.5}, 9/{s = 1 (fore)}}{
+    \draw[station] (\x,-0.35) -- (\x,1.55);
+    \node[font=\sffamily\scriptsize, text=qrTeal, anchor=north] at (\x,-0.42) {\lab};
+  }
+  \node[font=\sffamily\scriptsize, align=center] at (2.25,0.6)
+    {parent --- \texttt{BodyTube}\\ $L_p = 0.90$ m};
+  \node[cmdot] at (4.5,0.6) {};
+  \node[font=\sffamily\scriptsize, text=qrRed, anchor=west] at (4.62,0.6) {cm};
+  \draw[axis] (9.15,0.6) -- (9.95,0.6);
+  \node[font=\sffamily\scriptsize, anchor=south] at (9.60,0.68) {$+z$};
+
+  % child NoseCone in its own local frame: tip = fore plane = local origin
+  \draw[part] (11,0) -- (11,1.2) -- (14,0.6) -- cycle;
+  \foreach \x/\lab in {11/{s = 0 (aft)}, 12.5/{0.5}, 14/{s = 1 (fore)}}{
+    \draw[station] (\x,-0.35) -- (\x,1.55);
+    \node[font=\sffamily\scriptsize, text=qrTeal, anchor=north] at (\x,-0.42) {\lab};
+  }
+  \node[font=\sffamily\scriptsize, anchor=south] at (12.6,1.75)
+    {child --- \texttt{NoseCone}, $L_c = 0.30$ m};
+  \node[cmdot] at (11.75,0.6) {};
+  \node[font=\sffamily\scriptsize, text=qrRed, anchor=west] at (11.87,0.6) {cm};
+  \draw[axis] (14.15,0.6) -- (14.90,0.6);
+  \node[font=\sffamily\scriptsize, anchor=south] at (14.45,0.68) {$+z$};
+
+  % the StationLink, bound to the two chosen stations
+  \node[umlnote, text width=52mm] (slink) at (3.4,3.9) {%
+    \textbf{StationLink} --- stored intent, the only\\
+    spatial relationship on the edge\\[2pt]
+    \texttt{parentStation01 = 1.0}\\
+    \texttt{childStation01 = 0.0}\\
+    \texttt{gap = 0.10}\ \textit{(m)}\\
+    \texttt{seat = SeatKind::Abut}\\
+    \texttt{childRot = identity}\ \textit{(6-DOF reserve)}\\[2pt]
+    \textit{Abut: rim-to-rim, equal radii;}\\
+    \textit{gap = forward standoff ($+z$)}};
+  \draw[umldep] ([xshift=-9mm]slink.south east) -- (9,1.60);
+  \draw[umldep] (slink.south east) -- (11,1.60);
+
+  % shared conventions
+  \node[font=\sffamily\scriptsize, text=qrGray, align=center, anchor=north] at (7.2,-1.05) {%
+    local frames: origin at the \emph{fore} plane, $+z$ forward, part spans $z \in [-L,\,0]$\\
+    \texttt{stationAt(s)}: $z = (s-1)\cdot L$ --- station 1 = fore plane ($z=0$), station 0 = aft plane ($z=-L$)\\
+    \textcolor{qrRed}{$\bullet$}\,cm --- derived after placement, never an input to it};
+
+  % ================= panel 2: resolved =================
+  % shared axis (drawn first; the parts overpaint it, leaving the gap band visible)
+  \draw[axis] (-0.7,-5.4) -- (14.35,-5.4);
+  \node[font=\sffamily\scriptsize, anchor=south] at (14.0,-5.32) {$+z$};
+
+  % root = parent tube planted at Pose{}: fore plane on the datum
+  \draw[part] (0,-6.0) rectangle (9,-4.8);
+  \node[font=\sffamily\scriptsize, align=center] at (3.0,-5.4)
+    {\texttt{BodyTube} (root)\quad $z \in [-0.90,\,0]$};
+  % child nose resolved: fore plane (tip) at childOriginZ = +0.40
+  \draw[part] (10,-6.0) -- (10,-4.8) -- (13,-5.4) -- cycle;
+
+  % datum + extension lines
+  \draw[station] (9,-8.0) -- (9,-4.55);
+  \node[font=\sffamily\scriptsize, text=qrTeal, anchor=south east, align=right] at (8.75,-4.55)
+    {root fore plane $z = 0$ (tip datum)\\ root planted at \texttt{Pose\{\}}};
+  \node[font=\sffamily\scriptsize, anchor=south, align=center] at (11.9,-4.62)
+    {child origin (fore plane)\\ \texttt{Pose.origin} $= (0,\,0,\,+0.40)$};
+  \draw[ghost] (10,-6.0) -- (10,-7.20);
+  \draw[ghost] (13,-5.4) -- (13,-8.00);
+
+  % dimline chain: childOriginZ = p.z + signedGap - c.z
+  \draw[dimline] (9,-6.9) -- (10,-6.9);
+  \node[flowlbl, anchor=south] at (9.5,-6.83) {\texttt{signedGap} $= +$\texttt{gap} $= +0.10$};
+  \draw[dimline] (10,-6.9) -- (13,-6.9);
+  \node[flowlbl, anchor=north] at (11.6,-6.97)
+    {$-\,c.z = +L_c = +0.30$\quad ($c.z = (0-1)\cdot L_c = -0.30$)};
+  \draw[dimline] (9,-7.7) -- (13,-7.7);
+  \node[flowlbl, anchor=north] at (10.8,-7.78)
+    {\texttt{childOriginZ} $= p.z + \texttt{signedGap} - c.z = 0 + 0.10 + 0.30 = +0.40$ m};
+
+  % chain footnotes
+  \node[font=\sffamily\scriptsize, text=qrGray, align=center, anchor=north] at (7.1,-8.35) {%
+    $p.z = (1.0-1)\cdot L_p = 0$ --- the chosen parent station \emph{is} the fore plane, already on the datum\\
+    seat signs the gap: \texttt{Abut}/\texttt{OnSurface} $\Rightarrow +$\texttt{gap} (forward standoff);
+      \texttt{NestInBore} $\Rightarrow -$\texttt{gap} (insertion depth, child moves aft)\\
+    the $-\,c.z$ term: the \texttt{Pose} locates the child's fore plane (its local origin), $c.z$ aft of the chosen station};
+
+  % ================= panel frames =================
+  \begin{pgfonlayer}{background}
+    \titledbox{(iNW)(iSE)}{Stored intent --- two local frames, fractional stations, one \texttt{StationLink}}{qrBlue}
+    \titledbox{(rNW)(rSE)}{Resolved --- one resolver: \texttt{placeChild(parentPose, parent, child, link)} $\to$ \texttt{Pose}}{qrTeal}
+  \end{pgfonlayer}
+
+\end{tikzpicture}

@@ -1,0 +1,308 @@
+\section{Functional comparison with OpenRocket}\label{sec:comparison}
+
+OpenRocket is this review's comparison baseline, and it is worth being precise about what that
+means: QtRocket is an independent project with similar goals, not a clone and not an
+implementation of OpenRocket's specification. OpenRocket is a GPLv3 Java/Swing application,
+mature over nearly two decades since it originated in Sampo Niskanen's 2009 master's thesis,
+whose extended version remains the published technical documentation of its
+methods\footnote{\url{https://openrocket.info/}; technical documentation at
+\url{https://openrocket.sourceforge.net/techdoc.pdf}, including a validation chapter comparing
+simulations against flight and wind-tunnel data.}. Its current release (24.12) offers quaternion
+six-degree-of-freedom simulation, extended Barrowman aerodynamics, event-driven recovery and
+staging, and a broad component catalog --- a surface QtRocket does not attempt to match today.
+The comparison therefore measures distance, not conformance: QtRocket currently occupies roughly
+the motor-database-plus-3-DOF-trajectory slice of OpenRocket's feature space, and within that
+slice it is genuinely finished and unusually well tested (\cref{sec:model,sec:motors,sec:sim}).
+
+\subsection{Four philosophical differences}\label{sec:comparison-philosophy}
+
+The gap pattern is explained less by effort than by philosophy. First, developmental order:
+QtRocket builds and tests seams before consuming them. The Barrowman CP/$C_{N_\alpha}$
+composition (\src{model/parts/Part.cpp}{231}), the quaternion slots in \code{StateData}
+(\src{sim/StateData.h}{46}), and the \code{getTorques()} interface
+(\src{model/RocketModel.cpp}{94}) all exist, are unit-tested, and are consumed by nothing ---
+the test suite says so itself (``nothing in production consumes this in P2'',
+\src{model/tests/AeroTests.cpp}{18}). OpenRocket's equivalent machinery was built feature-first
+and validated against flight data afterward.
+
+\begin{keyinsight}[Seams before consumers]
+Most of the hard structural machinery for QtRocket's next tier --- composite inertia, Barrowman
+composition, placement resolution, adaptive integration, an event-ready termination taxonomy ---
+is already built and tested, but staged behind seams with zero production consumers. The
+distance to OpenRocket is overwhelmingly a consumption gap, not a construction gap.
+\end{keyinsight}
+
+Second, failure posture: QtRocket is fail-closed where OpenRocket is warn-and-continue. A
+self-intersecting design hard-fails the mass computation with a located diagnostic
+(\src{model/parts/Part.cpp}{184}) where OpenRocket warns and simulates anyway; legacy design
+files are rejected rather than migrated (\src{model/DesignSerializer.cpp}{194}); the RASP parser
+rejects malformed motor files with typed, line-numbered errors (\src{model/RASPLoader.cpp}{253}).
+This costs user forgiveness but guarantees that a produced number came from a coherent model.
+
+Third, the placement model: OpenRocket positions components by offsets under its
+\code{AxialMethod} scheme, while QtRocket records placement as intent --- a \code{StationLink}
+names fractional stations on both ends of a seam plus a seat kind selecting the radial
+compatibility rule (\src{model/parts/Placement.h}{49}). Arguably the richer model, though at the
+pinned commit only the coaxial \code{Abut} verb is reachable from any front end
+(\src{cli/Repl.cpp}{872}) --- another built-but-unconsumed seam (\cref{sec:model}).
+
+Fourth, where the engineering effort has gone. QtRocket's infrastructure is strong for its size:
+a five-platform CI matrix with \code{-Werror} tree-wide
+(\src{.github/workflows/cmake-multi-platform.yml}{28}), \code{llvm-cov} coverage in the build,
+and 239 tests including a placement-invariance gate and 1/4A--M motor-ladder sweeps
+(\cref{sec:testing}). And three capabilities are genuine advantages rather than subsets: live
+thrustcurve.org search (\src{model/ThrustCurveClient.h}{68}) where OpenRocket bundles periodic
+snapshots; a true embedded-error adaptive RKF45 integrator (\src{sim/RK45Solver.h}{75}) where
+OpenRocket adapts its RK4 step heuristically with no embedded error pair; and a fully scriptable
+headless REPL (\cref{sec:interfaces}) where OpenRocket has no interactive headless story at all.
+
+\subsection{Feature matrix}\label{sec:comparison-matrix}
+
+\Cref{tab:comparison-matrix} compares sixteen feature areas. OpenRocket claims are condensed
+from the project's documentation and release notes\footnote{Primarily
+\url{https://openrocket.readthedocs.io/en/latest/introduction/features.html} and the release
+notes in the \texttt{openrocket/openrocket} repository.}; QtRocket claims carry citations to the
+pinned commit. Markers: \fpresent{} implemented and consumed; \fpartial{} built but incomplete
+or unconsumed; \fabsent{} not present; \fwip{} under development on an unmerged branch.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.92in}>{\raggedright\arraybackslash}p{2.32in}>{\raggedright\arraybackslash}p{2.84in}@{}}
+\caption{Feature-area comparison: OpenRocket 24.12 versus QtRocket at commit
+\code{254cd41}.}\label{tab:comparison-matrix}\\
+\toprule
+\textbf{Area} & \textbf{OpenRocket} & \textbf{QtRocket} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{@{}l}{\textit{\tablename~\thetable{} (continued)}}\\[2pt]
+\toprule
+\textbf{Area} & \textbf{OpenRocket} & \textbf{QtRocket} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\textit{continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+Rocket components (part catalog) &
+Roughly twenty types: six nose-cone shape families, transitions, inner tubes, couplers,
+centering rings, lugs, rail buttons, four fin classes, recovery devices, mass objects, pods,
+boosters; per-component mass/CG/$C_d$ overrides and a commercial preset database. &
+\fpartial{} Five types (\src{model/parts/PartFactory.cpp}{32}); geometry immutable after
+construction, so live dimension editing has no mutation path. Distinctive: intent-based
+\code{StationLink} placement (\src{model/parts/Placement.h}{49}) whose overlap sweep hard-fails
+self-intersecting designs (\src{model/parts/Part.cpp}{184}) --- stronger than warn-and-simulate. \\
+\addlinespace
+Mass / inertia modeling &
+Per-component mass, CG, and two moments of inertia from geometry and density, parallel-axis
+combined; overrides rescale or shift inertias; motor mass varies with burn time. &
+\fpresent{} Lazy two-pass time-aware composition with parallel-axis shifts
+(\src{model/parts/Part.cpp}{175}); mass-delta cache freezes bit-stably after burnout
+(\src{model/parts/Part.cpp}{130}); closed-form tensors pinned by numeric oracles
+(\src{model/tests/InertiaTensorsTests.cpp}{186}). The $R\,I\,R^{T}$ child-tensor rotation is
+omitted pending 6-DOF (\src{model/parts/Part.cpp}{217}). \\
+\addlinespace
+Aerodynamics: CP / stability &
+Extended Barrowman with body lift, pitch damping, roll dynamics; CP/$C_{N_\alpha}$ evaluated
+per step at flight angle of attack and Mach; live CP/CG markers with caliber readout. &
+\fpartial{} Per-part Barrowman math exists and is unit-tested, with composite CP on a shared tip
+datum (\src{sim/Aero.h}{24}, \src{model/parts/Part.cpp}{231}) --- but zero production consumers,
+and no surface shows CP, CG, or margin. Latent defect: mirrored \code{FinSet} chordwise sign
+convention (\cref{sec:aero}). \\
+\addlinespace
+Aerodynamics: drag decomposition &
+Component build-up: roughness-aware skin friction, body/fin pressure drag, base drag, parasitic
+drag, transonic/supersonic corrections per nose shape. &
+\fabsent{} One user-set scalar $C_d$ (default 1.0) times one reference area
+(\src{model/RocketModel.cpp}{81}); every part's drag contribution returns zero
+(\src{model/parts/BodyTube.cpp}{41}); no Mach or Reynolds number exists.
+\code{deriveReferenceAreaFromGeometry()} is correct but uncalled
+(\src{model/parts/Part.cpp}{251}), so all 25 bundled designs fly on a stale or default
+38\,mm disc. \\
+\addlinespace
+Degrees of freedom / flight dynamics &
+Quaternion 6-DOF (degrading deliberately to 3-DOF under recovery); RK4 with heuristic step
+reduction; validated against flight data ($\sim$10\% altitude accuracy). &
+\fpartial{} 3-DOF point mass, heavily tested end-to-end. Thrust hardwired along world $+z$
+(\src{model/RocketModel.cpp}{70}); \code{getTorques()} returns zero with no caller
+(\src{model/RocketModel.cpp}{94}); orientation integrator commented out
+(\src{sim/Propagator.h}{103}). Ahead: embedded-error adaptive RKF45
+(\src{sim/RK45Solver.h}{75}); typed termination taxonomy (\src{sim/Propagator.h}{35}). \\
+\addlinespace
+Atmosphere / gravity / wind &
+Eight-layer ISA with site overrides; pink-noise turbulence and multi-level winds with CSV
+import; flat/spherical/WGS84 earth with Coriolis; launch rod/rail. &
+\fpartial{} Three atmospheres (US Standard 1976 validated to 0.1--0.5\% up to 80\,km) and true
+inverse-square spherical gravity (\src{sim/SphericalGravityModel.cpp}{28}). Wind is dead code:
+returns $(0,0,0)$, zero call sites (\src{sim/WindModel.cpp}{16}); no rod/rail (pad-hold clamp
+only, \src{sim/Propagator.cpp}{105}), no launch site, no Coriolis. \\
+\addlinespace
+Recovery &
+Parachute/streamer deployment on launch/ejection/apogee/altitude/separation events with delays;
+dual deployment; empirical streamer $C_d$; post-deploy descent; zipper and ground-hit warnings. &
+\fabsent{} Nothing changes at apogee; flight ends ballistically at the $z<0$-descending
+terminate (\src{model/RocketModel.cpp}{62}). Ejection delays are parsed and persisted but
+consumed by no flight logic; apogee exists only as a post-hoc statistic. \\
+\addlinespace
+Staging / clusters / flight configurations &
+Unlimited serial stages plus strap-on boosters; separation and ignition event options with
+delays; motor clusters; named flight configurations. &
+\fabsent{} Single motor, single stage: first-match DFS (\src{model/RocketModel.cpp}{13});
+\code{Stage.h} is a commented-out ``Not yet'' include (\src{model/RocketModel.h}{22}). Ignition
+timing is half-plumbed (\code{ThrustCurve::setIgnitionTime} has zero call sites); the motor sits
+at the airframe CM with a hardcoded zero offset (\src{model/RocketModel.cpp}{124}). \\
+\addlinespace
+Motor data \& selection &
+Bundled complete thrustcurve.org corpus (1000+ motors) offline; RASP \code{.eng} and RockSim
+\code{.rse} user files; rich chooser with search, filters, curve plots, delay presets. &
+\fpartial{} Three ingest paths behind one facade: RSE (\src{model/RSEDatabaseLoader.cpp}{20}),
+strict RASP (\src{model/RASPLoader.cpp}{253}), live thrustcurve.org search behind a
+fake-injectable seam (\src{model/ThrustCurveClient.h}{68}) --- live search the baseline lacks.
+Ships with an empty database; per-sample mass/CG data discarded
+(\src{model/RSEDatabaseLoader.cpp}{89}); common-name keying silently replaces on collision. \\
+\addlinespace
+Design UI &
+Component tree with drag-and-drop and undo; per-component dialogs; live 2D schematics with
+CG/CP markers; real-time background simulation while editing. &
+\fwip{} At the pinned commit, a motor-and-launch front end only: design widgets are constructor
+stubs (\src{gui/RocketTreeView.cpp}{1}), File actions ship disabled
+(\src{gui/MainWindow.ui}{116}), authoring is CLI-only (\src{cli/Repl.cpp}{784}). The unmerged
+\code{RocketTreeViewImplementation} branch adds a read-only tree and \code{.qrd} open/save; no
+add/edit UI, no property panel, no schematic. \\
+\addlinespace
+3D visualization &
+Embedded 3D finished/unfinished views, per-component appearance, textures and decals,
+PhotoStudio photorealistic rendering. &
+\fpresent{} Standalone \code{qtrocket-visualizer} meshes the tree
+(\src{visualizer/RocketMesh.cpp}{90}) and positions meshes with the simulator's own placement
+resolver (\src{visualizer/RocketMesh.cpp}{433}), so rendered and simulated geometry cannot
+diverge; overlap offenders render in error red (\src{visualizer/RocketGLWidget.cpp}{617}). Not
+embedded in the GUI; motors render no geometry; no tests. \\
+\addlinespace
+Plotting / analysis &
+50+ plottable variables on configurable axes with event overlays; custom expressions; component
+analysis; CSV export with selectable columns. &
+\fpartial{} Three fixed plots (\src{gui/AnalysisWindow.cpp}{36}); CLI launch summary plus a
+fixed-schema CSV auto-written to a hardcoded \code{./qtrocket\_run.csv}
+(\src{cli/Repl.cpp}{104}). No configurable plots, no event annotations, no stability outputs. \\
+\addlinespace
+File formats \& interop &
+\code{.ork} zipped XML with loaders back to v1.0; RockSim \code{.rkt} and RASAero \code{.CDX1}
+import/export; OBJ, SVG, CSV, PDF export. &
+\fpartial{} Versioned \code{.qrd} XML round-trips the tree with placement intent, re-resolved on
+load (\src{model/DesignSerializer.cpp}{93}); fail-safe atomic loading
+(\src{model/DesignSerializer.cpp}{255}). Legacy 0.1 files rejected with no migration path
+(\src{model/DesignSerializer.cpp}{194}); mass overrides lost on save; no foreign import or
+export of any kind. \\
+\addlinespace
+Simulation extensibility / scripting &
+Three simulation-listener interfaces that can mutate state per step; shipped extensions;
+JavaScript scripting; runtime plugin JARs. &
+\fpartial{} No listener, plugin, or scripting mechanism. Partial substitute the baseline lacks:
+a 33-command scriptable CLI over a machine-parseable OK/ERR protocol
+(\src{cli/Repl.cpp}{232}), weakened as automation by an always-zero exit code. \\
+\addlinespace
+Optimization / dispersion &
+Rocket Optimizer: multi-parameter optimization toward altitude/velocity/stability goals. Monte
+Carlo dispersion explicitly absent, on its own roadmap. &
+\fabsent{} Neither optimizer nor dispersion exists (greps return zero hits); since the baseline
+also lacks Monte Carlo, the gap is the optimizer only. The deterministic core and scriptable CLI
+make external sweeps feasible today, but nothing in-product supports them. \\
+\addlinespace
+Docs / i18n / platform / distribution &
+GPLv3 Java with JRE-bundled installers for Windows/macOS/Linux, Snap and Chocolatey packages;
+15-language localization; published technical documentation with a validation chapter. &
+\fpartial{} Strong engineering infrastructure: five-platform CI with \code{-Werror}
+(\src{.github/workflows/cmake-multi-platform.yml}{28}), \code{llvm-cov} coverage, 239 tests.
+Distribution essentially absent: one install rule (\src{CMakeLists.txt}{308}), no CPack or
+installers; i18n is dead scaffolding (\src{CMakeLists.txt}{201}), English only. \\
+\end{longtable}
+\endgroup
+
+\subsection{Deficiencies, ranked by flight-realism impact}\label{sec:comparison-gaps}
+
+Ranked by how much each blocks simulating a realistic flight, the gaps order as follows; the
+consolidated register with severities is \cref{sec:roadmap}.
+
+\textbf{Rank 1: flight-dynamics fidelity.} No rotational dynamics and no aerodynamics reach the
+force path: thrust is hardwired along world $+z$ (\src{model/RocketModel.cpp}{70}),
+\code{getTorques()} has no caller, the orientation integrator is commented out, and
+\code{StateData}'s quaternions are zero-initialized to a non-rotation
+(\src{sim/StateData.h}{46}). The fully built Barrowman layer never reaches \code{getForces}, so
+there is no angle of attack, restoring moment, weathercocking, or gravity turn --- an angled
+launch tilts only the initial velocity while thrust stays permanently vertical. OpenRocket
+integrates quaternion 6-DOF with angle-of-attack-dependent Barrowman forces every step. Two
+latent defects must be fixed before the seam is consumed: the \code{FinSet} sign mirror
+(\cref{sec:aero}) and the omitted $R\,I\,R^{T}$ rotation (\cref{sec:model}). The force path is
+developed in \cref{sec:sim,sec:aero}.
+
+\textbf{Rank 2: recovery and flight events.} Every flight ends ballistically
+(\src{model/RocketModel.cpp}{62}); nothing changes at apogee. Ejection delays are ingested and
+persisted but drive no flight logic (\cref{sec:motors}). OpenRocket's event architecture ---
+ignition, burnout, ejection, rod-clear, apogee, deployment, touchdown --- drives staged recovery
+with per-device triggers and descent under parachute drag; QtRocket reports only a termination
+reason (\cref{sec:sim}). For anyone who cares about descent rate or landing distance, this is
+the most visible physics gap.
+
+\textbf{Rank 3: drag fidelity.} A single user-guessed $C_d$ times a single reference area
+(\src{model/RocketModel.cpp}{81}) is a hand calculation, not a drag model; no Mach number
+exists, so large-motor flights sail through Mach~1 on subsonic-constant drag. The wiring bug
+compounds it: \code{deriveReferenceAreaFromGeometry()} is correct but uncalled
+(\src{model/parts/Part.cpp}{251}), so drag does not even scale with airframe class
+(\cref{sec:aero}).
+
+\textbf{Rank 4: wind and launch environment.} \code{WindModel} returns $(0,0,0)$ with zero call
+sites (\src{sim/WindModel.cpp}{16}), so airspeed always equals ground velocity; there is no
+launch rod or rail (\src{sim/Propagator.cpp}{105}), no launch site, and no Coriolis --- against
+pink-noise turbulence, multi-level winds, rod-departure warnings, and WGS84 geodetics in the
+baseline (\cref{sec:sim}).
+
+\textbf{Rank 5: propulsion breadth.} One motor, one stage (\src{model/RocketModel.cpp}{13});
+no clusters, configurations, or ignition events; the motor pinned at the airframe CM
+(\src{model/RocketModel.cpp}{124}) skews CG travel over the burn; and the RSE loader discards
+the manufacturer-measured mass/CG samples OpenRocket honors
+(\src{model/RSEDatabaseLoader.cpp}{89}). QtRocket also ships with an empty motor database versus
+OpenRocket's bundled thousand-plus-motor corpus\footnote{Maintained separately at
+\url{https://github.com/openrocket/motor-database} and re-imported each release.}
+(\cref{sec:motors}).
+
+\textbf{Rank 6: component catalog.} Five part types (\src{model/parts/PartFactory.cpp}{32})
+against roughly twenty: many realistic airframes cannot be described yet, independent of any
+physics limitation, and immutable part geometry leaves live dimension editing --- table stakes in
+a design tool --- with no mutation path (\cref{sec:model}).
+
+\textbf{Rank 7: the GUI design experience}, the widest user-facing gap. At the pinned commit the
+design widgets are stubs (\src{gui/RocketTreeView.cpp}{1}) and authoring is CLI-only; the
+unmerged \code{RocketTreeViewImplementation} branch adds a read-only tree and \code{.qrd}
+open/save but no editor, and no CP/CG or stability readout exists on any surface. Simulation and
+network fetches run synchronously on the GUI thread, and \code{QApplication} runs on a spawned
+worker thread contrary to Qt's expectations (\src{gui/GuiRunner.cpp}{59}, fatal on macOS)
+(\cref{sec:interfaces}).
+
+\textbf{Ranks 8--10, briefly.} Analysis: three fixed plots and a fixed-schema CSV versus 50+
+configurable variables with custom expressions (\cref{sec:interfaces}). Interop: no \code{.ork}
+or \code{.rkt} import, no plugin mechanism, no optimizer --- Monte Carlo is absent in both tools
+(\cref{sec:persistence}). Distribution: essentially no packaging, dead i18n scaffolding, versus
+fifteen languages and JRE-bundled installers (\cref{sec:testing}).
+
+\subsection{Where QtRocket is ahead}\label{sec:comparison-ahead}
+
+Fairness cuts both ways. Live thrustcurve.org search behind a fake-injectable seam
+(\src{model/ThrustCurveClient.h}{68}) has no OpenRocket equivalent; nor does the embedded-error
+adaptive RKF45 (\src{sim/RK45Solver.h}{75}); nor the hang-proof loop with its typed termination
+taxonomy (\src{sim/Propagator.h}{35}); nor the scriptable headless REPL
+(\src{cli/Repl.cpp}{232}). The visualizer positions meshes with the exact placement resolver the
+physics uses (\src{visualizer/RocketMesh.cpp}{433}), a single-source-of-truth property
+OpenRocket's separate rendering path does not enjoy; gravity is available as true inverse-square
+spherical (\src{sim/SphericalGravityModel.cpp}{28}); and the fail-closed overlap diagnostics
+(\src{model/parts/Part.cpp}{184}) impose a correctness discipline the baseline's
+warn-and-continue model does not.
+
+The fair summary: OpenRocket is a mature product with a broad surface and a published validation
+record; QtRocket is a rigorously engineered core whose hard structural machinery for the next
+tier is already built, tested, and staged behind well-signposted seams. The roadmap-critical
+work (\cref{sec:roadmap}) is overwhelmingly consumption rather than construction: wire the aero
+profile and torques into a 6-DOF force path, add an event system with recovery, connect the
+geometry-derived reference area, plumb wind, and give the GUI the design editor the CLI already
+proves the core can support.

@@ -1,0 +1,601 @@
+\section{The simulation core}\label{sec:simcore}
+
+The preceding sections describe the rocket as an object: a part tree with mass properties
+(\cref{sec:parts,sec:placement}) and a motor that pushes it (\cref{sec:motors}). This section
+describes the machine that flies it. The simulation core --- the \srcf{sim/} layer --- turns a
+\code{model::Propagatable} (in production, \code{RocketModel}) into a time history of flight
+states. \code{sim::Propagator} owns the ordinary-differential-equation (ODE) loop: it builds the
+coupled first-order system $\dot{x}=v,\ \dot{v}=F(t,x,v)/m(t)$ as a lambda
+\src{sim/Propagator.cpp}{36}, hands it to a \code{sim::Integrator} --- a string-keyed runtime
+selector over two \code{DESolver<Vector3>} backends, a fixed-step classical Runge--Kutta~4 and an
+adaptive Runge--Kutta--Fehlberg~4(5) embedded pair \src{sim/Integrator.h}{25} --- and drives
+\code{runUntilTerminate()} until the model reports end of flight or a safety guard converts a
+would-be infinite loop into a typed verdict \src{sim/Propagator.cpp}{58}.
+
+Two facts frame everything that follows. First, only the three linear degrees of freedom (DOF)
+are integrated: the moving state is center-of-mass position and velocity, nothing else.
+\code{StateData} reserves quaternion orientation slots, but no code writes them, and the
+orientation integrator exists only as a commented-out member \src{sim/Propagator.h}{103} ---
+\cref{sec:simcore-ode} states this plainly and \cref{sec:incomplete} carries the consolidated
+inventory. Second, every run ends with a reason: the loop cannot exit without assigning one of
+five \code{TerminationReason} enumerators \src{sim/Propagator.h}{35}, and the whole loop body is
+wrapped in a try/catch so even a throwing integrator lands on a verdict rather than escaping
+uncaught \src{sim/Propagator.cpp}{81}.
+
+\subsection{The pieces and their contracts}\label{sec:simcore-pieces}
+
+\Cref{fig:simcore-uml} shows the static structure. Five types carry the design; each has a
+contract narrow enough to state in a sentence or two.
+
+\tikzfig{uml-sim}{Static structure of the simulation core. \code{sim::Propagator} drives a
+\code{model::Propagatable} (implemented by \code{RocketModel}) and owns one
+\code{sim::Integrator} \srccap{sim/Propagator.h}{100}, which in turn owns the two
+\code{DESolver<Vector3>} backends in a string-keyed map and holds the ODE callback
+\srccap{sim/Integrator.h}{86}. \code{StepResult} carries each step's advanced state, rate, and
+the step actually taken back to the loop; \code{StateData} is the recorded sample type and
+\code{TrajectoryStatistics} the running per-flight summary, both owned on the model side of the
+bridge.}{fig:simcore-uml}
+
+\paragraph{\code{model::Propagatable}.} The model$\leftrightarrow$sim bridge
+(\cref{sec:overview}) is the only view of the rocket the loop ever sees
+\src{model/Propagatable.h}{23}. Its pure-virtual heart is \code{getForces(t, position, velocity,
+environment)} \src{model/Propagatable.h}{29}, \code{getMass(t)} \src{model/Propagatable.h}{32},
+\code{writeMassProperties(t, st)} \src{model/Propagatable.h}{37}, and
+\code{terminateCondition(t)} \src{model/Propagatable.h}{39} --- the model, not the loop, decides
+when a flight is over. Two more virtuals exist without a consumer: \code{getTorques(t)} is
+implemented as a zero vector and never called \src{model/RocketModel.cpp}{94} --- the torque
+half of the bridge waits for the aerodynamic moments of \cref{sec:aero} --- and
+\code{getCompositeInertiaTensor(t)} \src{model/Propagatable.h}{33} has no production caller,
+because per-step inertia recording flows through \code{writeMassProperties} instead
+(\cref{sec:incomplete}). The interface also carries the non-virtual plumbing the loop relies on:
+state accessors, the recorded history as (time, \code{StateData}) pairs
+\src{model/Propagatable.h}{49}, and the statistics fold \src{model/Propagatable.h}{55}.
+
+\paragraph{\code{sim::Propagator}.} The run-loop owner. It shares ownership of the flown body and
+the injected \code{Environment} \src{sim/Propagator.h}{105} and owns exactly one
+\code{Integrator} \src{sim/Propagator.h}{100}. Its knobs are few: \code{timeStep} defaults to
+$0.01\unit{s}$ \src{sim/Propagator.h}{110}, and \code{setTimeStep} rejects any \code{ts} failing
+\cppinline|ts > 0.0| (which also catches NaN) with a logged warning, keeping the previous value
+\src{sim/Propagator.h}{73}, then pushes the accepted step into the integrator so the loop's time
+axis and the solver's step cannot diverge \src{sim/Propagator.h}{82}. \code{setMaxSimTime}
+bounds a run at $7200\unit{s}$ by default \src{sim/Propagator.h}{115}; the no-liftoff thresholds
+($3\unit{s}$, $1\unit{m}$) and the $10^{8}$-iteration ceiling are namespace-scope constants
+\src{sim/Propagator.h}{26}.
+
+\paragraph{\code{sim::Integrator}.} A runtime selector, non-copyable and non-movable
+\src{sim/Integrator.h}{38}. Its constructor seeds a map with exactly two keys ---
+\code{"Runge-Kutta 4th Order"} and \code{"Runge-Kutta-Fehlberg"} --- and immediately selects RK4
+as the default \src{sim/Integrator.h}{32}. \code{setIntegratorModel} constructs a fresh solver
+for a recognized name from the stored ODE callback \src{sim/Integrator.h}{57}; an unknown name is
+a logged no-op that keeps the current model \src{sim/Integrator.h}{64}, pinned by a unit test
+\src{sim/tests/IntegratorTests.cpp}{32}. \code{step} forwards to the active solver
+\src{sim/Integrator.h}{82}. Front ends never hard-code the model list: they enumerate
+\code{getAvailableIntegratorModels()} \src{sim/Integrator.h}{43} --- the GUI fills its combo box
+from a throwaway \code{Integrator} \src{gui/SimOptionsTab.cpp}{42} --- and selection flows front
+end $\to$ \code{QtRocket} \src{QtRocket.h}{36} $\to$ \code{Propagator} $\to$ \code{Integrator}
+(\cref{sec:interfaces}).
+
+\paragraph{\code{sim::DESolver<T>} and \code{StepResult<T>}.} The abstract solver interface
+\src{sim/DESolver.h}{29}: \code{setTimeStep} (for a fixed-step solver, the step; for an adaptive
+one, the seed guess \src{sim/DESolver.h}{36}), \code{setFunction}, and \code{step(t, state,
+rate)}, whose stages evaluate at their node times $t + c_i h$ \src{sim/DESolver.h}{39}. \code{T}
+is restricted to \code{Vector3} or \code{Quaternion} by a \cppinline|static_assert| in both
+concrete solvers \src{sim/RK4Solver.h}{34}, \src{sim/RK45Solver.h}{51}; only
+\code{<Vector3>} is ever instantiated in production. Every step returns a
+\code{StepResult<T>}: the advanced state, the advanced rate, and \code{stepSize}, the step
+actually taken \src{sim/DESolver.h}{21}.
+
+\begin{designrule}[Advance by the step actually taken]
+The interface contract says it outright: callers advance their clock by
+\code{StepResult::stepSize}, never by an assumed \code{dt} \src{sim/DESolver.h}{18}. The run
+loop honors it --- \cppinline|currentTime += result.stepSize| is its only clock advance
+\src{sim/Propagator.cpp}{166} --- as does the solver test helper
+\src{sim/tests/RK45SolverTests.cpp}{32}. This one rule is what makes the backends
+interchangeable: under RK4 the reported step is always \code{dt}, under RKF45 it is whatever the
+controller accepted, and the loop's time axis follows the solver instead of presuming it.
+\end{designrule}
+
+\paragraph{\code{StateData} and \code{sim::TrajectoryStatistics}.} \code{StateData} (global
+namespace \src{sim/StateData.h}{15}) is one instant of physical state: all-public value
+semantics, copy/move explicitly defaulted --- memberwise, so a new member cannot be silently
+dropped \src{sim/StateData.h}{24}. Its live fields are world-frame \code{position} (m) and
+\code{velocity} (m/s) \src{sim/StateData.h}{42}; its recorded fields are the composite
+\code{mass}, \code{cg}, and full $3\times 3$ \code{inertia} tensor written once per retained
+step \src{sim/StateData.h}{60}; its dormant fields are the orientation slots taken up in
+\cref{sec:simcore-ode}. \code{TrajectoryStatistics} is a plain struct of five doubles --- \code{maxAltitude},
+\code{timeOfMaxAltitude}, \code{maxSpeed}, \code{timeOfMaxSpeed}, \code{totalFlightTime}
+\src{sim/TrajectoryStatistics.h}{18} --- folded up every step and examined in
+\cref{sec:simcore-stats}.
+
+\subsection{The equations of motion, as coded}\label{sec:simcore-ode}
+
+The integrated physics is one lambda, built in the \code{Propagator} constructor and closing over
+the model and the injected environment (\cref{lst:simcore-ode}). The comment above it states the
+design intent: linear ODEs, with $t$ passed through so \code{getForces()} can evaluate a
+time-dependent forcing function --- the motor thrust curve --- at the actual simulation time
+\src{sim/Propagator.cpp}{34}.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> linearODEs = [this](double t, Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
+{
+    Vector3 dPosition;
+    Vector3 dVelocity;
+    dPosition = rate;
+    dVelocity = object->getForces(t, state, rate, *environment) / object->getMass(t);
+
+    return std::make_pair(dPosition, dVelocity);
+};
+\end{minted}
+\caption{The integrated physics in its entirety \srccap{sim/Propagator.cpp}{36}: one lambda
+closing over the model and the environment. Everything the solvers ever learn about rockets
+passes through this pair of derivatives.}\label{lst:simcore-ode}
+\end{listing}
+
+In the code's own names, with \code{state} the center-of-mass position (m) and \code{rate} its
+velocity (m/s):
+\begin{equation}\label{eq:simcore-ode}
+\mathtt{dPosition} = \mathtt{rate},
+\qquad
+\mathtt{dVelocity} = \frac{\mathtt{getForces}(t,\ \mathtt{state},\ \mathtt{rate},\ \mathtt{environment})}{\mathtt{getMass}(t)} .
+\end{equation}
+This is Newton's second law with time-varying mass, reduced from one second-order equation to a
+coupled first-order pair: $\dot{x}=v,\ \dot{v}=F(t,x,v)/m(t)$. There is no separate
+$\dot{m}\,v_e$ rocket-equation term in the simulation core: thrust arrives already as a force
+from the motor's measured thrust curve (\cref{sec:motors}), so the momentum flux is embedded in
+the data, and mass loss enters only through the divisor and the gravity term. The force side
+assembles three contributions per evaluation --- thrust along $+z$ through the center of mass
+\src{model/RocketModel.cpp}{71}, gravity evaluated at the integrator's \emph{trial} position so
+each stage sees a consistent state \src{model/RocketModel.cpp}{73}, and quadratic drag
+$-\tfrac12\,\rho(\text{alt})\,\lvert v\rvert\,C_d\,A\,v$ \src{model/RocketModel.cpp}{88} --- with
+the gravity and atmosphere models behind them the subject of \cref{sec:environment} and the drag
+law itself of \cref{sec:aero}.
+
+Mass is sampled \emph{twice} per derivative evaluation: once in the lambda as the divisor
+\src{sim/Propagator.cpp}{41}, and once more inside \code{getForces} itself, where the gravity
+force is \cppinline|gravityModel->getAccel(position)*getMass(t)|
+\src{model/RocketModel.cpp}{77}. Both samples carry the same stage node time, so thrust and
+burning mass stay mutually consistent within a step; under RK4 that is four evaluations --- eight
+mass reads --- per step, under RKF45 six evaluations per attempt. The composite accessors behind
+\code{getMass} are gated (\cref{sec:parts}), so post-burnout reads hit a frozen cache.
+
+The solvers do not see a six-component state vector. Each backend advances \emph{two}
+\code{T}-valued variables --- \code{state} and \code{rate} --- whose derivatives arrive from one
+callback returning a \code{std::pair}, first element the state derivative, second the rate
+derivative \src{sim/DESolver.h}{44}. For the linear DOF this pairing \emph{is} the order
+reduction of \cref{eq:simcore-ode}; the same shape is intended to serve a future orientation ODE
+with \code{T = Quaternion}, which is why the \cppinline|static_assert| admits the type
+\src{sim/RK45Solver.h}{51}.
+
+That future is visible in the tree but is not running. \code{StateData} reserves a quaternion
+\code{orientation} and \code{orientationRate} (stored $(x,y,z,w)$ per project convention; the
+field comment reads ``(vector, scalar)'') \src{sim/StateData.h}{46}, a direction-cosine matrix
+(DCM) \src{sim/StateData.h}{49}, and 3-2-1 yaw-pitch-roll Euler angles
+\src{sim/StateData.h}{51}. None of these has a writer anywhere: a repository-wide search finds
+only the declarations. The quaternions are brace-initialized to all zeros --- not a valid unit
+rotation --- which is safe only because nothing reads them. And the orientation integrator itself
+is a commented-out member whose design note already fixes its interface
+(\cref{lst:simcore-orientation}). These are reserved 6-DOF seams, not live state;
+\cref{sec:incomplete} inventories them alongside the dormant \code{getTorques}.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   std::unique_ptr<sim::Integrator> linearIntegrator;
+   // The 6-DOF orientation integrator will use the same DESolver<Quaternion> interface, with a
+   // time-keyed ODE callback so getTorques() can be sampled at each stage's node time like getForces().
+//   std::unique_ptr<sim::RK4Solver<Quaternion>> orientationIntegrator;
+\end{minted}
+\caption{The other half of the problem, waiting \srccap{sim/Propagator.h}{100}: the linear
+integrator is live; the orientation integrator is a commented-out member whose comment already
+names the interface and the sampling discipline it will use.}\label{lst:simcore-orientation}
+\end{listing}
+
+\subsection{The run loop, step by step}\label{sec:simcore-loop}
+
+A flight reaches the loop through \code{QtRocket::launchRocket()}, which is four calls: clear the
+state history, reset the propagator clock to zero, \code{launch()} the model --- copy the initial
+state into the current state and ignite the motor at $t=0$ \src{model/RocketModel.cpp}{105} ---
+and \code{runUntilTerminate()} \src{QtRocket.cpp}{54}. \Cref{fig:simcore-loop} shows the loop;
+the walk below follows it top to bottom.
+
+\tikzfig{act-propagator-loop}{One run of \code{runUntilTerminate()}
+\srccap{sim/Propagator.cpp}{58}. The guards fire in a fixed order every iteration: non-finite
+rejection before anything is recorded, the pad-hold clamp before the commit, then the nominal,
+no-liftoff, and hard-backstop checks, with the clock advanced last by the step the solver
+actually took. Every exit edge --- including the exception path around the whole loop ---
+assigns one of the five typed \code{TerminationReason} verdicts.}{fig:simcore-loop}
+
+\begin{enumerate}
+\item \textbf{Re-assert the timestep, start clean.} The first statement pushes the stored
+  \code{timeStep} into the integrator so a run always steps with it \src{sim/Propagator.cpp}{61}
+  --- redundant-looking but load-bearing, because a model switch silently resets a fresh
+  solver's step (\cref{sec:simcore-recording}). The verdict resets to \code{Nominal} and the
+  statistics to zero \src{sim/Propagator.cpp}{64}; a per-run local
+  \cppinline|bool liftedOff = false| tracks whether the rocket has yet risen above the pad
+  \src{sim/Propagator.cpp}{77}.
+\item \textbf{Step.} Each iteration reads the model's current position and velocity
+  \src{sim/Propagator.cpp}{85}, takes one integrator step
+  \src{sim/Propagator.cpp}{88}, and builds a candidate \code{nextState} from the returned
+  \code{StepResult} \src{sim/Propagator.cpp}{90}.
+\item \textbf{Guard: non-finite state.} If any coefficient of the stepped position or velocity
+  fails Eigen's \code{allFinite()}, the run aborts as \code{NonFiniteState}
+  \src{sim/Propagator.cpp}{97}. The in-tree rationale is exact: a NaN coordinate fails every
+  comparison, so $z<0$ would never trip and the loop would spin forever; breaking here also
+  keeps the poisoned sample out of the state history \src{sim/Propagator.cpp}{94}, which the
+  guard test confirms \src{tests/PropagatorTests.cpp}{91}.
+\item \textbf{Pad-hold clamp.} Until the first genuinely positive-altitude step, the rocket is
+  held on the pad: if $\mathtt{position}[2] > 0$ the flag flips \src{sim/Propagator.cpp}{113};
+  otherwise $z$ is clamped to $0$ and \emph{all three} velocity components are zeroed
+  \src{sim/Propagator.cpp}{119}. The clamp exists because a thrust curve starts with an implicit
+  $(0,0)$ sample (\cref{sec:motors}), so over the first step thrust is effectively zero: left
+  free, a from-rest launch at $z=0$ would accelerate downward, dip below the launch site, and
+  satisfy the nominal ``descending below $z=0$'' condition after one step
+  \src{sim/Propagator.cpp}{105}. The clamp is a kinematic stand-in for the pad's normal force,
+  not a contact model, and it has a consequence worth knowing: an angled launch that fails to
+  reach $z>0$ on its early steps loses its horizontal velocity too --- defensible as static
+  friction, but a modeling choice, not an accident. A rocket that can never lift stays put with
+  $\mathtt{maxAltitude}=0$, so the no-liftoff guard fires instead of the run ending silently
+  \src{sim/Propagator.cpp}{109}.
+\item \textbf{Commit and record.} The accepted state becomes the model's current state
+  \src{sim/Propagator.cpp}{124}; the statistics fold then runs \emph{unconditionally} --- the
+  in-tree comment: every step ``regardless of saveStates, so the flight summary and the
+  no-liftoff guard work even when the state history isn't retained''
+  \src{sim/Propagator.cpp}{125}. Only when \code{saveStates} is on are the composite mass
+  properties snapshotted into the sample and the sample appended to the history
+  \src{sim/Propagator.cpp}{128}. \code{writeMassProperties} fills \code{st.mass},
+  \code{st.cg}, and \code{st.inertia} from the part tree through the gated accessors, so the
+  three are mutually consistent at this $t$ and cost no recompute after burnout
+  \src{model/RocketModel.cpp}{53}. This per-step recording is what makes $CG(t)$ and $I(t)$
+  observable in the output --- the integration suite watches the recorded $I_{xx}$ shrink
+  through the burn and freeze bit-stably after it \src{tests/PhysicsIntegrationTests.cpp}{356}.
+  (\code{retainStates(false)} exists \src{sim/Propagator.h}{62} but has no production caller;
+  history saving is effectively always on.)
+\item \textbf{Guard: nominal termination.} If \code{terminateCondition(t)} returns true the run
+  ends as \code{Nominal} \src{sim/Propagator.cpp}{137}. \code{RocketModel}'s condition is
+  descending \emph{and} below the launch site: \cppinline|position[2] < 0.0 && velocity[2] < 0.0|
+  \src{model/RocketModel.cpp}{65} --- the conjunction prevents ending a flight that is still
+  climbing as it passes $z=0$ from below.
+\item \textbf{Guard: no liftoff.} After \code{noLiftoffTime} ($3\unit{s}$) without
+  \code{maxAltitude} exceeding \code{noLiftoffAltitude} ($1\unit{m}$), the run aborts as
+  \code{NoLiftoff} with a logged hint to check thrust against weight
+  \src{sim/Propagator.cpp}{146}. This catches an underpowered motor, or a thrust/weight balance
+  that hovers instead of descending.
+\item \textbf{Guard: hard backstops.} If \code{currentTime} exceeds \code{maxSimTime}
+  \emph{or} the iteration count reaches $10^{8}$, the run aborts as \code{MaxSimTimeExceeded}
+  \src{sim/Propagator.cpp}{157}. The iteration ceiling exists for a flight whose adaptive steps
+  collapse toward zero --- sim time then advances negligibly and the time cap alone would never
+  fire \src{sim/Propagator.cpp}{155}.
+\item \textbf{Advance the clock.} \cppinline|currentTime += result.stepSize| ---
+  constant \code{dt} for RK4, whatever was accepted for RKF45 \src{sim/Propagator.cpp}{166}.
+\end{enumerate}
+
+Around the whole loop sits the catch: any \code{std::exception} escaping the body --- the RKF45
+step-size underflow throw, or a throwing force model --- becomes \code{IntegratorError} with the
+exception text logged \src{sim/Propagator.cpp}{169}. The guard test drives a force model that
+throws mid-flight and asserts \code{runUntilTerminate()} itself never throws
+\src{tests/PropagatorTests.cpp}{140}.
+
+\subsection{The termination taxonomy}\label{sec:simcore-termination}
+
+The five enumerators of \code{Propagator::TerminationReason} partition every possible exit
+\src{sim/Propagator.h}{35}; the header's own summary is that \code{Nominal} is the normal end of
+flight and the rest are safety aborts that turn a would-be infinite loop into a reportable stop
+\src{sim/Propagator.h}{33}. \Cref{tab:simcore-termination} gives each enumerator its exact
+trigger.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}Xl@{}}
+\toprule
+Enumerator & Exact trigger & Set at \\
+\midrule
+\code{Nominal} & \code{terminateCondition(t)} returns true; for \code{RocketModel}:
+  $z<0$ \textbf{and} $v_z<0$ (descending below the launch site)
+  & \src{sim/Propagator.cpp}{137} \\
+\addlinespace
+\code{NoLiftoff} & $\mathtt{currentTime} > 3.0\unit{s}$ \textbf{and}
+  $\mathtt{maxAltitude} < 1.0\unit{m}$
+  & \src{sim/Propagator.cpp}{146} \\
+\addlinespace
+\code{NonFiniteState} & any NaN/Inf coefficient in the stepped position or velocity
+  (Eigen \code{allFinite()})
+  & \src{sim/Propagator.cpp}{97} \\
+\addlinespace
+\code{MaxSimTimeExceeded} & $\mathtt{currentTime} > \mathtt{maxSimTime}$
+  (default $7200\unit{s}$) \textbf{or} $\mathtt{iterations} \geq 10^{8}$
+  & \src{sim/Propagator.cpp}{157} \\
+\addlinespace
+\code{IntegratorError} & any \code{std::exception} escaping the loop body, e.g.\ the RKF45
+  step-size underflow throw \srccap{sim/RK45Solver.h}{80}
+  & \src{sim/Propagator.cpp}{169} \\
+\bottomrule
+\end{tabularx}
+\caption{The termination taxonomy: five enumerators \srccap{sim/Propagator.h}{35} and their
+exact triggers. The nominal condition lives in the model
+\srccap{model/RocketModel.cpp}{65}; the four aborts live in the loop.}
+\label{tab:simcore-termination}
+\end{table}
+
+One asymmetry deserves a plain statement: the two hard backstops --- the sim-time cap and the
+iteration cap --- share the single \code{MaxSimTimeExceeded} enumerator
+\src{sim/Propagator.cpp}{157}, so a consumer reading the verdict cannot distinguish a flight that
+flew too long from one whose steps collapsed. The taxonomy is one enumerator short of its guard
+count. Everything else about the verdict is disciplined: it resets to \code{Nominal} at the top
+of every run \src{sim/Propagator.cpp}{64}, is read back through
+\code{QtRocket::getTerminationReason()} \src{QtRocket.h}{62}, and the CLI renders each value
+through a switch that deliberately has no \code{default}, so adding a sixth enumerator fails to
+compile there until it is handled \src{cli/Repl.cpp}{39} --- fail-closed at the vocabulary level.
+Each abort path is pinned by a mock-driven guard test: zero net force ends as \code{NoLiftoff}
+\src{tests/PropagatorTests.cpp}{72}, an injected NaN as \code{NonFiniteState}
+\src{tests/PropagatorTests.cpp}{91}, a never-descending flight as \code{MaxSimTimeExceeded}
+\src{tests/PropagatorTests.cpp}{121} --- the test is also \code{setMaxSimTime}'s only caller in
+the tree --- and a throwing force model as a clean \code{IntegratorError}
+\src{tests/PropagatorTests.cpp}{140}.
+
+\subsection{Numerical methods}\label{sec:simcore-numerics}
+
+\begin{physbox}[From Euler to embedded pairs]
+Given $\dot{y}=f(t,y)$ and the state $y_n$ at time $t_n$, a one-step method estimates
+$y(t_n+h)$. Euler's method, $y_{n+1}=y_n+h\,f(t_n,y_n)$, follows the slope at the start of the
+step for the whole step: per-step error $O(h^2)$, accumulating to $O(h)$ --- halving the step
+merely halves the error. Runge--Kutta methods probe $f$ at trial points \emph{inside} the step
+and weight the sampled slopes so the combination matches the true solution's Taylor expansion to
+higher order; the classical fourth-order scheme (RK4) uses four samples for a local error of
+$O(h^5)$ and a global error of $O(h^4)$, so halving the step buys roughly sixteen times the
+accuracy.
+
+A fixed step, however, must be sized for the worst transient in the flight --- a motor's sharp
+thrust curve --- and is then wasted on the long smooth coast that follows. Adaptive methods pick
+$h$ per step, which requires an error estimate. Fehlberg's insight: a carefully chosen set of
+six stage evaluations yields \emph{two} estimates of the step, one fourth-order and one
+fifth-order, and their difference is a nearly free estimate of the lower-order method's local
+error. Compare it against a tolerance; shrink and retry when too large, accept and grow when
+comfortably small. Because an order-$p$ method's local error scales as $h^{p+1}$, the step
+multiplier that would have just met a tolerance $\mathtt{tol}$ is
+$(\mathtt{tol}/\mathtt{err})^{1/(p+1)}$.
+\end{physbox}
+
+\subsubsection{The fixed-step backend}\label{sec:simcore-rk4}
+
+\code{RK4Solver::step} guards first: \code{dt} is initialized to a quiet-NaN sentinel
+\src{sim/RK4Solver.h}{89} and checked with \cppinline|std::isnan| --- the in-tree comment notes
+that \cppinline|dt == quiet_NaN()| would always be false --- logging an error and returning an
+empty \code{StepResult<T>\{\}} if the step was never set \src{sim/RK4Solver.h}{49}. That error
+path is a sharp edge for direct users (the returned \code{stepSize} is $0.0$, and the Eigen
+members are default-constructed, hence uninitialized), but it is unreachable through the
+\code{Propagator}, which re-asserts \code{dt} at the top of every run.
+
+The four stages are the textbook scheme, evaluated at nodes $t$, $t+\mathtt{dt}/2$,
+$t+\mathtt{dt}/2$, $t+\mathtt{dt}$, with $\mathtt{halfDT}=\mathtt{dt}/2$ precomputed in
+\code{setTimeStep} \src{sim/RK4Solver.h}{42}. Writing $k_i$ for the derivative \emph{pair} the
+callback returns (\code{kiState}, \code{kiRate}), with the additions applying componentwise to
+the pair (\code{state}, \code{rate}) \src{sim/RK4Solver.h}{57}:
+\begin{align}
+k_1 &= \mathtt{odes}\bigl(t,\ \mathtt{state},\ \mathtt{rate}\bigr), \nonumber\\
+k_2 &= \mathtt{odes}\bigl(t+\mathtt{halfDT},\ (\mathtt{state},\mathtt{rate}) + k_1\,\mathtt{halfDT}\bigr), \nonumber\\
+k_3 &= \mathtt{odes}\bigl(t+\mathtt{halfDT},\ (\mathtt{state},\mathtt{rate}) + k_2\,\mathtt{halfDT}\bigr), \nonumber\\
+k_4 &= \mathtt{odes}\bigl(t+\mathtt{dt},\ (\mathtt{state},\mathtt{rate}) + k_3\,\mathtt{dt}\bigr),
+\label{eq:simcore-rk4stages}
+\end{align}
+combined with the classical $\tfrac16(1,2,2,1)$ weights and returned with the constant step
+\src{sim/RK4Solver.h}{69}:
+\begin{equation}\label{eq:simcore-rk4}
+(\mathtt{state},\mathtt{rate})_{n+1}
+ = (\mathtt{state},\mathtt{rate})_n
+ + \frac{\mathtt{dt}}{6}\bigl(k_1 + 2k_2 + 2k_3 + k_4\bigr),
+\qquad \mathtt{stepSize} = \mathtt{dt}.
+\end{equation}
+Passing each node time into the callback is not a nicety: the forcing is explicitly
+time-dependent (motor thrust, burning mass), and the comment above the stages says exactly that
+\src{sim/RK4Solver.h}{55}. Fixed step also means a predictable output cadence --- the recorded
+samples land exactly \code{dt} apart, which the integration suite verifies
+\src{tests/PhysicsIntegrationTests.cpp}{131}.
+
+\subsubsection{The adaptive backend: the Fehlberg 4(5) embedded pair}\label{sec:simcore-rkf45}
+
+\code{RK45Solver::step} is an adapt-until-accept loop \src{sim/RK45Solver.h}{78}. Every attempt
+begins with the underflow guard: if $h$ has been driven below $\mathtt{hMin}=10^{-15}\unit{s}$,
+the solver throws \cppinline|std::runtime_error| --- ``cannot meet the requested error
+tolerance'' \src{sim/RK45Solver.h}{80} --- which the \code{Propagator} converts into
+\code{IntegratorError}. Then come the six Fehlberg stages: stage $i$ evaluates the callback at
+node time $t + C_i h$ on a trial pair built from the previous stage derivatives
+\src{sim/RK45Solver.h}{92},
+\begin{equation}\label{eq:simcore-stages}
+(\mathtt{s}_i,\ \mathtt{r}_i)
+ = \mathtt{odes}\Bigl(t + C_i h,\ \ (\mathtt{state},\mathtt{rate})
+ + h \sum_{j=1}^{i-1} K_i[\,j{-}1\,]\,(\mathtt{s}_j,\mathtt{r}_j)\Bigr),
+\qquad i = 1,\dots,6,
+\end{equation}
+with $C_1=0$ and the empty sum for the first stage. The coefficients are \code{static constexpr}
+members \src{sim/RK45Solver.h}{172}, and they are the classic Fehlberg tableau, verified
+digit for digit --- the node fractions $C_i$ down the left, the stage couplings $K_i$ in the
+body (each $C_i$ equals its row sum, as the in-source comment notes
+\src{sim/RK45Solver.h}{169}), and the two solution-weight rows $E_4$/$E_5$ beneath the line:
+{\renewcommand{\arraystretch}{1.6}%
+\begin{equation}\label{eq:simcore-tableau}
+\begin{array}{c|cccccc}
+0 & & & & & & \\
+\tfrac{1}{4} & \tfrac{1}{4} & & & & & \\
+\tfrac{3}{8} & \tfrac{3}{32} & \tfrac{9}{32} & & & & \\
+\tfrac{12}{13} & \tfrac{1932}{2197} & -\tfrac{7200}{2197} & \tfrac{7296}{2197} & & & \\
+1 & \tfrac{439}{216} & -8 & \tfrac{3680}{513} & -\tfrac{845}{4104} & & \\
+\tfrac{1}{2} & -\tfrac{8}{27} & 2 & -\tfrac{3544}{2565} & \tfrac{1859}{4104} & -\tfrac{11}{40} & \\
+\hline
+E_4 & \tfrac{25}{216} & 0 & \tfrac{1408}{2565} & \tfrac{2197}{4104} & -\tfrac{1}{5} & 0 \\
+E_5 & \tfrac{16}{135} & 0 & \tfrac{6656}{12825} & \tfrac{28561}{56430} & -\tfrac{9}{50} & \tfrac{2}{55}
+\end{array}
+\end{equation}}%
+From the same six stage derivatives the solver forms both estimates of the advanced pair
+\src{sim/RK45Solver.h}{114}:
+\begin{equation}\label{eq:simcore-estimates}
+y^{(4)} = (\mathtt{state},\mathtt{rate}) + h\sum_{i=1}^{6} E_4[\,i{-}1\,]\,(\mathtt{s}_i,\mathtt{r}_i),
+\qquad
+y^{(5)} = (\mathtt{state},\mathtt{rate}) + h\sum_{i=1}^{6} E_5[\,i{-}1\,]\,(\mathtt{s}_i,\mathtt{r}_i),
+\end{equation}
+and their difference feeds a single absolute Euclidean norm over the concatenated state and rate
+(\cref{lst:simcore-errnorm}):
+\begin{equation}\label{eq:simcore-errnorm}
+\mathtt{err} = \sqrt{\bigl\lVert \mathtt{y5State}-\mathtt{y4State} \bigr\rVert^{2}
+                   + \bigl\lVert \mathtt{y5Rate}-\mathtt{y4Rate} \bigr\rVert^{2}} .
+\end{equation}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// Local error estimate: magnitude of the 5th-vs-4th-order difference across state and rate.
+const double err = std::sqrt((y5State - y4State).squaredNorm()
+                             + (y5Rate - y4Rate).squaredNorm());
+
+if(err > tol)
+{
+   // Reject: shrink the step and retry, flooring the shrink factor at 0.1.
+   const double scale = std::pow(tol / err, 0.25);
+   h *= (scale < 0.1) ? 0.1 : scale;
+   continue;
+}
+\end{minted}
+\caption{The embedded pair's error estimate and rejection branch
+\srccap{sim/RK45Solver.h}{120}: one absolute norm across position and velocity, compared
+directly against \code{tol}, with the shrink factor floored at $0.1$.}
+\label{lst:simcore-errnorm}
+\end{listing}
+
+\begin{keyinsight}[One norm, two units]
+\Cref{eq:simcore-errnorm} adds squared meters to squared meters-per-second and compares the
+result against a single absolute tolerance (default $\mathtt{tol}=10^{-6}$,
+\src{sim/RK45Solver.h}{158}). Two consequences follow. First, effective accuracy is
+scale-dependent: a \code{tol} that is tight for a hundred-meter hop is proportionally looser for
+a kilometers-high flight, and with no per-component scaling a small-magnitude component rides
+unprotected alongside a large one. Second, \code{tol} bounds the \emph{whole-step} local error,
+not the textbook per-unit-time criterion $\mathtt{err}/h$. The header concedes the point in
+place: the norm matches ``the reference algorithm,'' and ``a scaled/relative norm is a possible
+refinement'' \src{sim/RK45Solver.h}{36}.
+\end{keyinsight}
+
+Step control is a shrink/grow pair with hard clamps. On rejection
+($\mathtt{err} > \mathtt{tol}$), the step shrinks and the whole stage cascade retries
+\src{sim/RK45Solver.h}{127}:
+\begin{equation}\label{eq:simcore-reject}
+h \;\leftarrow\; h\cdot\max\!\Bigl(\bigl(\mathtt{tol}/\mathtt{err}\bigr)^{1/4},\ 0.1\Bigr).
+\end{equation}
+On acceptance the solver remembers $\mathtt{usedStep}=h$, then grows the guess for next time: if
+\code{err} is below machine epsilon it grows maximally ($h \leftarrow 5h$,
+\src{sim/RK45Solver.h}{134}), otherwise
+\begin{equation}\label{eq:simcore-grow}
+h \;\leftarrow\; h\cdot\min\!\Bigl(\bigl(\mathtt{tol}/\mathtt{err}\bigr)^{1/5},\ 5.0\Bigr),
+\end{equation}
+and finally the guess is clamped to \code{hMax} \src{sim/RK45Solver.h}{147}. The exponents are
+the classical ones --- $1/5$ is $1/(p+1)$ for the order-4 member, and the $1/4$ used on
+rejection shrinks slightly more aggressively than the growth exponent grows. There is no
+proportional-integral controller and no conventional $0.9$ safety-factor multiplier; acceptance
+is the plain threshold $\mathtt{err} \le \mathtt{tol}$ \src{sim/RK45Solver.h}{124}, and the
+protection against step-size oscillation comes from the $0.1$/$5.0$ clamps and \code{hMax}.
+Because $h$ is a member that persists across calls \src{sim/RK45Solver.h}{159}, the adaptation
+carries from step to step across the whole flight. The accepted step returns the
+\emph{fifth}-order estimate --- $\code{StepResult}\{\mathtt{y5State}, \mathtt{y5Rate},
+\mathtt{usedStep}\}$ \src{sim/RK45Solver.h}{151} --- the standard practice known as local
+extrapolation: the error was controlled on the fourth-order member, but the better number is the
+one worth keeping.
+
+\begin{keyinsight}[The vacuum step-runaway clamp]
+\code{setTimeStep} does more than seed the guess: it sets
+$\mathtt{hMax} = \mathtt{maxStepFactor}\times\mathtt{inTs}$ with $\mathtt{maxStepFactor}=10$
+\src{sim/RK45Solver.h}{66}, and that clamp is mandatory. A constant-acceleration vacuum coast is
+a polynomial of degree two in time, which both embedded orders integrate \emph{exactly}:
+\code{err} sits at rounding level every step, the grow branch quintuples $h$ indefinitely, and
+``the integrator leaps past apogee and the ground in a few giant steps''
+\src{sim/RK45Solver.h}{144}. The motivating regression is recorded in the integration tests ---
+the flight ``leapt megameters past the ground in only 6-8 steps''
+\src{tests/PhysicsIntegrationTests.cpp}{147} --- and the unit test pins the fix: under
+exactly-integrated dynamics every accepted step stays at or below \code{hMax} and the largest
+one \emph{equals} it \src{sim/tests/RK45SolverTests.cpp}{75}. The clamp keeps apogee and the
+ground crossing resolved on exactly the dynamics where the error estimator is blind.
+\end{keyinsight}
+
+The solver's remaining knobs are constructor-enforced but unplumbed. The constructor throws
+\cppinline|std::invalid_argument| for a non-positive tolerance \src{sim/RK45Solver.h}{54};
+\code{setErrorTolerance} and \code{setMaxStepSize} ignore non-positive values
+\src{sim/RK45Solver.h}{73}, \src{sim/RK45Solver.h}{70}. But no path from \code{QtRocket}, the
+GUI, or the CLI reaches either setter --- the only caller of \code{setMaxStepSize} anywhere is a
+unit test \src{sim/tests/RK45SolverTests.cpp}{112} --- so every production RKF45 flight runs at
+$\mathtt{tol}=10^{-6}$ with the default clamp (\cref{sec:incomplete} lists the missing
+plumbing). End to end, the payoff is pinned by the comparison flight: on the same motor, RKF45
+finishes in far fewer steps than RK4 (the test comment records roughly 530 against 4050) with
+apogee agreement within 2\% asserted and about 0.05\% observed
+\src{tests/PhysicsIntegrationTests.cpp}{163}. The same family documents why node-time sampling
+matters to the pair: with thrust frozen at the step start, RKF45's apogee ran roughly 8\% high;
+evaluating each stage at $t+C_ih$ lets the two estimates diverge across a sharp burn, raising
+\code{err} and shrinking the step to resolve it \src{tests/PhysicsIntegrationTests.cpp}{149},
+\src{sim/RK45Solver.h}{33}.
+
+\subsection{Recording subtleties}\label{sec:simcore-recording}
+
+Two quiet details of the loop's bookkeeping deserve their own statement, because every consumer
+of the recorded history inherits the first and every direct user of \code{Integrator} can be
+bitten by the second.
+
+\begin{keyinsight}[The one-step timestamp offset]
+\code{appendState(currentTime, nextState)} and the statistics fold both run \emph{before} the
+clock advance \src{sim/Propagator.cpp}{133}, \src{sim/Propagator.cpp}{166}, so a sample stamped
+$t$ holds the state the rocket reaches at $t+\mathtt{stepSize}$ --- every recorded time is one
+step early, and the initial state itself is never appended
+(\code{launchRocket()} clears the history first \src{QtRocket.cpp}{57}). Sample \emph{spacing}
+is unaffected under RK4 --- consecutive stamps are still exactly \code{dt} apart, and the
+integration suite pins it \src{tests/PhysicsIntegrationTests.cpp}{131} --- but stamped
+quantities such as
+\code{timeOfMaxAltitude} inherit the shift, and the test suite acknowledges it in print:
+``Time-to-apogee is quantized to dt and carries the recorder's one-step time-stamp offset,''
+with the tolerance widened to $3\,\mathtt{dt}$ for exactly this reason
+\src{tests/PropagatorTests.cpp}{181}.
+\end{keyinsight}
+
+\begin{keyinsight}[Function before model, and the silent \code{dt} reset]
+\code{Integrator::setIntegratorFunction} only \emph{stores} the ODE callback
+\src{sim/Integrator.h}{72}; it never updates an already-built solver. The stored function
+reaches a solver only when \code{setIntegratorModel} constructs a fresh one from it
+\src{sim/Integrator.h}{57}, so the function must be set before the model --- exactly the
+sequence the \code{Propagator} constructor uses \src{sim/Propagator.cpp}{47}. A caller that
+inverts the order steps a solver holding a null \cppinline|std::function|, which surfaces as
+\cppinline|std::bad_function_call| --- inside the loop, an \code{IntegratorError}. The second
+edge is quieter: switching models constructs a fresh solver whose step is unset (RK4's NaN
+sentinel \src{sim/RK4Solver.h}{89}) or default-valued (RKF45's $h=0.01$, $\mathtt{hMax}=0.1$
+\src{sim/RK45Solver.h}{159}), because \code{Integrator::setTimeStep} reaches only the currently
+active instance \src{sim/Integrator.h}{77}. Production is rescued by the first line of
+\code{runUntilTerminate()}, which re-asserts \code{timeStep} at the top of every run
+\src{sim/Propagator.cpp}{61}; the hazard is real only for direct \code{Integrator} users, and
+the selection test documents it --- ``the freshly (re)created solver needs its own step size''
+\src{sim/tests/IntegratorTests.cpp}{69}.
+\end{keyinsight}
+
+\subsection{Flight statistics and their consumers}\label{sec:simcore-stats}
+
+\code{TrajectoryStatistics::update} folds one (time, state) sample into the running summary
+\src{sim/TrajectoryStatistics.h}{26}: \code{maxAltitude} tracks the greatest $z$ and
+\code{timeOfMaxAltitude} its stamp --- time to apogee --- \code{maxSpeed} the greatest
+$\lvert\mathtt{velocity}\rvert$ with its stamp, and \code{totalFlightTime} is simply the stamp of
+the last folded sample, matching \cppinline|getStates().back().first|
+\src{sim/TrajectoryStatistics.h}{22}. Both comparisons use strict \cppinline|>|, which records
+the \emph{first} time each maximum is attained and is NaN-safe --- \cppinline|NaN > x| is false,
+so a bad sample is ignored rather than propagated \src{sim/TrajectoryStatistics.h}{24}.
+\code{reset()} reassigns a default-constructed struct \src{sim/TrajectoryStatistics.h}{44}, and
+the \code{Propagator} calls it at the top of every run \src{sim/Propagator.cpp}{65}. Because the
+fold runs unconditionally \src{sim/Propagator.cpp}{125}, the summary exists even when the history
+is not retained, and \code{maxAltitude} does double duty as the input to the no-liftoff guard
+\src{sim/Propagator.cpp}{147}. The statistics are not a convenience layer over the history ---
+they are the loop's own memory, and the integration suite asserts they agree with a post-hoc
+scan of the recorded series to $10^{-9}$ \src{tests/PhysicsIntegrationTests.cpp}{292}.
+
+\code{QtRocket} surfaces the whole record as three read paths: the state history via
+\code{getStates()} \src{QtRocket.h}{48}, the summary via \code{getTrajectoryStatistics()}
+\src{QtRocket.h}{55}, and the verdict via \code{getTerminationReason()} \src{QtRocket.h}{62}.
+The CLI's \code{launch} command reads the live statistics rather than re-deriving them from the
+series \src{cli/Repl.cpp}{703} and renders the verdict through its exhaustive reason-text switch
+\src{cli/Repl.cpp}{39}; how the front ends present all of this --- and which of these read paths
+the GUI actually consumes --- is the subject of \cref{sec:interfaces}.
+
+The simulation core, in sum, is a small machine with sharp contracts: one lambda of physics, two
+interchangeable solvers behind one interface, a loop that cannot exit without a typed verdict,
+and a per-step record that already carries the mass properties a 6-DOF integrator will need. The
+models feeding its force evaluations --- gravity, atmosphere, and the geoid --- are the subject
+of \cref{sec:environment}; the aerodynamic machinery waiting to enrich \code{getForces}, and to
+give \code{getTorques} something to say, is examined in \cref{sec:aero}; the dormant orientation
+seams catalogued here reappear, consolidated, in \cref{sec:incomplete}.

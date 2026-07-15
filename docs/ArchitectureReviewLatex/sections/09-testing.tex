@@ -1,0 +1,253 @@
+\section{Testing, coverage, and engineering infrastructure}\label{sec:testing}
+
+The engineering infrastructure is the part of QtRocket that least resembles a young project:
+a single CMake project pinned to C++23 (\src{CMakeLists.txt}{5}), every dependency except
+Qt6 vendored at an exact tag, warnings-as-errors on four compiler families, 239 test cases
+checked largely against independent oracles rather than golden values, a five-platform CI
+matrix, and branch-level source coverage wired into the build. The same inspection finds the
+document's recurring motif in infrastructural form --- machinery finished to a high standard
+with no consumer: the coverage target is run by no CI job, the translation rules produce
+files no target references, the install rule ships one of three executables, and the project
+version surfaces nowhere a user could see it. This section reviews both halves.
+
+\subsection{Build system: presets, pinned dependencies, strict warnings}\label{sec:testing-build}
+
+\srcf{CMakePresets.json} defines eight configure presets --- \code{debug}, \code{release},
+\code{debug-clang}, \code{release-clang}, \code{debug-gcc}, \code{release-gcc},
+\code{release-msvc}, and \code{coverage-clang} --- every one pinned to the Ninja generator
+(\src{CMakePresets.json}{7}) and paired with matching build and test presets. MSVC exists
+only as a release variant (\src{CMakePresets.json}{70}); there is no \code{debug-msvc}. The
+coverage preset inherits \code{debug-clang} but redirects to a separate
+\code{build-coverage/} tree (\src{CMakePresets.json}{35}) and sets
+\code{QTROCKET\_ENABLE\_COVERAGE} (\src{CMakePresets.json}{39}), so instrumented builds
+never disturb the normal build directory.
+
+All non-Qt dependencies arrive via FetchContent at exact tags, enumerated in
+\cref{tab:overview-deps}; Qt6 is the only system dependency (\src{CMakeLists.txt}{140}),
+which makes the Qt5/Android fallback branch at \src{CMakeLists.txt}{202} unreachable dead
+code --- a safe deletion candidate.
+
+\begin{designrule}[Hermetic dependency closure]
+curl is built as a static, \code{HTTP\_ONLY} library (\src{CMakeLists.txt}{47}) with every
+optional third-party backend --- libssh2, nghttp2, libidn2, libpsl, brotli, zstd --- forced
+off. The in-tree comment records why (\src{CMakeLists.txt}{51}): several of these knobs
+default to ON/AUTO, so curl links whatever it auto-detects on the build host, and
+auto-detected Homebrew libraries on the macOS CI runner previously broke the final link.
+The forced-off block converts an environment-dependent link into a reproducible one.
+\end{designrule}
+
+One knob in that block is inert: \cppinline|set(SSL_ENABLED ON)| at \src{CMakeLists.txt}{48}
+is not a curl cache option at all --- the real switch, \code{CURL\_ENABLE\_SSL}, defaults ON
+in the fetched source (\src{build/\_deps/curl-src/CMakeLists.txt}{725}). HTTPS works, but
+through curl's defaults, not through line 48; the line misleads a reader about how TLS is
+enabled.
+
+Warning hygiene is strict tree-wide: \cppinline|-Wall -Wextra -Wpedantic -Werror| on
+GCC/Clang (\src{CMakeLists.txt}{97}), \code{/W4 /WX} on MSVC (\src{CMakeLists.txt}{88}),
+applied after the FetchContent blocks so vendored code is exempt --- with one deliberate
+exception: the vendored \srcf{gui/qcustomplot.cpp} is compiled \code{-w}
+(\src{CMakeLists.txt}{154}) so \code{-Werror} can stay on for project code. Against this, a
+comment in the same block claims ``We also run ASAN and clang-tidy for additional security''
+(\src{CMakeLists.txt}{93}); nothing backs it --- no \code{.clang-tidy} file, no
+\code{-fsanitize} flag, no lint preset, no CI job. Sanitizers and static analysis are
+\fabsent, and the comment is stale. The layered link graph the build enforces
+(\code{utils} $\rightarrow$ \code{sim} $\rightarrow$ \code{model} $\rightarrow$ the
+\code{qtrocket\_core} static library at \src{CMakeLists.txt}{224}, shared by every
+executable) is covered in \cref{sec:overview}; the bottom-layer invariant is stated in the
+build itself (\src{utils/CMakeLists.txt}{13}) and holds --- nothing in \code{utils/} includes
+a \code{model/} or \code{sim/} header.
+
+\subsection{The test suite: six binaries, 239 cases}\label{sec:testing-suite}
+
+Testing is GoogleTest throughout: six binaries totalling 239 \code{TEST}/\code{TEST\_F}
+cases, summarized in \cref{tab:testing-binaries}.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l r X@{}}
+\toprule
+Binary & Cases & Focus \\
+\midrule
+\code{model\_tests} & 144 & Composite-tree mechanics (dirty flags, parallel-axis shifts, deep clone); part geometry against closed-form, numeric, and mesh oracles; Barrowman aero composition; motor burn; thrust-curve interpolation; JSON/RASP motor parsing; placement resolver and diagnostics \\
+\code{sim\_tests} & 27 & US Standard Atmosphere tables; pluggable environment selection; RKF45 against closed-form dynamics; spherical gravity and geoid; integrator-selection guards \\
+\code{integration\_tests} & 43 & End-to-end physics through the controller (11); motor-database persistence (9); \code{.qrd} persistence (14); placement invariance against a committed baseline (7); poke-through regressions (2) \\
+\code{propagator\_tests} & 6 & Termination guards driven by a mock \code{Propagatable}: no-liftoff, non-finite state, max-sim-time backstop, clean abort on integrator exception \\
+\code{cli\_tests} & 3 & Scripted REPL build--save--reload--fly; \code{key=value} validation; RASP motor loading \\
+\code{design\_matrix\_tests} & 16 & 25-fixture corpus; mass scaling laws; 1/4A$\rightarrow$M flight ladder (apogee monotonic in impulse); drag and integrator cross-checks \\
+\midrule
+total & 239 & \\
+\bottomrule
+\end{tabularx}
+\caption{The six GoogleTest binaries and their coverage map. Case counts by grep of
+\code{TEST}/\code{TEST\_F} at the pinned commit.}
+\label{tab:testing-binaries}
+\end{table}
+
+The suite's character is the project's strongest engineering asset: physics is validated
+against independent oracles --- closed-form inertia formulas, numeric disk integration, mesh
+cross-checks (\cref{sec:model}) --- rather than recorded outputs; persistence is locked by
+round-trips plus a committed bit-identical invariance baseline over the fixture corpus
+(\cref{sec:persistence}); and each of the propagator's historical failure modes has a
+dedicated regression (\cref{sec:sim}). Motor data is tested at three altitudes: the
+thrustcurve.org JSON parsers are pure functions fed canned JSON string literals, no network
+involved (\src{model/tests/ThrustCurveParserTests.cpp}{1}); the database's online-source
+merge is driven through a \code{FakeThrustCurveAPI} implementing the
+\code{model::ThrustCurveAPI} seam (\src{tests/MotorDatabasePersistenceTests.cpp}{106}); and
+the design-matrix suite flies real motors end to end. Fixture location is wired by
+absolute-path compile definitions (\code{QTROCKET\_DATA\_DIR},
+\code{QTROCKET\_TEST\_DATA\_DIR}, \src{tests/CMakeLists.txt}{15}), so every binary runs from
+any working directory.
+
+Registration with ctest follows one pattern everywhere: each binary is registered per-case
+via \code{gtest\_discover\_tests} and again as a single aggregate \code{qtrocket\_*} entry
+(\src{model/tests/CMakeLists.txt}{29}; \src{tests/CMakeLists.txt}{25}), giving seven
+aggregate entries in total. The design-matrix binary carries the seventh --- a third
+registration of the same executable, \code{qtrocket\_design\_matrix\_heavy\_tests}, which
+reruns only the \code{FlightMatrix}/\code{Atmosphere} sweeps under the ctest label
+\code{heavy} with \code{QTROCKET\_FULL\_LADDER=1} in its environment
+(\src{tests/CMakeLists.txt}{96}). That environment variable is the whole mechanism: the
+flight sweeps ask \code{motorsToFly()} which motors to fly, and it returns either one motor
+per impulse class or the class's complete ladder (\src{tests/DesignMatrixTests.cpp}{375}):
+
+\begin{minted}{cpp}
+std::vector<std::string> motorsToFly(const Ladder& lad)
+{
+   if(std::getenv("QTROCKET_FULL_LADDER") != nullptr)
+      return lad.motors;
+   return { lad.motors.front() };
+}
+\end{minted}
+
+\begin{keyinsight}[One binary, three ctest entries]
+The double registration means an unfiltered \code{ctest} runs every case twice --- once
+discovered, once inside its aggregate. The documented workflows always filter
+(\code{-R 'qtrocket\_*'} for everything, \code{-LE heavy} for the fast loop, \code{-L heavy}
+for the sweeps alone, \src{tests/CMakeLists.txt}{85}), so this is a footgun rather than a
+bug --- but one a newcomer running bare \code{ctest} will step on. The heavy/fast split
+itself is well designed: one binary, an env-var gate, and a ctest label buy a fast default
+loop and an on-demand full-ladder sweep with no code duplication.
+\end{keyinsight}
+
+\subsection{Coverage tooling}\label{sec:testing-coverage}
+
+Coverage is Clang/LLVM source-based and gated hard: \code{QTROCKET\_ENABLE\_COVERAGE}
+fatally errors on any non-Clang compiler (\src{CMakeLists.txt}{101}), then applies
+\cppinline|-O0 -g -fprofile-instr-generate -fcoverage-mapping| (\src{CMakeLists.txt}{108}).
+A custom \code{coverage} target shells out to \srcf{cmake/RunLlvmCoverage.cmake}, which runs
+ctest under \code{LLVM\_PROFILE\_FILE} (\src{cmake/RunLlvmCoverage.cmake}{33}), aborts on
+any test failure (\src{cmake/RunLlvmCoverage.cmake}{39}), merges profiles with
+\code{llvm-profdata}, and emits both a text summary and a branch-annotated, demangled HTML
+report (\src{cmake/RunLlvmCoverage.cmake}{99}). This is genuinely good tooling --- and no CI
+job runs it, so coverage numbers exist only on a developer's machine. Verdict: \fpartial,
+for that reason and for a real defect in its binary list.
+
+\begin{hardfail}[Coverage target out of sync with the design-matrix suite]
+\code{QTROCKET\_COVERAGE\_BINARIES} (\src{CMakeLists.txt}{248}) and the target's
+\code{DEPENDS} (\src{CMakeLists.txt}{267}) name five test binaries ---
+\code{design\_matrix\_tests} is missing from both --- while the ctest regex the script is
+handed, \cppinline|^qtrocket_.*tests$| (\src{CMakeLists.txt}{261}), matches both
+design-matrix entries. On a fresh \code{build-coverage} tree, \code{--target coverage}
+therefore builds only the five listed binaries, ctest then tries to run the design-matrix
+entries whose executable was never built, and the script aborts with \code{FATAL\_ERROR}
+(\src{cmake/RunLlvmCoverage.cmake}{39}). Even when the binary happens to exist, the heavy
+full-ladder sweep runs under instrumentation, and functions unique to that suite are never
+attributed in the report. \fail
+\end{hardfail}
+
+\subsection{Continuous integration}\label{sec:testing-ci}
+
+CI is a GitHub Actions workflow triggered on push and pull request to \code{development}
+only (\src{.github/workflows/cmake-multi-platform.yml}{13}). A four-job matrix with
+fail-fast off --- Linux/GCC, Linux/Clang, macOS/AppleClang, and Windows/MSVC, each driving
+its release preset (\src{.github/workflows/cmake-multi-platform.yml}{29}) --- installs Qt
+6.10.2 (\src{.github/workflows/cmake-multi-platform.yml}{45}), caches the FetchContent
+dependencies via ccache, builds the entire tree including the GUI and visualizer
+(\src{.github/workflows/cmake-multi-platform.yml}{68}), and runs
+\code{ctest -R 'qtrocket\_*'} (\src{.github/workflows/cmake-multi-platform.yml}{74}). A
+fifth job boots a FreeBSD 15.0 QEMU virtual machine on the Ubuntu runner
+(\src{.github/workflows/cmake-multi-platform.yml}{94}), installs Qt from \code{pkg}
+(\src{.github/workflows/cmake-multi-platform.yml}{102}), and runs the same preset and
+filter. Exercising GCC, Clang, AppleClang, and MSVC under \code{-Werror}/\code{/WX} on
+every merge request is real rigor for a project of this size, and the FreeBSD job goes
+beyond what most C++ projects of any size attempt.
+
+Two blemishes. First, the ctest regex matches the \code{heavy} entry, so all five jobs ---
+the QEMU VM included --- fly every motor of every impulse-class ladder on every pull
+request: exactly the cost the \code{-LE heavy} fast loop exists to avoid. Second, the test
+step's comment still names only four suites, ``(model, sim, integration, propagator)''
+(\src{.github/workflows/cmake-multi-platform.yml}{72}), predating the cli and design-matrix
+binaries. Beyond running tests, CI publishes nothing: no coverage upload, no sanitizer or
+lint job, no artifacts, no releases.
+
+\subsection{The utils layer}\label{sec:testing-utils}
+
+The bottom layer is deliberately small --- four components, Qt-free --- and its quality is
+more mixed than the layers above it.
+
+\begin{description}
+\item[\code{Logger}] A Meyers-singleton logger (\src{utils/Logger.cpp}{19}) with five
+cumulative levels, an intentional-fallthrough switch under a mutex
+(\src{utils/Logger.cpp}{35}), and dual sinks (stdout plus \code{log.txt}). Three defects:
+\code{setLogLevel} writes the level without taking the mutex \code{log()} holds while
+reading it (\src{utils/Logger.cpp}{77}) --- benign today, since every call site is startup
+or test setup, but a latent data race; \code{log.txt} opens relative to the process working
+directory (\src{utils/Logger.cpp}{25}), so the file lands wherever the app was launched
+from; and entries carry level tags but no timestamps.
+\item[\code{Bin}] A lower-bound interval map (\src{utils/Bin.h}{15}) whose sole consumers
+are the four static US Standard Atmosphere layer tables
+(\src{sim/USStandardAtmosphere.h}{28}, initialized at
+\src{sim/USStandardAtmosphere.cpp}{78}). It throws \code{std::out\_of\_range} below the
+lowest bin, but both \code{operator[]} and \code{getBinBase} dereference
+\cppinline|bins.begin()| before any empty check (\src{utils/Bin.cpp}{50}) --- undefined
+behavior on an empty \code{Bin} --- and \code{insert} re-sorts the entire vector on every
+call (\src{utils/Bin.cpp}{44}). Both limitations are acknowledged in-tree
+(\src{utils/Bin.h}{17}) and unreachable today, the only consumers being statically
+populated; neither is tested.
+\item[math headers] Global-namespace Eigen aliases (\src{utils/math/MathTypes.h}{16}), the
+physical-constants header whose \code{earthGM} feeds the spherical gravity model
+(\src{utils/math/Constants.h}{26}), and a ULP-scaled \code{floatingPointEqual}
+(\src{utils/math/UtilityMathFunctions.h}{21}). Dead weight: a 47-line commented-out block
+in \srcf{utils/math/MathTypes.h} (\src{utils/math/MathTypes.h}{24}), and
+\code{earthGM\_km} (\src{utils/math/Constants.h}{27}), consumerless since the gravity path
+went pure SI.
+\item[\code{CurlConnection}] An RAII libcurl GET wrapper: copying deleted because it would
+double-free the handle (\src{utils/CurlConnection.h}{23}), reference-counted global init per
+instance (\src{utils/CurlConnection.cpp}{29}), and hard $10\unit{s}$ connect /
+$30\unit{s}$ total timeouts with \code{NOSIGNAL}, justified in-tree by the synchronous
+GUI-thread call path (\src{utils/CurlConnection.cpp}{54}). Transport errors and non-2xx
+statuses map to a logged error and an empty return (\src{utils/CurlConnection.cpp}{68});
+TLS verification is never set explicitly, relying on libcurl's default-on peer and host
+checks.
+\end{description}
+
+\subsection{Untested surfaces and dormant machinery}\label{sec:testing-gaps}
+
+The coverage map has three empty regions. \code{utils/} has no test subdirectory at all
+(\src{utils/CMakeLists.txt}{1}): Logger's level semantics, Bin's empty-container edge, and
+\code{floatingPointEqual} are directly untested, Bin being exercised only through sim's
+atmosphere tests (\src{sim/tests/USStandardAtmosphereTests.cpp}{5}). \code{CurlConnection}
+is never executed by any test --- the network is stubbed one layer up, at the
+\code{ThrustCurveAPI} seam (\cref{sec:motors}) --- so the one component that talks to the
+outside world is validated only in production. And the entire Qt surface, \code{gui/} and
+\code{visualizer/}, has zero automated tests: CI compiles both on every platform
+(\src{.github/workflows/cmake-multi-platform.yml}{68}) but runs only the ctest suites
+(\src{.github/workflows/cmake-multi-platform.yml}{74}), so the GUI is built five ways and
+exercised zero (\cref{sec:interfaces}). There is likewise no fuzzing of the XML, JSON, or
+RASP loaders that parse untrusted files.
+
+Distribution is where the unconsumed-machinery motif is starkest. The sole install rule
+covers the GUI target only (\src{CMakeLists.txt}{308}), referencing a
+\code{CMAKE\_INSTALL\_LIBDIR} that is never defined because \code{GNUInstallDirs} is never
+included; \code{qtrocket-cli}, \code{qtrocket-visualizer}, and the bundled \code{data/}
+motor files are not installed, there is no CPack, no desktop file, no installer of any
+kind, and the macOS bundle identifier is the Qt-template placeholder
+\code{my.example.com} (\src{CMakeLists.txt}{301}). The project version, 0.1, exists only in
+\cppinline|project()| (\src{CMakeLists.txt}{3}) and the bundle metadata --- the About dialog does not surface it and no \code{--version} flag
+or \code{--version} flag surfaces it. Internationalization is vestigial in the same way:
+\code{qt\_create\_translation} generates \code{QM\_FILES} from the template
+\code{qtrocket\_en\_US.ts} (\src{CMakeLists.txt}{201}, \src{CMakeLists.txt}{145}), but
+nothing references \code{QM\_FILES}, so no translation is ever built or shipped ---
+\code{LinguistTools} is a required find-package component (\src{CMakeLists.txt}{139}) in
+service of an inert call. Where OpenRocket ships platform installers, a bundled runtime, and
+roughly fifteen languages, QtRocket currently ships nothing at all; the comparison is drawn
+in \cref{sec:comparison}, and the consolidated remediation list in \cref{sec:roadmap}.

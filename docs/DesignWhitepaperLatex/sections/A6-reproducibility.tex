@@ -1,0 +1,96 @@
+\section{Reproducibility \& colophon}\label{app:repro}
+
+This whitepaper is itself a small, self-contained build: a contributor who clones the
+repository can regenerate the PDF, with every diagram, from the sources checked into
+\srcf{docs/DesignWhitepaperLatex/}. The layout and style contract are inherited from the
+Architecture Review (\srcf{docs/ArchitectureReviewLatex/}), which in turn inherited them
+from the Part Placement design whitepaper (\srcf{docs/PartPlacementDesignLatex/}), so the
+three documents read as one series. This appendix records the build pipeline, the
+revision every claim is pinned to, and how the document was produced and verified.
+
+\subsection{Directory layout and pipeline}
+
+The master file \srcf{DesignWhitepaper.tex} carries only the document scaffolding ---
+title block, front matter, and an ordered list of \cppinline|\input| directives --- while
+the prose lives in \srcf{sections/}, one file per section or appendix. The shared style
+contract is isolated in \srcf{preamble.tex}: the color palette, the fonts (XCharter text,
+\code{newtxmath}, Inconsolata mono), the callout environments (including the
+\code{physbox} added for this document, which keeps physics background visually separate
+from statements about the code), and the domain macros (\code{\textbackslash src},
+\code{\textbackslash srcf}, \code{\textbackslash tikzfig}, the feature-status markers)
+that the section files depend on. A section file is just a body, never a standalone
+\LaTeX{} program.
+
+Every figure is hand-built Ti\emph{k}Z under \srcf{diagrams/tikz/}, included directly by
+\code{\textbackslash tikzfig} and compiled in line by the main engine --- there is no
+PlantUML stage and no external image asset. The UML class, sequence, and component
+figures use dedicated styles added to \srcf{diagrams/tikzstyles.tex} for this document
+(three-compartment class boxes, inheritance/realization/composition arrowheads,
+lifelines). The build is two commands:
+
+\begin{minted}{text}
+make            # latexmk -pdf -shell-escape DesignWhitepaper.tex
+make veryclean  # remove aux files, the minted cache, and the PDF
+\end{minted}
+
+The engine is \code{pdflatex}, driven by \code{latexmk} so the multi-pass dance
+(cross-references, the table of contents, \code{cleveref}, the bookmark tree) converges
+automatically. The one non-default requirement is \code{-shell-escape}: listings are
+typeset by \code{minted}, which shells out to \code{pygmentize}. Prerequisites are a
+\TeX{} distribution providing \code{latexmk}, \code{pdflatex}, and \code{minted} with its
+\code{pygmentize} helper.
+
+\subsection{The revision under description}
+
+The document describes one tree state: commit \code{254cd41} (``Major comment
+cleanup''), the tip of the \code{development} line at the time of writing, described
+against a byte-identical working tree in July 2026. Every \code{\textbackslash src}
+citation refers to that revision; line numbers will drift as the tree moves, so a reader
+on a later commit should treat them as anchors into \code{254cd41}, not absolutes.
+
+The ground-truth policy is the one stated in \cref{sec:intro}: the source at the pinned
+commit and the two companion documents --- the Architecture Review and the Part Placement
+design whitepaper --- are authoritative; every other artifact under \srcf{docs/} is
+historical and was deliberately not relied on. Where a companion document and the code
+disagree, this document reports the code and says so in place.
+
+\subsection{How this document was produced and verified}
+
+The document was produced in three staged passes, each a fan-out of independent
+workers.
+
+\emph{Deep reads.} Twelve parallel deep-reads produced working dossiers: nine full reads
+of the code subsystems (the part tree and placement machinery, the controller and
+\code{utils} foundation, motors, the simulation core, the environment models,
+aerodynamics, the GUI and visualizer, the CLI and persistence, and the build/test/CI
+stack), a digest of the two companion documents, and two research dossiers on OpenRocket
+--- architecture and simulation methods --- compiled from primary sources
+(\texttt{openrocket.info}, the OpenRocket documentation, Niskanen's thesis and the
+technical documentation, and the \texttt{openrocket/openrocket} repository at
+\code{release-24.12} and \code{unstable}, fetched July 2026). Each dossier carried a
+citation ledger of exact \code{file:line} anchors re-checked against the source before
+use.
+
+\emph{Writing.} Each section was then written from its dossiers --- writers were
+forbidden to assert anything about the code not present in a dossier or re-verified in
+the source directly, with general physics theory admitted only as clearly-framed
+background. The diagrams were authored the same way and test-compiled standalone before
+inclusion.
+
+\emph{Adversarial verification.} Finally, one verifier per section re-checked the
+finished text against the source itself: every citation opened and its line number and
+substance confirmed, every listing diffed verbatim, every equation re-derived against
+the code, every count and constant re-taken (over two thousand checks; roughly eighty
+line-number corrections and seventy substantive claim corrections were applied). Three
+cross-cutting passes followed: a consistency sweep that adjudicated shared facts across
+sections against the source, a diagram pass that re-verified twelve of the thirteen
+figures element-by-element and recompiled them (the thirteenth, the front-end component
+map, was authored afterward from already-verified section text and test-compiled the
+same way), and a completeness critique whose findings were folded back into the text. OpenRocket-side claims were verified for
+faithful transmission from the research dossiers; the few that could not be pinned to a
+release tag are marked as branch-verified where they appear.
+
+Two behaviors were confirmed by execution during the underlying review series rather
+than by reading: the CLI command inventory (\cref{sec:interfaces}) and end-to-end flight
+behavior through the built \code{qtrocket-cli} binary. The dossiers themselves are
+working notes, not part of the document, and live untracked under \code{notes/}.

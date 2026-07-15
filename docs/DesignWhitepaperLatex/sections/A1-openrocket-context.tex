@@ -1,0 +1,150 @@
+\section{OpenRocket as comparison baseline}\label{app:or-context}
+
+The four appendices that follow read QtRocket against OpenRocket: a sixteen-area feature
+matrix (\cref{app:or-features}), a method-by-method comparison of the flight physics
+(\cref{app:or-methods}), and a side-by-side reading of the two programs as software
+(\cref{app:or-architecture}). This appendix frames all three. It states why OpenRocket is
+the baseline and what that framing does and does not license, describes OpenRocket itself
+in one page, and names the four philosophical differences between the projects that, more
+than any difference in effort, explain the shape of what the comparisons find.
+
+\subsection{Why this baseline, and what it is not}\label{app:or-context-why}
+
+OpenRocket is the baseline for one reason: it is the de facto standard for what a mature
+open-source model-rocket simulator offers. No other freely available tool combines a
+seventeen-year development history, a published methods document with a validation chapter, a
+six-degree-of-freedom flight model, and a component catalog broad enough to describe most
+real airframes. Measuring against anything less would flatter QtRocket; measuring against
+a commercial tool would put the methods out of reach behind closed source. The framing is
+inherited from the companion Architecture Review (\srcf{docs/ArchitectureReviewLatex/}),
+which pinned it precisely, and it bears restating in this document's own terms: QtRocket
+is an independent project with similar goals. It is not a port of OpenRocket, not a
+reimplementation, and at no point in this document is OpenRocket treated as a
+specification to clone. Where the two projects agree (SI units throughout, a nose-tip
+datum, a headless core beneath the GUI), they arrived by parallel reasoning; where they
+disagree, the disagreement is usually deliberate and the owning body section says why.
+
+\begin{designrule}[Baseline, not specification]
+The comparison measures distance, not conformance. A row that reads \fabsent{} in the
+feature matrix is a statement of how far QtRocket currently is from a mature tool's
+surface, never a defect report against requirements QtRocket promised to meet; equally, an
+area where QtRocket is ahead of the baseline is a local engineering fact, not a claim of
+superiority over a finished product. OpenRocket calibrates the map. It does not draw it.
+\end{designrule}
+
+The two sides of every comparison also carry different kinds of evidence, and the
+distinction holds throughout the appendix block. QtRocket claims cite file and line into
+the pinned commit \code{254cd41}, the same evidentiary standard as the body of this
+document. OpenRocket claims are researched from primary sources --- the
+\code{openrocket/openrocket} repository at tag \code{release-24.12} and branch
+\code{unstable} (examined 2026-07-07), the published technical documentation, and the
+project's developer documentation --- and carry their sources in footnotes. They are
+researched, not adversarially line-verified the way QtRocket claims are, and the
+appendices that lean on them say so.
+
+\subsection{OpenRocket in brief}\label{app:or-context-brief}
+
+OpenRocket is a GPLv3 Java application\footnote{License and module overview:
+\url{https://openrocket.readthedocs.io/en/latest/dev_guide/architecture.html}.} that began
+as Sampo Niskanen's 2009 master's thesis at Helsinki University of Technology and has been
+in continuous development since. The thesis, updated and extended, remains published as
+the \emph{OpenRocket Technical Documentation}, version 13.05
+(2013)\footnote{Sampo Niskanen, \emph{Development of an Open Source model rocket
+simulation software}, Master's thesis, Helsinki University of Technology, 2009; and
+\emph{OpenRocket technical documentation, for OpenRocket version 13.05}, 2013-05-10,
+\url{https://openrocket.sourceforge.net/techdoc.pdf}. Both are indexed at
+\url{https://openrocket.info/documentation.html}.} --- still the latest revision as of
+this writing, and therefore the authoritative statement of the methods while being a
+decade stale in places. The staleness is real and flagged where it matters: techdoc
+\S 4.2 still describes a flat-Earth model with no Coriolis effect, whereas the current
+source offers flat, spherical, and WGS84 geodesy, with Coriolis acceleration in every force
+evaluation under the latter two.\footnote{\code{util/GeodeticComputationStrategy.java} on the \code{unstable}
+branch of \url{https://github.com/openrocket/openrocket}.} \Cref{app:or-methods} cites the
+techdoc for the methods and the source wherever the code has moved past it.
+
+The current stable release is 24.12 under a year.month scheme; the final 24.12 GitHub
+release is dated July 2025, and development happens on the repository's default
+\code{unstable} branch.\footnote{\url{https://github.com/openrocket/openrocket/releases};
+the final \code{release-24.12} is dated 2025-07-27.} The runtime requirement is Java 17,
+enforced in code rather than by documentation: \code{Application.java} hard-codes
+\code{SUPPORTED\_JRE\_VERSIONS = \{ 17 \}}.\footnote{\url{https://raw.githubusercontent.com/openrocket/openrocket/release-24.12/core/src/main/java/info/openrocket/core/startup/Application.java}.}
+Structurally it is two Gradle subprojects that are also two Java Platform Module System
+modules: \code{info.openrocket.core}, the headless simulation engine, file formats, and
+design classes, reusable by other applications; and \code{info.openrocket.swing}, the GUI,
+which depends on core. Services are wired by Google Guice dependency injection behind a
+static locator.\footnote{Module split and entry point from the architecture page cited
+above and the root \code{build.gradle}; \code{com.google.inject:guice:7.0.0} in
+\code{core/build.gradle} on \code{unstable}.} The 24.12 surface --- quaternion 6-DOF
+flight, extended Barrowman aerodynamics, event-driven recovery and staging, a roughly
+two-dozen-type component catalog --- is one QtRocket does not attempt to match today, which
+is precisely what makes it a useful yardstick.
+
+\subsection{Four philosophical differences}\label{app:or-context-differences}
+
+The companion review's central observation about this comparison is that the gap pattern
+is explained less by effort than by philosophy. Four differences in engineering posture
+recur in every appendix that follows; a reader who holds them in mind can predict most
+verdicts before reading them.
+
+\emph{Developmental order.} QtRocket builds and tests its seams before wiring in their
+consumers; OpenRocket built features first and validated them against flight afterward.
+QtRocket's Barrowman composition is implemented, unit-tested, and consumed by no
+production code --- the test suite says so itself: ``nothing in production consumes this
+in P2'' (\src{model/tests/AeroTests.cpp}{18}). OpenRocket's equivalent machinery shipped
+inside a flying product and was then measured against flight telemetry and wind-tunnel
+data in the techdoc's validation chapter, whose headline claim is CP and drag-coefficient
+accuracy of roughly ten percent at subsonic speeds (techdoc ch.~6--7). The consequence,
+developed in
+\cref{sec:incomplete}, is that QtRocket's distance to the baseline is overwhelmingly a
+consumption gap, not a construction gap.
+
+\emph{Failure posture.} QtRocket is fail-closed where OpenRocket is warn-and-continue. A
+self-intersecting QtRocket design is a hard, located failure: the mass computation refuses
+to produce a number and throws with the first overlap diagnostic
+(\src{model/parts/Part.cpp}{189}). OpenRocket's posture is the opposite and is built into
+its event vocabulary: \code{SIM\_WARN} is a first-class flight event, recorded in the
+flight data alongside ignition and apogee while the simulation
+proceeds.\footnote{\code{FlightEvent.Type} in \code{simulation/FlightEvent.java},
+\url{https://github.com/openrocket/openrocket/blob/unstable/core/src/main/java/info/openrocket/core/simulation/FlightEvent.java}.}
+The trade is stated plainly in the body: fail-closed costs user forgiveness but guarantees
+that every produced number came from a coherent model.
+
+\emph{Placement intent versus geometric offsets.} OpenRocket positions a component by a
+stored \code{(AxialMethod, offset)} pair --- top, middle, bottom, absolute, or after ---
+whose arithmetic is purely geometric, computed from component lengths and never from mass
+or CM.\footnote{\code{rocketcomponent/position/AxialMethod.java},
+\url{https://github.com/openrocket/openrocket/blob/unstable/core/src/main/java/info/openrocket/core/rocketcomponent/position/AxialMethod.java}.}
+QtRocket stores placement as physical intent: a \code{StationLink} names fractional
+stations on both ends of a seam, an axial gap, and a seat kind selecting the radial
+compatibility rule (\src{model/parts/Placement.h}{49}), and a single resolver turns intent
+into geometry for simulator and visualizer alike (\cref{sec:placement}). The intent model
+is arguably richer; it is also younger, and at the pinned commit only its simplest verb is
+reachable from a front end.
+
+\emph{Infrastructure-first engineering.} Where OpenRocket's effort visibly went into
+product surface --- top-level \code{install4j/} and \code{snap/} installer trees sit
+beside \code{core/} and \code{swing/} in the
+repository\footnote{\url{https://github.com/openrocket/openrocket}, top-level directory
+listing.} --- QtRocket's went into the engineering substrate: a five-platform CI workflow
+building with \code{-Werror} tree-wide (\code{/WX} on MSVC) and flying full motor-ladder sweeps on every pull
+request (\src{.github/workflows/cmake-multi-platform.yml}{29}; \cref{sec:testing}). The
+same posture shows up inside the numerics, where the young project is occasionally ahead
+of the mature one --- QtRocket's embedded-error adaptive RKF45 against OpenRocket's
+heuristically stepped RK4 (\cref{app:or-methods}) --- and in what each ships without: one
+has no headless scripting story, the other no installer.
+
+\subsection{Reading guide}\label{app:or-context-guide}
+
+The three comparisons are ordered from broad to deep, and each stands alone.
+\Cref{app:or-features} is the sixteen-area feature matrix: for every area from the
+component catalog to distribution, what OpenRocket offers and what QtRocket has, with each
+QtRocket cell carrying a status verdict and citations. Start there for the shape of the
+gap. \Cref{app:or-methods} compares the flight physics method by method --- dynamics,
+aerodynamic coefficients, drag, atmosphere and wind, gravity, integration, motors,
+recovery, and validation posture --- and is written for the reader who wants the actual
+equations. \Cref{app:or-architecture} compares the two programs as software: module
+structure, the design tree, positioning, mass properties, simulation control, extension
+surfaces, persistence, motor data, and GUI architecture. All three inherit this appendix's
+two conventions without restating them: distance, not conformance; and footnoted primary
+sources on the OpenRocket side against pinned \code{file:line} citations on the QtRocket
+side.

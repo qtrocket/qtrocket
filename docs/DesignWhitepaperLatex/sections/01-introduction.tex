@@ -1,0 +1,176 @@
+\section{Introduction \& scope}\label{sec:intro}
+
+QtRocket is an open-source model-rocket simulator: a C++23 simulation core shared by three
+front ends --- a Qt6 Widgets GUI (\code{qtrocket}), a Qt-free headless REPL
+(read--eval--print loop, \code{qtrocket-cli}), and a standalone OpenGL design viewer
+(\code{qtrocket-visualizer}). All three executables link one static library,
+\code{qtrocket\_core}, which contains the application controller and pulls in the
+\code{model}, \code{sim}, and \code{utils} layer libraries beneath it
+\src{CMakeLists.txt}{224}. The core describes a rocket as a composite tree of parts,
+resolves each part's absolute position from stored placement intent, computes time-aware
+mass, center of gravity (CG), and inertia while a motor burns, and integrates the resulting
+three-degree-of-freedom (3-DOF) point-mass flight with a fixed-step fourth-order
+Runge--Kutta (RK4) or adaptive Runge--Kutta--Fehlberg (RKF45) solver until a typed
+termination condition ends it.
+
+This document is the project's design reference: a rigorous exposition of how that software
+works --- its layered architecture, its data model, its algorithms, and the physics
+underneath them --- written so that an engineer new to the project, with or without a
+rocketry background, can navigate the source and extend it without first reverse-engineering
+the design from the code. Each chapter therefore explains not only what a subsystem does but
+what it stores, what it derives, why the boundary sits where it does, and what the code
+deliberately does not do yet. Physics is developed before it is used: a reader who has never
+heard of a center of pressure will meet the concept in \cref{sec:primer} and in background
+callouts before any chapter leans on it.
+
+\subsection{Three documents, one series}\label{sec:intro-series}
+
+This whitepaper is the third volume of a series with a deliberate division of labor. The
+Architecture Review (\srcf{docs/ArchitectureReviewLatex/}) is a capabilities-and-gaps review
+performed at the same revision this document describes: it measures what the program can
+actually do, adversarially verifies every claim against the source, and ranks what is
+missing against OpenRocket as a baseline. The Part Placement whitepaper
+(\srcf{docs/PartPlacementDesignLatex/}) is the design specification for the placement
+feature that now ships: the argument, written before implementation, for storing placement
+as physical intent and deriving all absolute geometry through a single resolver. Those two
+documents assess and specify; this one teaches. Where a companion's verified finding is
+load-bearing here --- a located defect, a dormant-status verdict --- this document states it
+in place with the same citation rather than re-deriving it, and it does not re-litigate the
+review's rankings or the specification's rejected alternatives except where the rationale is
+part of the design being taught.
+
+\subsection{Ground truth and citations}\label{sec:intro-groundtruth}
+
+Every statement about the code is pinned to one revision: commit \code{254cd41} (``Major
+comment cleanup''), the tip of the \code{development} branch at the time of writing,
+reviewed against a clean working tree on 2026-07-07. That commit includes the completed Part
+Placement feature; work in flight on other branches is mentioned only where a chapter says
+so explicitly. Code citations take the form \src{model/parts/Part.h}{130} and are placed
+directly after the claim they ground. Line numbers are anchors into that revision, not
+absolutes --- they will drift as the tree moves, but they resolve exactly at the pinned
+commit.
+
+\begin{designrule}[Ground truth policy]
+Three sources are authoritative for this document: the source tree at pinned commit
+\code{254cd41}, the Architecture Review (\srcf{docs/ArchitectureReviewLatex/}), and the Part
+Placement design whitepaper (\srcf{docs/PartPlacementDesignLatex/}). Every other artifact
+under \srcf{docs/} --- the architecture audit, the phase specifications, the implementation
+plans --- is historical: the review verified that those files have drifted from the shipped
+code, and this document never cites them as fact. Where any document, including this one,
+disagrees with the tree, the tree wins. General physics background carries no citation and
+is framed explicitly as theory (\cref{sec:intro-reading}); it is never attributed to the
+code.
+\end{designrule}
+
+\subsection{The state of the project, honestly}\label{sec:intro-state}
+
+QtRocket at this commit is a finished, well-tested 3-DOF point-mass simulator surrounded by
+machinery staged for six degrees of freedom (6-DOF). What flies is small: thrust pinned
+along the world vertical, ``assumed through the CM'' \src{model/RocketModel.cpp}{70},
+pluggable gravity, and a single constant-$C_d$ quadratic drag term; there is no angle of
+attack, no restoring moment, no recovery deployment, and every flight ends ballistically,
+descending below the launch site \src{model/RocketModel.cpp}{62}. Around that core sits what
+the companion review calls ``a ring of machinery that is built, unit-tested, and consumed by
+nothing'': the per-part Barrowman center-of-pressure composition
+\src{model/parts/Part.cpp}{231}, a torque interface that returns zero and has no caller
+\src{model/RocketModel.cpp}{94}, quaternion orientation slots in the state vector
+\src{sim/StateData.h}{46}, a commented-out orientation integrator \src{sim/Propagator.h}{103},
+and a wind model that returns the zero vector \src{sim/WindModel.cpp}{16}. The staging is
+deliberate, and the tree says so itself: ``nothing in production consumes this in P2 --
+these tests pin the seam for P5'' \src{model/tests/AeroTests.cpp}{18}. This document teaches
+the dormant machinery alongside the live code, at the same depth, because the dormant seams
+are the shape of the next tier of the simulator and a new engineer will extend them, not
+replace them.
+
+\begin{keyinsight}[How this document marks unbuilt work]
+Three status words recur, with the companion review's exact senses. \emph{Dormant} means
+built and tested but with zero production consumers --- unreachable from any shipping code
+path. \emph{Partial} means reachable but with named gaps. \emph{Absent} means no trace in
+the tree. A \emph{seam} is an interface or capability built and tested ahead of its
+consumer; QtRocket's development order is seams first, consumers later. Each chapter marks
+its dormant, partial, and absent areas plainly, in place, where the surrounding machinery is
+taught; \cref{sec:incomplete} consolidates all of them into a single inventory. Expositional
+chapters do not editorialize about what should be built next --- that is the review's job.
+\end{keyinsight}
+
+\subsection{How to read this document}\label{sec:intro-reading}
+
+Four conventions hold everywhere, and the code enforces or documents each of them.
+
+\begin{itemize}
+\item \textbf{SI units throughout}: meters, kilograms, seconds, newtons. The constant
+  gravity model, for example, returns an acceleration of $(0, 0, -9.80665)\unit{m/s^2}$
+  \src{sim/ConstantGravityModel.h}{18}.
+\item \textbf{World frame: $z$ up.} Altitude is the $z$ component of position, the launch
+  site is the origin, and the nominal end of flight is descending below $z = 0$
+  \src{model/RocketModel.cpp}{62}.
+\item \textbf{Part frame: \zfwd.} Every part is modeled in its own frame with $+z$ toward
+  the nose, its fore plane at the local origin, and its body occupying
+  $z \in [-L, 0]$ \src{model/parts/Part.h}{130}. When the placement resolver plants the root
+  part's fore plane at the world origin, the nose tip becomes the datum for the whole
+  assembly; composite CG and center of pressure (CP) are both reported against it
+  (\cref{sec:placement,sec:aero}).
+\item \textbf{Quaternions are stored $(x, y, z, w)$} --- vector part first, scalar last.
+  \code{Quaternion} is \code{Eigen::Quaterniond} \src{utils/math/MathTypes.h}{16}, and the
+  state vector's orientation members carry the ``(vector, scalar)'' annotation
+  \src{sim/StateData.h}{46}. Eigen's value constructor takes $(w, x, y, z)$;
+  \cref{sec:incomplete} flags that hazard where the dormant slots are inventoried.
+\end{itemize}
+
+Inline identifiers are set in colored teletype (\code{getCompositeMass}); verbatim code
+fragments use real C++ syntax (\cppinline|getMass(t)|). Listings quote the source verbatim
+and cite it in the caption. Acronyms are expanded at first use in each chapter. Beyond the
+running text, five callout boxes carry distinct semantics:
+
+\begin{description}
+\item[Design rule (blue).] A rule the code enforces, or an invariant the design commits to
+  --- quoting the in-tree comment where it binds whenever one exists.
+\item[Key correctness detail (teal).] A subtlety that is easy to miss and expensive to
+  rediscover: why a cache key is sound, why a clamp must exist, how a guard prevents a
+  failure that once occurred.
+\item[Hard, located failure (red).] A verified defect present at the pinned commit, stated
+  with its mechanism and its file:line location. These are inherited from the companion
+  review's adversarial verification and restated here where the affected machinery is
+  taught.
+\item[Rejected alternative (amber).] A design alternative that was considered and turned
+  down, kept because the argument that killed it is part of the design.
+\item[Physical background (dark blue).] Pure physics: theory a newcomer needs, developed
+  from first principles. The separation is deliberate --- anything inside a physics box is
+  background and carries no code citation; anything outside one that describes behavior is a
+  statement about the code and does.
+\end{description}
+
+\subsection{Document roadmap}\label{sec:intro-roadmap}
+
+\Cref{sec:primer} opens with physics, not code: a model-rocket flight from first principles
+--- thrust, drag, stability, and the vocabulary (center of pressure, static margin, apogee,
+recovery) the rest of the document uses freely. Readers who already know rocketry can skip
+it. \Cref{sec:overview} maps the system: the three executables, the layer libraries and the
+link graph that enforces their ordering, the application controller, and the
+\code{Propagatable} bridge between model and simulation. Three chapters then build the
+rocket: \cref{sec:parts} covers the composite part tree and its time-aware mass, CG, and
+inertia machinery; \cref{sec:placement} the placement model --- placement intent stored as
+fractional stations and seat kinds, the single resolver that turns intent into absolute
+geometry, and the fail-closed overlap diagnostics gating it; \cref{sec:motors} the motor
+subsystem, from thrust-curve interpolation and the reconstructed mass curve to the database
+and its three ingest paths. Three more chapters fly it: \cref{sec:simcore} the propagator
+loop, the two solvers, and the typed termination taxonomy; \cref{sec:environment} the
+pluggable atmosphere, gravity, and geoid models; \cref{sec:aero} the aerodynamics --- the
+small consumed force path and the dormant Barrowman layer beside it. \Cref{sec:interfaces}
+covers the three user-facing surfaces, from the GUI's launch panel to the 33-command
+scriptable REPL \src{cli/Repl.cpp}{245}; \cref{sec:persistence} the design and
+motor-database file formats and their round-trip guarantees; \cref{sec:testing} the test
+suites, coverage tooling, and continuous integration. \Cref{sec:incomplete} closes the body
+with the consolidated inventory of everything dormant, partial, or absent.
+
+Four appendices place QtRocket next to OpenRocket, the de facto standard open-source
+model-rocket simulator. The intent is calibration, not conformance: QtRocket is an
+independent project with similar goals, OpenRocket is the baseline because it defines what a
+mature tool in this space offers, and the comparison measures distance from that surface ---
+never compliance with it as a specification. \Cref{app:or-context} establishes the baseline
+and that framing; \cref{app:or-features} compares feature surface;
+\cref{app:or-methods} simulation methods; \cref{app:or-architecture} architecture.
+OpenRocket-side claims are researched from that project's published documentation and
+sources rather than verified file-by-line the way QtRocket claims are, and the appendices
+say so. \Cref{app:glossary} collects the series' terms of art, and \cref{app:repro} records
+how this document itself builds and the ground rules under which it was written.

@@ -1,0 +1,101 @@
+% =============================================================================
+%  diagrams/tikzstyles.tex  --  shared TikZ styles for activity, component,
+%  geometry-convention, and UML class/sequence figures.
+%  All diagrams are hand-built TikZ (no PlantUML step).
+% =============================================================================
+
+\tikzset{
+  % ---- generic ----
+  >={Stealth[length=2.4mm,width=1.8mm]},
+  font=\sffamily\small,
+  node distance=8mm and 12mm,
+  %
+  % ---- activity / flowchart ----
+  act/.style={rounded corners=2pt, draw=qrBlue, fill=qrBoxBg, line width=0.5pt,
+              text width=42mm, align=center, inner sep=5pt, minimum height=9mm},
+  startstop/.style={rounded corners=8pt, draw=qrDeep, fill=qrDeep!12, line width=0.6pt,
+              align=center, inner sep=5pt, minimum height=8mm, text width=34mm},
+  decision/.style={diamond, aspect=2, draw=qrTeal, fill=qrTeal!10, line width=0.5pt,
+              align=center, inner sep=1pt, text width=30mm},
+  io/.style={trapezium, trapezium left angle=70, trapezium right angle=110,
+              draw=qrGray, fill=qrGray!8, align=center, inner sep=4pt, text width=36mm},
+  failnode/.style={rounded corners=2pt, draw=qrRed, fill=qrRed!8, line width=0.6pt,
+              text width=42mm, align=center, inner sep=5pt},
+  oknode/.style={rounded corners=2pt, draw=qrGreen, fill=qrGreen!8, line width=0.6pt,
+              text width=42mm, align=center, inner sep=5pt},
+  flow/.style={->, draw=qrInk, line width=0.5pt},
+  flowlbl/.style={font=\sffamily\scriptsize\itshape, text=qrGray, fill=white,
+              inner sep=1pt},
+  %
+  % ---- component / layering ----
+  layer/.style={rounded corners=3pt, draw=qrRule, fill=white, line width=0.6pt,
+              minimum height=11mm, align=center, font=\sffamily\small},
+  comp/.style={rounded corners=2pt, draw=qrBlue, fill=qrBlue!8, line width=0.5pt,
+              align=center, inner sep=4pt, font=\sffamily\small, minimum height=8mm},
+  resolver/.style={rounded corners=2pt, draw=qrTeal, fill=qrTeal!12, line width=0.9pt,
+              align=center, inner sep=5pt, font=\sffamily\small\bfseries},
+  consumer/.style={rounded corners=2pt, draw=qrDeep, fill=qrDeep!8, line width=0.5pt,
+              align=center, inner sep=4pt, font=\sffamily\small},
+  dep/.style={->, draw=qrGray, line width=0.5pt, dashed},
+  uses/.style={->, draw=qrTeal, line width=0.8pt},
+  %
+  % ---- geometry-convention figures ----
+  axis/.style={->, draw=qrInk, line width=0.7pt},
+  part/.style={draw=qrDeep, line width=0.7pt, fill=qrBlue!7},
+  cmdot/.style={circle, fill=qrRed, inner sep=0pt, minimum size=3.2pt},
+  station/.style={draw=qrTeal, line width=0.6pt, dash pattern=on 2pt off 1.5pt},
+  dimline/.style={<->, draw=qrGray, line width=0.4pt},
+  ghost/.style={draw=qrGray, line width=0.4pt, dash pattern=on 1pt off 1pt, fill=none},
+  %
+  % ---- UML class diagrams ----
+  % Three-compartment class box: name / attributes / operations.
+  % Name compartment: \textbf{Name}; abstract classes and interfaces set the
+  % name in italics and use the dedicated fills below.
+  umlclass/.style={rectangle split, rectangle split parts=3,
+              rectangle split part fill={qrBlue!12,white,white},
+              draw=qrDeep, line width=0.6pt, align=left, inner sep=4pt,
+              font=\sffamily\footnotesize, text width=46mm,
+              rectangle split part align={center,left,left}},
+  umlabstract/.style={umlclass,
+              rectangle split part fill={qrTeal!12,white,white}},
+  umliface/.style={umlclass,
+              rectangle split part fill={qrGray!15,white,white}},
+  % Compact single-compartment class box (relationships-only diagrams)
+  umlsimple/.style={draw=qrDeep, fill=qrBlue!12, line width=0.6pt, align=center,
+              inner sep=4pt, font=\sffamily\footnotesize, minimum height=7mm},
+  umlnote/.style={draw=qrGray, fill=qrBoxBg, line width=0.4pt, align=left,
+              inner sep=4pt, font=\sffamily\scriptsize, text width=38mm,
+              chamfered rectangle, chamfered rectangle corners=north east},
+  % UML relationship arrows (arrowhead at the TARGET end of the path)
+  inherit/.style={-{Triangle[open,length=3.2mm,width=2.8mm]},
+              draw=qrInk, line width=0.6pt},
+  realize/.style={-{Triangle[open,length=3.2mm,width=2.8mm]},
+              draw=qrInk, line width=0.6pt, dashed},
+  compose/.style={{Diamond[length=3.2mm,width=2.2mm]}-,
+              draw=qrInk, line width=0.6pt},
+  aggregate/.style={{Diamond[open,length=3.2mm,width=2.2mm]}-,
+              draw=qrInk, line width=0.6pt},
+  assoc/.style={->, draw=qrInk, line width=0.6pt},
+  umldep/.style={->, draw=qrGray, line width=0.5pt, dashed},
+  umllbl/.style={font=\sffamily\scriptsize, text=qrGray, fill=white, inner sep=1pt},
+  mult/.style={font=\sffamily\scriptsize, text=qrInk, inner sep=1.5pt},
+  %
+  % ---- UML sequence diagrams ----
+  seqhead/.style={draw=qrDeep, fill=qrBlue!8, line width=0.6pt, align=center,
+              inner sep=4pt, font=\sffamily\footnotesize, minimum height=7mm},
+  seqlife/.style={draw=qrGray, dash pattern=on 2pt off 2pt, line width=0.5pt},
+  seqact/.style={draw=qrBlue, fill=qrBlue!15, line width=0.5pt},
+  seqmsg/.style={->, draw=qrInk, line width=0.5pt},
+  seqret/.style={->, draw=qrGray, line width=0.5pt, dash pattern=on 2.5pt off 2pt},
+  seqself/.style={->, draw=qrInk, line width=0.5pt, rounded corners=2pt},
+  seqlbl/.style={font=\sffamily\scriptsize, text=qrInk, fill=white, inner sep=1pt},
+  seqnote/.style={draw=qrGray, fill=qrBoxBg, line width=0.4pt, align=left,
+              inner sep=3pt, font=\sffamily\scriptsize},
+}
+
+% A titled container box drawn behind a group of component nodes.
+% Usage inside {pgfonlayer}{background}: \titledbox{(fit nodes)}{Title}{colour}
+\newcommand{\titledbox}[3]{%
+  \node[draw=#3,rounded corners=3pt,line width=0.6pt,fill=#3!5,
+        fit=#1,inner sep=7pt,label={[anchor=north west,font=\sffamily\bfseries\small,
+        text=#3,xshift=2pt,yshift=-1pt]north west:#2}] {};}

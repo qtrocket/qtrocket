@@ -1,0 +1,608 @@
+\section{The part tree \& mass properties}\label{sec:parts}
+
+Everything the simulator knows about a rocket's mass --- how heavy it is, where its center of
+mass (CM) sits, how hard it resists rotation --- comes from one data structure: a composite
+tree of \code{Part} nodes under \srcf{model/parts/}. Each node is simultaneously one physical
+component and the root of a sub-tree, so it carries both its own mass properties and the lazily
+cached composite of itself plus every descendant \src{model/parts/Part.h}{26}. This chapter
+walks the tree from the outside in: ownership and identity (\cref{sec:parts-tree}), the five
+concrete part types (\cref{sec:parts-catalog}), the two-pass mass-property algorithm at the
+chapter's core (\cref{sec:parts-massprops}), the caching that makes those properties
+time-aware (\cref{sec:parts-caching}), the closed-form tensor library
+(\cref{sec:parts-tensors}), and the diagnostics gate on the composite readers
+(\cref{sec:parts-gating}). How a child's position is \emph{stored and resolved} --- the
+\code{StationLink}, the resolver, and the overlap sweep --- is the subject of
+\cref{sec:placement}; this chapter treats placement as an opaque intent value riding alongside
+each child. The motor's internals live in \cref{sec:motors}. All quantities are SI --- meters,
+kilograms --- with one deliberate exception flagged in \cref{sec:parts-catalog}.
+
+\subsection{The composite tree}\label{sec:parts-tree}
+
+\code{Part} is the abstract node of a classic Composite pattern
+(\cref{fig:parts-uml-tree}). A node owns its children as a vector of
+(\code{shared\_ptr<Part>}, \code{StationLink}) pairs in attachment order
+\src{model/parts/Part.h}{288}: the smart pointer carries ownership of the child sub-tree, and
+the \code{StationLink} beside it stores the child's \emph{placement intent} --- a
+feature-to-feature relationship, never a resolved coordinate
+(\cref{sec:placement}). Each node also keeps a non-owning back-pointer to its parent, used to
+propagate cache-invalidation flags up the tree
+\src{model/parts/Part.h}{222}. Two members are pure virtual, and they define what a concrete
+part must supply: \code{typeName()}, the stable string tag that doubles as the factory key and
+the design-file type attribute \src{model/parts/Part.h}{181}, and \code{cloneShallow()}, the
+type-preservation hook for deep copies \src{model/parts/Part.h}{217}.
+
+\tikzfig{uml-part-tree}{The \code{Part} composite tree. The abstract base owns children as
+(\code{shared\_ptr}, \code{StationLink}) pairs in attachment order
+\srccap{model/parts/Part.h}{288} and keeps a non-owning parent back-pointer for upward cache
+invalidation \srccap{model/parts/Part.h}{222}. Five concrete types override the pure virtuals
+\code{typeName()} and \code{cloneShallow()}; \code{PartFactory} is the sanctioned construction
+path for the four geometry types, while \code{Motor} is attached only through
+\code{RocketModel::setMotorModel()} \srccap{model/parts/PartFactory.cpp}{73}.}{fig:parts-uml-tree}
+
+Identity is the id, never the name. Every part gets a process-unique
+\code{Part::Id} (a \code{std::uint64\_t}) from a relaxed atomic counter that starts at 1,
+reserving 0 as ``none'' \src{model/parts/Part.cpp}{26}; the id is assigned fresh in every
+constructor --- including the copy constructor --- and never reassigned
+\src{model/parts/Part.h}{224}. Names are human-facing labels and need not be unique
+\src{model/parts/Part.h}{176}; ids are deliberately not serialized, because they are only
+meaningful within a single run \src{model/parts/Part.h}{171}. The placement diagnostics of
+\cref{sec:placement} identify parts by id for exactly this reason: names collide and pointers
+dangle.
+
+\begin{designrule}[A part lives at one place in one tree]
+Copy and move assignment are deleted, and the protected copy constructor suppresses the
+implicit move, so a \code{Part} cannot be copied, moved, or sliced at the value level
+\src{model/parts/Part.h}{66}. A part enters a tree only by moving its owning
+\code{shared\_ptr} into \code{addChildPart()}, and is duplicated only via \code{clone()} ---
+``the only way to duplicate a part'' \src{model/parts/Part.h}{193}. Aliasing a node into two
+trees, or double-attaching it within one, is unrepresentable rather than merely discouraged.
+\end{designrule}
+
+\code{addChildPart(child, link)} enforces that rule with three guards, each a logged no-op
+rather than an exception: a null child \src{model/parts/Part.cpp}{73}; a child that already
+has a parent, with the log message pointing at the remedy (``clone() it or detach first'')
+\src{model/parts/Part.cpp}{78}; and a child that is this part or one of its ancestors, which
+would form both a graph cycle and an ownership cycle through the child \code{shared\_ptr}s
+\src{model/parts/Part.cpp}{84}. Adoption is then re-parenting followed by a move --- no copy,
+so the child's dynamic type and id are preserved
+\src{model/parts/Part.cpp}{97}. Detachment is the inverse: \code{removeChildById()} moves the
+owning pointer out, clears the child's parent, and returns the intact sub-tree to the caller
+\src{model/parts/Part.cpp}{277}. Both operations end by invalidating \emph{both} caches ---
+composite mass properties and resolved placement --- up the whole ancestor chain
+\src{model/parts/Part.cpp}{100}; removal drives the rebuild through the dirty flag rather than
+the mass-delta gate of \cref{sec:parts-caching}, so even detaching a zero-mass sub-tree
+refreshes the composite \src{model/parts/Part.h}{205}.
+
+Duplication is a two-level protocol (\cref{lst:parts-clone}). \code{cloneShallow()} copies
+just one node with the correct dynamic type; each concrete class implements it as
+\cppinline|new X(*this)| through a protected, defaulted copy constructor (e.g.\
+\src{model/parts/BodyTube.h}{63}), and the base copy constructor copies the node's own mass
+properties, mints a fresh id, and leaves the copy parentless and childless
+\src{model/parts/Part.cpp}{55}. \code{clone()} then recurses polymorphically over the
+children, copying each \code{StationLink} verbatim --- the placement intent is plain data and
+clones exactly. The result is a deep, independent, type-preserving copy of the whole sub-tree,
+pinned per concrete type by the test suite \src{model/tests/PartTests.cpp}{252}.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+std::shared_ptr<Part> Part::clone() const
+{
+   std::shared_ptr<Part> copy = cloneShallow(); // this node: correct dynamic type, fresh id, no kids
+   for(const auto& [child, link] : childParts)
+   {
+      std::shared_ptr<Part> childCopy = child->clone(); // recurse polymorphically (no slicing)
+      childCopy->parent = copy.get();
+      copy->childParts.emplace_back(std::move(childCopy), link); // the placement intent clones verbatim
+   }
+   return copy;
+}
+\end{minted}
+\caption{Deep copy without slicing \srccap{model/parts/Part.cpp}{106}: the pure-virtual
+\code{cloneShallow()} reproduces each node's dynamic type, the recursion reproduces the
+structure, and the copied \code{StationLink}s reproduce the placement intent. Every cloned
+node receives a fresh id.}\label{lst:parts-clone}
+\end{listing}
+
+After construction a part is close to immutable: the only setters are \code{setMass()} and
+\code{setI()}, both of which flag the ancestor chain for recompute
+\src{model/parts/Part.h}{74}; there are no geometry setters on any concrete type ---
+changing a dimension means building a replacement part (and losing the id). Geometry is
+exposed read-only through a family of virtuals: \code{getLength()} (a part occupies
+$z \in [-L, 0]$ in its own \zfwd{} frame, fore plane at the local origin)
+\src{model/parts/Part.h}{130}, the silhouette profiles
+\code{radiusOuterAt()}/\code{radiusInnerAt()} \src{model/parts/Part.h}{135},
+\code{axialLength()}, \code{isSolid()}, and \code{stationAt()} \src{model/parts/Part.h}{144},
+the solid-host capacity rule \code{innerCapacityAt()} \src{model/parts/Part.h}{158}, and the
+frontal-disc reference areas \src{model/parts/Part.h}{162}. \Cref{sec:placement} gives these
+their semantics; the catalog below records what each concrete type returns.
+
+The sanctioned construction path is \code{PartFactory}. One type-agnostic \code{PartParams}
+struct spans every factory-buildable part, every geometry field a \code{std::optional} so a
+missing key differs from a supplied zero \src{model/parts/PartFactory.h}{27}; the CLI's
+key=value parser, \code{makePart()}, and the reflection function \code{params()} all share
+it, ``so the field vocabulary can't drift between the front-ends and the on-disk format''
+\src{model/parts/PartFactory.h}{23}. \code{makePart(type, p)} dispatches on the exact
+\code{typeName()} string \src{model/parts/PartFactory.cpp}{27}: a missing required field
+throws a type-named \code{std::invalid\_argument} \src{model/parts/PartFactory.cpp}{16},
+constructor range validation propagates, and an unknown type --- including \code{"Motor"},
+attached through \code{RocketModel::setMotorModel()}, never built directly --- throws as well
+\src{model/parts/PartFactory.cpp}{73}. The factory always passes a zero CM offset:
+``placement is the caller's attach offset, not a baked-in CM''
+\src{model/parts/PartFactory.h}{54}. \code{params()} reflects a part's own scalars back
+through a \code{dynamic\_cast} chain \src{model/parts/PartFactory.cpp}{79}, and the round
+trip reproduces mass and full composite CM/inertia to within four ulps
+(\code{EXPECT\_DOUBLE\_EQ}) \src{model/tests/PartFactoryTests.cpp}{139}. New part headers register in one place, the
+umbrella header \srcf{model/parts/Parts.h} \src{model/parts/Parts.h}{4}.
+
+\subsection{The concrete catalog}\label{sec:parts-catalog}
+
+Five concrete types derive from \code{Part} (\cref{tab:parts-catalog}). The four geometry
+types compute their mass, per-unit-mass inertia tensor, and CM offset from geometry plus
+density at construction, delegating the tensor algebra to \code{model::InertiaTensors}
+(\cref{sec:parts-tensors}); their constructors validate ranges and throw
+\code{std::invalid\_argument} on non-physical geometry, so a constructed part is always
+internally consistent. The \code{Motor} takes its mass and dimensions from the wrapped
+catalog entry instead.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}Xll@{}}
+\toprule
+\code{typeName()} & Geometry parameters & Own mass & Tensor & $C_{N\alpha}$ \\
+\midrule
+\code{BodyTube} & $r_i$, $r_o$, $L$, $\rho$ & $\rho\,\pi(r_o^2 - r_i^2)L$ & \code{Tube} & $0$ \\
+\addlinespace
+\code{NoseCone} & $R$, $L$, wall $t$, $\rho$, solid flag &
+  $\rho\,\tfrac{1}{3}\pi R^2 L$ (solid); $\rho\,\pi R\sqrt{R^2{+}L^2}\,t$ (shell) &
+  \code{SolidCone} / \code{ConicalShell} & $2$ \\
+\addlinespace
+\code{FinSet} & $N$, $c_r$, $c_t$, $s$, $X_t$, $t$, $r_b$, $\rho$ &
+  $N\rho\,\tfrac{1}{2}(c_r{+}c_t)\,s\,t$ & \code{TrapezoidalFinSet} & fin term \\
+\addlinespace
+\code{HollowSphere} & $r_i$, $r_o$, $\rho$ & $\rho\,\tfrac{4}{3}\pi(r_o^3 - r_i^3)$ &
+  \code{HollowSphere} & inert \\
+\addlinespace
+\code{Motor} & wraps a \code{MotorModel} & \code{mm.getMass($t$)} &
+  cylinder from motor $d$, $L$ & inert \\
+\bottomrule
+\end{tabularx}
+\caption{The concrete part catalog at the pinned commit \code{254cd41}. Mass closed forms:
+\srccap{model/parts/BodyTube.cpp}{28}, \srccap{model/parts/ConicalNoseCone.cpp}{32},
+\srccap{model/parts/FinSet.cpp}{46}, \srccap{model/parts/HollowSphere.cpp}{42},
+\srccap{model/parts/Motor.h}{40}. The $C_{N\alpha}$ column is each part's Barrowman
+normal-force-slope contribution, analyzed in \cref{sec:aero}.}\label{tab:parts-catalog}
+\end{table}
+
+\begin{description}
+\item[\code{BodyTube}] --- a uniform-density hollow circular cylinder, axis on $z$; a solid
+  rod when $r_i = 0$. The constructor validates $0 \le r_i < r_o$, $L > 0$, $\rho > 0$
+  \src{model/parts/BodyTube.cpp}{22}; the CM sits at the geometric center
+  \src{model/parts/BodyTube.h}{25} and the silhouette
+  is constant walls \src{model/parts/BodyTube.h}{55}. It contributes a reference area
+  $\pi r_o^2$ \src{model/parts/BodyTube.h}{52} and a wetted area $2\pi r_o L$ held ready for
+  a future skin-friction drag term \src{model/parts/BodyTube.h}{51}; aerodynamically it
+  reports $C_{N\alpha} = 0$ --- a constant-diameter body produces no normal force, so it
+  drops out of the center-of-pressure average \src{model/parts/BodyTube.cpp}{38}.
+\item[\code{ConicalNoseCone}] --- a straight right circular cone, either solid (the default)
+  or a thin lateral shell (open base, wall thickness $t \ll R$)
+  \src{model/parts/ConicalNoseCone.h}{22}. The two variants differ in everything derived:
+  mass \src{model/parts/ConicalNoseCone.cpp}{32}, tensor
+  (\code{SolidCone} vs.\ \code{ConicalShell} \src{model/parts/ConicalNoseCone.cpp}{44}), and
+  CM --- the solid centroid is $L/4$ from the base, the shell's $L/3$, reported as offsets
+  $-L/4$ and $-L/6$ from the component middle in the \zfwd{} frame
+  \src{model/parts/ConicalNoseCone.cpp}{49}. The silhouette is the linear taper
+  $R\cdot(-z/L)$ with a zero-length divide guard \src{model/parts/ConicalNoseCone.h}{61}, and
+  \code{isSolid()} returns the \emph{authored} flag, because a shell cone's bore vanishes at
+  the tip and bore inference would misclassify it
+  \src{model/parts/ConicalNoseCone.h}{55}. Its Barrowman contribution is the classic nose
+  $C_{N\alpha} = 2$ at its own base area, rescaled to the shared reference area, with the
+  center of pressure at $2L/3$ aft of the tip \src{model/parts/ConicalNoseCone.cpp}{57}. It is
+  the only nose profile in the tree --- no ogive, parabolic, or Haack shapes exist at this
+  commit (\cref{sec:incomplete}).
+\item[\code{FinSet}] --- $N \ge 3$ identical symmetric trapezoidal flat-plate fins, modeled
+  as \emph{one analytic leaf}, not $N$ child parts \src{model/parts/FinSet.h}{22}. The
+  geometry vocabulary is the standard planform set: root chord $c_r$, tip chord $c_t$ (zero
+  allowed --- a triangular fin), semi-span $s$, plate thickness, mounting body radius $r_b$,
+  and the leading-edge (LE) sweep \emph{length} $X_t$ in meters --- an axial offset, not an
+  angle \src{model/parts/FinSet.h}{45}. Its axial extent is the root chord
+  \src{model/parts/FinSet.h}{61}, and its CM lies on the axis at the trapezoid's axial mass
+  centroid, reported as $x_c - c_r/2$ from the middle \src{model/parts/FinSet.cpp}{54}. The
+  envelope is deliberately honest: \code{radiusOuterAt()} reports only the body disc $r_b$,
+  never $r_b + s$ \src{model/parts/FinSet.h}{73}, and the reference area is the body disc
+  $\pi r_b^2$ --- fins do not inflate the reference area
+  \src{model/parts/FinSet.h}{71}. A fin count below three is genuinely anisotropic and
+  unsupported: the constructor warns and falls back to the $N \ge 3$ isotropic tensor rather
+  than throwing \src{model/parts/FinSet.cpp}{36}. Its Barrowman contribution is the standard
+  $N$-fin term with the mid-chord-line factor and the fin--body interference factor
+  $K_{fb} = 1 + r_b/(s + r_b)$ \src{model/parts/FinSet.cpp}{60} (\cref{sec:aero}).
+\item[\code{HollowSphere}] --- a uniform-density thick-walled hollow sphere. The constructor
+  rejects $r_i \ge r_o$ and $\rho \le 0$ up front, because $r_i = r_o$ would divide by zero
+  inside the tensor formula \src{model/parts/HollowSphere.cpp}{33}. Its length is pole to
+  pole, $2r_o$ \src{model/parts/HollowSphere.h}{51}; its silhouette is the circle about a
+  center at $z = -r_o$, with the cavity as an inner band
+  \src{model/parts/HollowSphere.cpp}{53}; and it overrides \code{isSolid()} because the bore
+  vanishes at the poles, where fore-plane inference would call it solid
+  \src{model/parts/HollowSphere.h}{59}. It doubles as the boot placeholder body a
+  \code{RocketModel} constructs before any design is authored or loaded
+  \src{model/RocketModel.cpp}{30}.
+\item[\code{Motor}] --- a zero-length leaf that wraps a \code{MotorModel} \emph{by value}
+  \src{model/parts/Motor.h}{18}, so a burning motor's mass participates in composite mass,
+  CM, and inertia like any other part. Its single physics contribution is the
+  \code{getMass($t$)} override, which delegates to the wrapped model: loaded weight before
+  ignition, falling to casing mass over the burn, constant after burnout
+  \src{model/parts/Motor.h}{40} (\cref{sec:motors}). Swapping motors goes through
+  \code{setMotorModel()}, which mutates in place --- re-seeding the tensor and mass so the
+  tree recomputes --- rather than re-attaching, so the \code{RocketModel}'s borrowed
+  \code{Motor*} handle stays valid \src{model/parts/Motor.cpp}{16}. It is not
+  factory-constructible; \code{RocketModel::setMotorModel()} attaches it at the airframe
+  root, and since a Motor carries no geometric envelope it never trips the overlap gate
+  \src{model/RocketModel.cpp}{118}.
+\end{description}
+
+\begin{designrule}[Fin sets are one leaf, not $N$ children]
+``The Part tree shares one body-frame orientation and never rotates child tensors (Part.h), so
+an azimuthally-arrayed component can't be N children at different angles --- each fin's tensor
+would need an Rz rotation the tree won't apply. A FinSet instead bakes the N-fin
+rotate-and-sum into its own per-unit-mass tensor'' \src{model/parts/FinSet.h}{25}. This is the
+composite walk's omitted $R\,I\,R^{\mathsf{T}}$ rotation (\cref{sec:parts-massprops}) surfacing
+as a modeling constraint: the one component whose sub-parts genuinely sit at different
+azimuths must pre-sum them analytically in \code{InertiaTensors::TrapezoidalFinSet}
+(\cref{sec:parts-tensors}) and present as a single transversely isotropic leaf.
+\end{designrule}
+
+\begin{keyinsight}[The motor is the tree's one millimeter island]
+Every part API in \srcf{model/parts/} speaks SI meters --- the factory contract says so
+explicitly: ``Lengths SI meters, densities kg/m\textasciicircum{}3 --- never mm''
+\src{model/parts/PartFactory.h}{25}. The lone exception is the motor's \emph{catalog}
+geometry: \code{MotorModel} stores diameter and length in millimeters, the convention of the
+RockSim files and the motor database that feed it (\cref{sec:motors}). The unit boundary is
+crossed at exactly two lines, both inside \code{Motor::motorTensor()}:
+\cppinline|motor.data.diameter / 1000.0| and its length twin, annotated ``RSE / DB store mm''
+\src{model/parts/Motor.cpp}{27}. From those two divisions onward everything the tree sees is
+meters: the per-unit-mass tensor is a solid cylinder built from the converted dimensions,
+degrading to a zero tensor --- a point mass that still contributes its time-varying mass ---
+when the catalog geometry is unknown \src{model/parts/Motor.cpp}{31}.
+\end{keyinsight}
+
+\subsection{Mass properties: the two-pass composite walk}\label{sec:parts-massprops}
+
+The tree's tensor bookkeeping rests on one convention: a part's \emph{own} stored tensor
+(\code{getI()}/\code{setI()}) is
+\emph{per unit mass} --- the inertia integral divided by mass, a purely geometric quantity in
+$\mathrm{m}^2$ --- while every \emph{composite} tensor (\code{getCompositeI()}) is the full
+mass-weighted tensor in $\mathrm{kg\,m}^2$ about the composite CM
+\src{model/parts/Part.h}{30}. The constructor seeds the childless composite as $m \cdot I$
+\src{model/parts/Part.cpp}{41}, and the composite walk multiplies by \code{getMass($t$)} at
+read time \src{model/parts/Part.cpp}{225}. The payoff is that density and geometry are
+factored: the closed forms in \code{InertiaTensors} are pure geometry, and a \code{Motor}'s
+tensor stays constant while its mass burns down --- the time variation enters once, through
+the mass factor. A white-box test pins the convention so it cannot silently regress: for a
+2\,kg unit sphere, \code{getI()} reads $0.4$ and \code{getCompositeI()} reads $0.8$
+\src{model/tests/PartTests.cpp}{145}.
+
+\begin{physbox}[The parallel-axis (Huygens--Steiner) theorem]
+The inertia tensor $I$ measures a rigid body's resistance to angular acceleration; unlike
+mass, it depends on the reference point it is taken about, and it is smallest about the
+body's own CM. To combine several bodies into one composite, each body's centroidal tensor
+must first be re-expressed about the \emph{common} point --- the composite CM. For a body of
+mass $m$ whose CM is displaced by the vector $d$ from that point, the theorem gives
+\begin{equation*}
+I' \;=\; I_{\mathrm{cm}} \;+\; m\big((d \cdot d)\,I_3 - d\,d^{\mathsf{T}}\big),
+\end{equation*}
+where $I_3$ is the $3\times 3$ identity. The first added term, $m(d \cdot d)I_3$, is the
+familiar scalar rule $I = I_{\mathrm{cm}} + m d^2$ applied to every axis at once; the
+subtracted $m\,d\,d^{\mathsf{T}}$ removes the component along $d$ itself, because displacing a
+body \emph{along} an axis does not change its inertia about that axis. The correction is even
+in $d$ --- only the offset matters, not its sign. One subtlety governs composite algorithms:
+the map is valid only from a body's own CM to the new point --- shifting through an
+intermediate point does \emph{not} add up, so each body must be shifted in one step, from its
+own CM directly to the composite CM.
+\end{physbox}
+
+All three composite quantities come from one time-aware walk,
+\code{computeCompositeAt($t$)} \src{model/parts/Part.h}{230}. It runs over
+\code{resolvedCache} --- the resolver output for this sub-tree with the sub-tree root planted
+at the local origin \src{model/parts/Part.cpp}{166} --- so geometry is resolved once per
+structural change and the walk merely \emph{re-weights} it by \code{getMass($t$)}
+\src{model/parts/Part.cpp}{177}. Before any arithmetic, the walk consults the cached placement
+verdict and refuses a failed solve (\cref{sec:parts-gating}).
+
+\paragraph{Pass 1: the mass-weighted composite CM.} For each resolved placement, the part's
+CM is located in the sub-tree-root frame by composing its resolved fore-plane origin with its
+local CM station \src{model/parts/Part.cpp}{196}. Writing the code's own names, with
+$\mathtt{pm}_i$ the part's \code{getMass($t$)} and $\mathtt{cmOffset}_i$ the CM-versus-middle
+offset of \cref{sec:parts-catalog}:
+\begin{align}
+\mathtt{cmLocal}_i &= \Big(\mathtt{cmOffset}_{i,x},\; \mathtt{cmOffset}_{i,y},\;
+  -\tfrac{L_i}{2} + \mathtt{cmOffset}_{i,z}\Big), \\
+\mathtt{cmInRoot}_i &= \mathtt{pose.origin}_i + \mathtt{pose.orient}_i \cdot \mathtt{cmLocal}_i, \\
+m = \sum_i \mathtt{pm}_i, \qquad
+\mathtt{temp\_cm} &= \frac{1}{m} \sum_i \mathtt{pm}_i \, \mathtt{cmInRoot}_i \qquad (m > 0).
+\end{align}
+The $-L_i/2$ appears because every part reports its CM relative to the component
+\emph{middle}, while its resolved origin is its \emph{fore plane}; the uniform expression
+$-L/2 + \mathtt{cmOffset}_z$ converts one to the other for every type with no per-part adapter
+\src{model/parts/Part.h}{81}. A fully massless sub-tree has no meaningful CM, so the divide is
+guarded and \code{temp\_cm} stays at the origin \src{model/parts/Part.cpp}{210}. Because the
+sub-tree root's own pose is the identity, the result is expressed in the root's fore-plane
+frame --- for the whole rocket, the nose tip. That \emph{tip datum} is shared by the composite
+center-of-pressure fold (\cref{sec:aero}), which is what later makes the static margin a plain
+subtraction.
+
+\begin{keyinsight}[Read the composite-CM datum from the tests, not the header]
+Three doc comments in \srcf{model/parts/Part.h} still describe the composite CM as ``relative
+to this part's own CM'' --- on the \code{CompositeProperties.cm} field
+\src{model/parts/Part.h}{90}, on \code{getCompositeCm()} \src{model/parts/Part.h}{104}, and on
+the \code{compositeCm} member \src{model/parts/Part.h}{258} --- and \src{sim/Aero.h}{24}
+carries the same stale wording. The implementation reports the tip datum: the walk plants the
+sub-tree root at the local origin \src{model/parts/Part.cpp}{166} and folds each part at
+$\mathtt{pose.origin} + \mathtt{orient}\cdot(-L/2 + \mathtt{cmOffset})$
+\src{model/parts/Part.cpp}{203}, so even a childless nonzero-length part reports
+$-L/2 + \mathtt{cmOffset}_z$, not zero. The tests state the truth explicitly ---
+``Composite CG is now reported in the root's fore-plane (tip) datum, not the root's own CM''
+\src{model/tests/BodyTubeTests.cpp}{92} --- and the migration-invariance suite is built around
+it \src{tests/PlacementInvarianceTests.cpp}{113}. This is a stale comment, not a code defect
+--- the tensor is taken about the composite CM regardless of which datum that CM is reported
+in, so no arithmetic is wrong --- but a reader who trusts those three lines will misplace
+every CG by half the root's length.
+\end{keyinsight}
+
+\paragraph{Pass 2: inertia about the composite CM.} The walk then shifts each part's
+mass-weighted tensor to \code{temp\_cm} with the parallel-axis theorem, exactly as the physics
+box states it (\cref{lst:parts-passtwo}). The displacement tensor is a three-line helper,
+\cppinline|return d.dot(d) * Matrix3::Identity() - d * d.transpose();|
+\src{model/parts/Part.cpp}{21}, noted in the source as even in $d$ ``so the sign of d is
+irrelevant'' \src{model/parts/Part.cpp}{19}. In the code's names,
+\begin{equation}
+I \;=\; \sum_i \Big[\, \mathtt{c.mass}_i \cdot I_i \;+\;
+   \mathtt{c.mass}_i \big( (d_i \cdot d_i)\, I_3 - d_i\, d_i^{\mathsf{T}} \big) \Big],
+\qquad d_i = \mathtt{cmInRoot}_i - \mathtt{temp\_cm},
+\label{eq:parts-passtwo}
+\end{equation}
+where $I_i$ is \code{c.part->getI()}, the per-unit-mass centroidal tensor, so
+$\mathtt{c.mass}_i \cdot I_i$ is the part's full centroidal tensor in $\mathrm{kg\,m}^2$ and
+the second term is its Huygens--Steiner shift to the composite CM
+\src{model/parts/Part.cpp}{225}. The physics box's subtlety --- shift each body from its
+\emph{own} CM directly to the composite CM, never through an intermediate point --- is exactly
+the bug class the tests pin: a two-point-mass fixture whose inertia about the composite CM is
+the reduced-mass value $\mu L^2$ (``the pre-fix code computed this about the PARENT's CM''
+\src{model/tests/PartTests.cpp}{199}), a depth-2 chain checked against its flattened
+equivalent \src{model/tests/PartTests.cpp}{219}, and the sharpest oracle of all: two coaxial
+tubes stacked end-to-end must reproduce one longer tube's mass, CM, and full tensor to
+$10^{-12}$ --- the transverse moment grows as $L^2$, so any shift error is loud
+\src{model/tests/PartTests.cpp}{308}.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   // Pass 2: inertia about the composite CM. Shift each part's own mass-weighted tensor to temp_cm via
+   // the parallel-axis theorem. 6-DOF would first rotate the tensor by pl.pose.orient (the R*I*R^T term,
+   // identity today, omitted to stay bit-stable).
+   // TODO(6-DOF): when that rotation is added, add a test pinning that it reduces to identity in 3-DOF.
+   Matrix3 I = Matrix3::Zero();
+   for(const Contribution& c : parts)
+   {
+      const Vector3 d = c.cmInRoot - temp_cm;
+      I += c.mass * c.part->getI() + c.mass * parallelAxisTerm(d);
+   }
+\end{minted}
+\caption{Pass 2 of the composite walk \srccap{model/parts/Part.cpp}{217}: the parallel-axis
+accumulation of \cref{eq:parts-passtwo}, with the in-tree comment naming the one deliberately
+omitted term --- the child-tensor rotation that six-degree-of-freedom flight will
+require.}\label{lst:parts-passtwo}
+\end{listing}
+
+\begin{keyinsight}[The omitted $R\,I\,R^{\mathsf{T}}$ rotation]
+Full generality would rotate each child's tensor into the composite frame before shifting it:
+$I_i' = R_i\, I_i\, R_i^{\mathsf{T}}$ with $R_i$ from $\mathtt{pl.pose.orient}$. The code
+deliberately omits that step. In three-degree-of-freedom (3-DOF) flight every resolved
+orientation is the identity --- the placement layer carries the quaternions but never sets
+them (\cref{sec:placement}) --- so the rotation would be an exact no-op, and it is skipped
+``to stay bit-stable'' \src{model/parts/Part.cpp}{217}. The omission is total: the only use of
+\code{pl.pose.orient} anywhere in the composite path is the CM translation of pass~1
+\src{model/parts/Part.cpp}{205}. The class doc calls the inertia shift ``the one piece still
+assuming identity'' \src{model/parts/Part.h}{39}, and the companion design document specifies
+the one-line 6-DOF form \src{docs/PartPlacementDesignLatex/sections/09-sixdof.tex}{83}. Today's
+visible consequence is
+structural, not numerical: azimuthally arrayed components cannot be modeled as rotated
+children, which is precisely why \code{FinSet} is one analytic leaf
+(\cref{sec:parts-catalog}). \Cref{sec:incomplete} carries the consolidated 6-DOF inventory.
+\end{keyinsight}
+
+\subsection{Time-awareness and caching}\label{sec:parts-caching}
+
+The single override point for time-varying mass is \code{getMass($t$)}
+\src{model/parts/Part.h}{94}. Exactly one production type overrides it --- \code{Motor}
+\src{model/parts/Motor.h}{40} --- and everything downstream follows from the composite walk
+with no motor-specific inertia code: as propellant burns, the composite mass falls, the
+composite CM migrates away from the emptying motor, and the composite tensor re-weights, all
+through the same two passes. During a burn the composite tensor tracks an independent
+parallel-axis oracle \src{model/tests/MotorTests.cpp}{162}, and after burnout the composites
+freeze bitwise \src{model/tests/MotorTests.cpp}{231}. The consumer cadence is per recorded
+step: \code{RocketModel::writeMassProperties()} snapshots the triple --- mass, CG,
+inertia, ``mutually consistent at this t'' --- into the recorded \code{StateData}
+\src{model/RocketModel.cpp}{53}, the seam the 6-DOF rotational ODE will read
+\src{sim/StateData.h}{59}; the loop that drives it is \cref{sec:simcore}'s subject.
+
+Freshness is governed by two independent gates with two cadences. The first is structural:
+\code{markAsNeedsRecomputing()} sets a per-node flag and walks the parent chain
+\src{model/parts/Part.h}{238}, invoked by \code{setMass()}/\code{setI()}
+\src{model/parts/Part.h}{74} and by both tree mutators \src{model/parts/Part.cpp}{100}. A
+white-box fixture (a declared test-only \code{friend} \src{model/parts/Part.h}{44}) pins the
+propagation: a grandchild's \code{setMass()} dirties the root
+\src{model/tests/PartTests.cpp}{538}, and removal dirties the ex-parent's whole ancestor chain
+\src{model/tests/PartTests.cpp}{585}. The second gate is the mass-delta gate
+(\cref{lst:parts-massgate}): absent structural change, the cached CM and tensor rebuild only
+when the composite mass has \emph{moved} since the last build.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   const double mNow = getCompositeMass(t);
+   if(needsRecomputing || mNow != builtAtCompositeMass)
+   {
+      const CompositeProperties c = computeCompositeAt(t);
+      compositeMass          = c.mass;
+      compositeCm            = c.cm;
+      compositeInertiaTensor = c.inertia;
+      builtAtCompositeMass   = mNow;
+      needsRecomputing       = false;
+   }
+\end{minted}
+\caption{The mass-delta gate in \code{ensureCompositeCache()}
+\srccap{model/parts/Part.cpp}{130}: a structural edit always rebuilds; otherwise the walk
+re-runs exactly when the composite mass differs --- by exact floating-point \code{!=} ---
+from the mass it was last built at.}\label{lst:parts-massgate}
+\end{listing}
+
+\begin{keyinsight}[Why exact \code{==} on a double is the right gate]
+The gate key \code{builtAtCompositeMass} is seeded with a quiet NaN, and NaN compares unequal
+to everything --- so the first read always builds \src{model/parts/Part.h}{248}. During a
+burn, \code{getMass($t$)} differs at every query, so the CM and tensor re-weight every step.
+After burnout, the motor's mass function returns the \emph{bit-identical} empty mass for every
+$t$, so \code{mNow == builtAtCompositeMass} holds exactly and the cache freezes, bit-stably,
+with zero recomputation for the rest of the flight \src{model/parts/Part.cpp}{132}. Keying on
+mass rather than on time is deliberate: an adaptive integrator evaluates repeated and
+\emph{rejected} stage times (\cref{sec:simcore}), and a time-keyed cache would thrash on them,
+while a mass-keyed one is immune \src{model/parts/Part.h}{108}. Two couplings are worth
+stating plainly: the gate keys on \emph{total} mass alone, so a hypothetical second
+time-varying part whose burn kept the total constant while shifting the CM would be served
+stale values --- unrealizable under the single-motor assumption
+(\src{model/RocketModel.cpp}{13}; \cref{sec:motors}), but coupled to it; and the freeze
+relies on post-burnout \code{getMass} being idempotent float math --- a future mass model
+without that property would silently degrade the cache to rebuild-every-step, a performance
+hazard rather than a correctness one.
+\end{keyinsight}
+
+The gate's key, \code{getCompositeMass($t$)}, is itself never cached: it is a cheap live
+recursive sum --- this node plus every descendant, no tensor work
+\src{model/parts/Part.cpp}{118} --- because it is both the gate key and the hot divisor in
+the equation of motion. The placement cache, finally, runs on
+the structural flag alone: \code{placementDirty} is set by add/remove, never by a mass or
+inertia edit --- geometry is invariant under a burn \src{model/parts/Part.h}{264}. The two
+cadences are witnessed directly: over a simulated burn, an instrumented tube's
+radius-query counter stays frozen while the composite CM and mass move every step
+\src{model/tests/DiagnosticsGateTests.cpp}{97}. \Cref{sec:placement} covers what that
+placement cache holds.
+
+\subsection{The closed-form tensor library}\label{sec:parts-tensors}
+
+The concrete parts take their per-unit-mass tensors from \code{model::InertiaTensors}, a
+static-method class of closed forms, each diagonal, about the body's own CM, with $z$ the
+symmetry axis \src{model/InertiaTensors.h}{11} (\cref{tab:parts-tensors}).
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xlll@{}}
+\toprule
+Shape & $I_{xx}/m = I_{yy}/m$ & $I_{zz}/m$ & \\
+\midrule
+Solid sphere, radius $r$ & $\tfrac{2}{5}r^2$ & $\tfrac{2}{5}r^2$ & \src{model/InertiaTensors.h}{17} \\
+\addlinespace
+Thin-shell sphere, radius $r$ & $\tfrac{2}{3}r^2$ & $\tfrac{2}{3}r^2$ & \src{model/InertiaTensors.h}{28} \\
+\addlinespace
+Thick hollow sphere, $r_i$, $r_o$ &
+  $\tfrac{2}{5}\dfrac{r_o^5 - r_i^5}{r_o^3 - r_i^3}$ &
+  $\tfrac{2}{5}\dfrac{r_o^5 - r_i^5}{r_o^3 - r_i^3}$ & \src{model/InertiaTensors.h}{45} \\
+\addlinespace
+Tube (solid cylinder at $r_i{=}0$) &
+  $\tfrac{1}{12}\big(3(r_i^2{+}r_o^2) + L^2\big)$ &
+  $\tfrac{1}{2}(r_i^2{+}r_o^2)$ & \src{model/InertiaTensors.h}{63} \\
+\addlinespace
+Solid cone (CM at $L/4$ from base) &
+  $\tfrac{3}{20}R^2 + \tfrac{3}{80}L^2$ & $\tfrac{3}{10}R^2$ & \src{model/InertiaTensors.h}{80} \\
+\addlinespace
+Conical shell (CM at $L/3$ from base) &
+  $\tfrac{1}{4}R^2 + \tfrac{1}{18}L^2$ & $\tfrac{1}{2}R^2$ & \src{model/InertiaTensors.h}{97} \\
+\addlinespace
+Trapezoidal fin set & \cref{eq:parts-finset} & \cref{eq:parts-finset} & \src{model/InertiaTensors.cpp}{11} \\
+\bottomrule
+\end{tabularx}
+\caption{The closed-form tensor library: per-unit-mass ($\mathrm{m}^2$), diagonal, about each
+body's own CM, $z$ the symmetry axis. The thick-sphere form reduces to the solid sphere as
+$r_i \to 0$ and to the thin shell as $r_i \to r_o$ \srccap{model/InertiaTensors.h}{39}; the
+conical shell's $\tfrac{1}{18}L^2$ term is noted in the source as verified
+exact.}\label{tab:parts-tensors}
+\end{table}
+
+The one non-textbook entry is the trapezoidal fin set. The model treats one fin as a uniform
+trapezoidal lamina in a meridian plane, thickness circumferential, and forms the set tensor as
+the azimuthal average of one fin's tensor over the $N$ mounting angles $2\pi k/N$; for
+$N \ge 3$ that average is transversely isotropic \emph{and independent of $N$} --- which is
+why the fin count parameter is \code{[[maybe\_unused]]} in the implementation
+\src{model/InertiaTensors.cpp}{11}. With $\mathit{sum} = c_r + c_t$, the code computes the
+radial mass centroid of one fin, $y_c = \tfrac{s}{3}(c_r + 2c_t)/\mathit{sum}$, and its lever
+to the body axis, $d = r_b + y_c$ \src{model/InertiaTensors.cpp}{26}, then the single-fin
+centroidal second moments --- spanwise $P$ (sweep-independent), chordwise $Q$
+(sweep-dependent through the LE sweep $X_t$, as the mean square minus the squared centroid),
+and through-thickness $T$ ---
+\begin{gather*}
+P = \frac{s^2\,(c_r^2 + 4c_r c_t + c_t^2)}{18\,\mathit{sum}^2}, \qquad
+x_c = \frac{X_t(c_r + 2c_t) + c_r^2 + c_r c_t + c_t^2}{3\,\mathit{sum}}, \\
+\mathtt{meanXsq} = \frac{X_t^2(c_r + 3c_t) + X_t(c_r^2 + 2c_r c_t + 3c_t^2)
+   + \mathit{sum}\,(c_r^2 + c_t^2)}{6\,\mathit{sum}}, \qquad
+Q = \mathtt{meanXsq} - x_c^2, \qquad T = \frac{t^2}{12}
+\end{gather*}
+\src{model/InertiaTensors.cpp}{29}, and finally the azimuthal average, in which the
+radial--axial product and $z$-coupling terms cancel for $N \ge 3$:
+\begin{equation}
+I_{zz}/m = P + T + d^2, \qquad
+I_{xx}/m = I_{yy}/m = \tfrac{1}{2}\big(P + 2Q + T + d^2\big)
+\qquad \text{\src{model/InertiaTensors.cpp}{45}.}
+\label{eq:parts-finset}
+\end{equation}
+
+The library's acceptance gate is not the algebra but a set of independent numeric oracles ---
+the implementation says so itself: ``The mesh oracle in InertiaTensorsTests, not this closed
+form, is the acceptance gate'' \src{model/InertiaTensors.cpp}{15}. The solid cone is checked
+against a 400{,}000-slice disk-stack integral, with the literal constants $\tfrac{3}{10}R^2$
+and $\tfrac{3}{20}R^2 + \tfrac{3}{80}L^2$ pinned at $10^{-15}$
+\src{model/tests/InertiaTensorsTests.cpp}{147}; the conical shell against a surface integral
+\src{model/tests/InertiaTensorsTests.cpp}{169}; and the fin set against a volume-mesh
+integration at a 0.5\% tolerance chosen between the mesh's own error ($\sim$0.01\%) and the
+1.2--11\% signature of a wrong (rectangle-only) chordwise term
+\src{model/tests/InertiaTensorsTests.cpp}{186}. Cross-checks tighten the net: $I_{zz}$ must
+equal an independently derived closed form $J + t^2/12$ at $10^{-12}$
+\src{model/tests/InertiaTensorsTests.cpp}{139}, the tensor must be identical across
+$N \in \{3, 4, 6\}$ \src{model/tests/InertiaTensorsTests.cpp}{227}, and the rectangle
+degeneracy ($c_t = c_r$, $X_t = 0$) must recover $P = s^2/12$, $Q = c^2/12$
+\src{model/tests/FinSetTests.cpp}{139}. The mesh also demonstrates the approximation's honest
+edge: a 2-fin set is genuinely anisotropic ($I_{xx} \ne I_{yy}$ by more than 1\%), while the
+helper knowingly returns the forced-isotropic $N \ge 3$ tensor --- the case the \code{FinSet}
+constructor warns about \src{model/tests/InertiaTensorsTests.cpp}{259}.
+
+\subsection{Diagnostics gating on the composite readers}\label{sec:parts-gating}
+
+The composite walk opens with a gate, not a computation. \code{computeCompositeAt()} first
+ensures the placement cache is fresh, then reads the cached overlap verdict; if the sub-tree's
+geometry failed its solve, it throws a \code{std::runtime\_error} carrying the first located
+diagnostic --- ``A self-intersecting design is a hard, located failure, never a
+silently-wrong mass/inertia'' \src{model/parts/Part.cpp}{182}. The check costs a flag read,
+not a re-sweep: the verdict is computed once per structural change and cached alongside the
+resolved geometry \src{model/parts/Part.cpp}{160}.
+
+\begin{designrule}[Fail closed --- except for the ODE divisor]
+The gate is asymmetric by design. \code{getCompositeCm()} and \code{getCompositeI()} both pass
+through the gated cache and therefore throw on a failed solve, and the test suite pins both
+refusals \src{model/tests/DiagnosticsGateTests.cpp}{78}. \code{getCompositeMass()} deliberately
+does \emph{not}: it is the hot divisor in the equation of motion, queried at every integrator
+stage, and it performs no placement-dependent work --- a mass sum is correct whether or not
+two parts interpenetrate. The same tests pin that it keeps answering on a failed design
+\src{model/tests/DiagnosticsGateTests.cpp}{83}. The verdict itself is exposed read-only
+through \code{placementDiagnostics()} \src{model/parts/Part.h}{125}, and the visualizer reads
+that same cached object to paint the offender \src{visualizer/RocketMesh.cpp}{440} --- one
+verdict, two consumers, so the simulator's refusal and the on-screen highlight can never
+disagree \src{model/parts/Part.h}{274}. What the sweep actually checks --- intervals,
+breakpoints, the solid-host rule --- is \cref{sec:placement}'s subject.
+\end{designrule}
+
+One more composite fold rides on the same resolved geometry, and it is worth naming here
+because it completes the tree's API. \code{getCompositeAero(refArea)} folds each part's
+Barrowman contribution additively over the resolved placements, re-expressing every part's
+center-of-pressure moment onto the tip datum --- the same datum as the composite CM, so that
+the static margin is literally \code{cp() $-$ cg()} \src{model/parts/Part.cpp}{231}. It is a
+separate, pure-geometry pass from the mass walk --- it reads no time-varying state
+\src{model/parts/Part.h}{119}. At the pinned commit it is also dormant: built, correct on its
+tests, and consumed by no production code path --- the test file says so in as many words
+(``nothing in production consumes this in P2'' \src{model/tests/AeroTests.cpp}{18}). The
+mathematics it folds, the datum trick that makes the fold additive, and what consuming it
+would take are the subject of \cref{sec:aero}; \cref{sec:incomplete} places it in the
+consolidated inventory.

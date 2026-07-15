@@ -1,0 +1,41 @@
+QtRocket is an open-source model-rocket simulator: a C++23 simulation core shared by a
+Qt6 Widgets GUI, a Qt-free headless REPL, and a standalone OpenGL design viewer. This
+whitepaper is a whole-system architecture review of the working tree at commit
+\code{254cd41} --- what the program can do today, how its layers fit together, and where
+it stands relative to OpenRocket, used throughout as a comparison baseline for an
+independent project with similar goals, not as a specification to clone.
+
+What exists is a genuinely finished, well-guarded 3-DOF point-mass simulator: a
+composite part tree whose placement is stored as physical intent and resolved by a
+single geometry resolver shared with the visualizer, time-aware composite mass/CG/inertia
+behind a mass-delta cache, motor ingest from RockSim files, RASP files, and a live
+thrustcurve.org client, a validated seven-layer US Standard Atmosphere 1976, pluggable
+gravity models, fixed-step RK4 and adaptive RKF45 integration, typed termination
+diagnostics around a hang-proof run loop, XML design persistence, and a 33-command
+scriptable REPL that exercises all of it. Around that core sits the review's central
+finding: a ring of machinery that is built, unit-tested, and consumed by nothing. The
+Barrowman center-of-pressure composition, the per-step inertia tensor (recorded every step, integrated by nothing), the wind model,
+the quaternion state slots, and the torque interface all exist and all have zero
+production consumers. Flight physics therefore remains thrust-along-world-vertical plus
+gravity plus a single constant-$C_d$ drag term: no angle of attack, no restoring moment,
+no weathercocking, no recovery deployment --- every flight ends ballistically. The GUI
+lags furthest behind the core: rocket design is possible only from the CLI, with the
+design-editor widgets empty shells at the reviewed commit and in-flight work on a
+separate branch.
+
+The review was produced by eight independent subsystem deep-reads, each adversarially
+verified citation-by-citation against the source, plus live execution of the CLI binary;
+design documents under \srcf{docs/} were treated as claims to test, not facts to
+inherit. The result is a feature matrix against OpenRocket, a ranked inventory of
+functional deficiencies --- flight-dynamics fidelity first, recovery second, component
+catalog and design UI close behind --- and a suggested sequencing that consumes the
+already-built seams before building new ones.
+
+\vspace{0.5em}
+\begin{designrule}[The review in one sentence]
+QtRocket's architecture is ahead of its features: the discipline --- fail-closed
+diagnostics, strict warnings, five-platform CI, verified seams --- is that of a much
+larger simulator, and the shortest path to realistic flights is to \emph{consume} the
+dormant machinery (Barrowman aerodynamics, torques, wind, recovery events), not to
+build new subsystems.
+\end{designrule}

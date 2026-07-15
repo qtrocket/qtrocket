@@ -1,0 +1,184 @@
+% UML class diagram: the sim core. QtRocket composition root over the
+% (RocketModel, Propagator) pair; Propagatable is the model<->sim bridge;
+% Integrator selects a DESolver<Vector3> backend (RK4 / RKF45).
+% Bare tikzpicture; the section wraps it in a figure + \resizebox.
+\begin{tikzpicture}[node distance=10mm and 12mm]
+
+  % ---- left column: the model side --------------------------------------
+  \node[umlclass,text width=50mm] (rocket) {%
+    \textbf{model::RocketModel}
+    \nodepart{two}
+    motorPart : part::Motor* {\scriptsize(borrowed)}\\
+    topPart : shared\_ptr<part::Part>\\
+    dragCoefficient : double = 1.0\\
+    referenceArea : double (m\textsuperscript{2})
+    \nodepart{three}
+    launch()\\
+    getThrust(t) : double\\
+    setMotorModel(m : MotorModel)\\
+    getForces(\ldots) : Vector3\\
+    \hspace{2mm}{\scriptsize= thrust + gravity + drag}};
+
+  \node[umliface,text width=52mm,below=12mm of rocket] (propagatable) {%
+    \textit{\textbf{model::Propagatable}}\\
+    {\scriptsize the model$\leftrightarrow$sim bridge}
+    \nodepart{two}
+    initialState, currentState : StateData
+    \nodepart{three}
+    \textit{getForces(t, position, velocity,}\\
+    \hspace{2mm}\textit{environment) : Vector3}\\
+    \textit{getTorques(t) : Vector3} (dormant)\\
+    \textit{getMass(t) : double}\\
+    \textit{getCompositeInertiaTensor(t) :}\\
+    \hspace{2mm}\textit{Matrix3} (dormant)\\
+    \textit{writeMassProperties(t, st)}\\
+    \textit{terminateCondition(t) : bool}};
+
+  \node[umlclass,text width=50mm,below=10mm of propagatable] (statedata) {%
+    \textbf{StateData}\\
+    {\scriptsize one instant of flight state}
+    \nodepart{two}
+    position : Vector3 (m)\\
+    velocity : Vector3 (m/s)\\
+    orientation, orientationRate :\\
+    \hspace{2mm}Quaternion (dormant)\\
+    dcm : Matrix3 (dormant)\\
+    eulerAngles : Vector3 (dormant)\\
+    mass : double (kg)\\
+    cg : Vector3 (m)\\
+    inertia : Matrix3 (kg\,m\textsuperscript{2})
+    \nodepart{three}
+    {\scriptsize mass / cg / inertia recorded each step\\
+    via writeMassProperties()}};
+
+  \node[umlclass,text width=42mm,below=8mm of statedata] (trajstats) {%
+    \textbf{sim::TrajectoryStatistics}
+    \nodepart{two}
+    maxAltitude (m)\\
+    timeOfMaxAltitude (s)\\
+    maxSpeed (m/s)\\
+    timeOfMaxSpeed (s)\\
+    totalFlightTime (s)
+    \nodepart{three}
+    update(t, s)\\
+    reset()};
+
+  % ---- right column: the numerics ---------------------------------------
+  \node[umlclass,text width=50mm,right=12mm of rocket.north east,
+        anchor=north west] (prop) {%
+    \textbf{sim::Propagator}
+    \nodepart{two}
+    saveStates : bool = true\\
+    timeStep : double = 0.01 s\\
+    maxSimTime : double = 7200 s\\
+    terminationReason :\\
+    \hspace{2mm}TerminationReason
+    \nodepart{three}
+    runUntilTerminate()\\
+    setTimeStep(ts : double)\\
+    setIntegratorModel(name)\\
+    getTerminationReason()\\
+    {\scriptsize records (t, StateData) into the model\\
+    each step; folds TrajectoryStatistics}};
+
+  \node[umlclass,text width=50mm,below=10mm of prop] (integ) {%
+    \textbf{sim::Integrator}\\
+    {\scriptsize runtime backend selector}
+    \nodepart{two}
+    integratorModel : string {\scriptsize(active key)}\\
+    odes : std::function {\scriptsize(the ODE system)}
+    \nodepart{three}
+    setIntegratorModel(name)\\
+    setIntegratorFunction(func)\\
+    setTimeStep(dt)\\
+    step(t, state, rate) :\\
+    \hspace{2mm}StepResult<Vector3>};
+
+  \node[umliface,text width=46mm,below=10mm of integ] (desolver) {%
+    \textit{\textbf{sim::DESolver<T>}}\\
+    {\scriptsize T = Vector3 or Quaternion}
+    \nodepart{two}
+    \textit{setTimeStep(ts)}\\
+    \textit{step(t, state, rate) :}\\
+    \hspace{2mm}\textit{StepResult<T>}\\
+    \textit{setFunction(func)}};
+
+  \node[umlclass,text width=42mm,below=10mm of desolver,xshift=-12mm] (rk4) {%
+    \textbf{sim::RK4Solver<T>}
+    \nodepart{two}
+    dt : double {\scriptsize(NaN until set)}\\
+    halfDT : double
+    \nodepart{three}
+    setTimeStep(ts)\\
+    step(\ldots) :\\
+    \hspace{2mm}StepResult<T>\\
+    {\scriptsize fixed step: stepSize = dt}};
+
+  \node[umlclass,text width=44mm,below=10mm of desolver,xshift=36mm] (rk45) {%
+    \textbf{sim::RK45Solver<T>}
+    \nodepart{two}
+    tol : double = 1e-6\\
+    h : double {\scriptsize(adaptive step)}\\
+    hMax : double {\scriptsize(growth clamp)}\\
+    hMin : double = 1e-15
+    \nodepart{three}
+    setErrorTolerance(e)\\
+    setMaxStepSize(hm)\\
+    step(\ldots) :\\
+    \hspace{2mm}StepResult<T>\\
+    {\scriptsize embedded 4(5) pair;\\
+    throws on step underflow}};
+
+  % ---- controller (top) and satellites (right) --------------------------
+  \node[umlsimple,text width=76mm] (qtrocket)
+    at ($(rocket.north)!0.5!(prop.north)+(0,16mm)$) {%
+    \textbf{QtRocket} (controller singleton, Qt-free)\\[1pt]
+    launchRocket() \textbullet\ setInitialState() \textbullet\ getStates()};
+
+  \node[umlsimple,text width=30mm,right=4mm of prop.north east,
+        anchor=north west] (env) {%
+    \textbf{sim::Environment}\\[1pt]
+    {\scriptsize GravityModel +\\ AtmosphericModel}};
+
+  \node[umlclass,text width=32mm,below=8mm of env] (termreason) {%
+    \textbf{TerminationReason}\\
+    {\scriptsize enum in sim::Propagator}
+    \nodepart{two}
+    Nominal\\
+    NoLiftoff\\
+    NonFiniteState\\
+    MaxSimTimeExceeded\\
+    IntegratorError};
+
+  % ---- ownership from the controller ------------------------------------
+  \draw[compose] (qtrocket.south -| rocket.north) -- (rocket.north)
+    node[umllbl,midway,left]{rocket.first} node[mult,pos=0.8,right]{1};
+  \draw[compose] (qtrocket.south -| prop.north) -- (prop.north)
+    node[umllbl,midway,left]{rocket.second} node[mult,pos=0.8,right]{1};
+  \draw[compose] (qtrocket.east) -| (env.north)
+    node[umllbl,pos=0.3,above]{environment} node[mult,pos=0.9,right]{1};
+
+  % ---- model realizes the bridge; propagator drives it ------------------
+  \draw[realize] (rocket.south) -- (propagatable.north);
+  \draw[assoc] ([yshift=4mm]prop.south west) -- ++(-6mm,0)
+    |- (propagatable.east)
+    node[umllbl,near end,above]{object} node[mult,near end,below]{1};
+
+  % ---- environment injected into the sim (enum nesting stated in its box)
+  \draw[assoc] (prop.east |- env.west) -- (env.west);
+
+  % ---- integrator chain --------------------------------------------------
+  \draw[compose] (prop.south) -- (integ.north)
+    node[umllbl,midway,right]{linearIntegrator} node[mult,pos=0.8,left]{1};
+  \draw[compose] (integ.south) -- (desolver.north)
+    node[umllbl,midway,right]{integratorModels} node[mult,pos=0.8,left]{2};
+  \draw[inherit] (rk4.north) -- (rk4.north |- desolver.south);
+  \draw[inherit] (rk45.north) -- ++(0,5mm) -| ([xshift=14mm]desolver.south);
+
+  % ---- state history + flight summary live on the bridge ----------------
+  \draw[compose] (propagatable.south) -- (statedata.north)
+    node[umllbl,midway,right]{states} node[mult,pos=0.8,left]{0..*};
+  \draw[compose] (propagatable.west) -- ++(-5mm,0) |- (trajstats.west)
+    node[umllbl,near end,above]{stats} node[mult,near end,below]{1};
+
+\end{tikzpicture}

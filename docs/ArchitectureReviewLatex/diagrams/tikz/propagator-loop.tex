@@ -1,0 +1,52 @@
+% Activity diagram: Propagator::runUntilTerminate() -- the whole flight loop with its
+% pad-hold clamp and the five termination verdicts. Cited from sim/Propagator.cpp.
+\begin{tikzpicture}[node distance=3.6mm and 9mm,
+  decision/.append style={aspect=2.6,text width=27mm,inner sep=0.5pt},
+  act/.append style={minimum height=7mm,inner sep=3.5pt}]
+
+  \node[startstop] (start) {runUntilTerminate()};
+  \node[act,below=of start] (reset)
+    {reset: \texttt{Nominal} verdict,\\ zeroed TrajectoryStatistics};
+  \node[act,below=of reset] (step)
+    {integrator step\\ \footnotesize RK4 (fixed) or RKF45 (adaptive)\\
+     $\dot{x}=v,\quad \dot{v}=F(t,x,v)/m(t)$};
+  \node[decision,below=5mm of step] (finite) {state finite?};
+  \node[failnode,right=14mm of finite,text width=34mm] (nonfinite)
+    {\texttt{NonFiniteState}\\ \footnotesize NaN/Inf rejected before recording};
+  \node[act,below=5mm of finite] (padhold)
+    {pad hold until liftoff:\\ \footnotesize clamp $z \ge 0$, at rest, until a step\\ genuinely lifts ($z > 0$)};
+  \node[act,below=of padhold] (record)
+    {record state + mass properties,\\ update trajectory statistics};
+  \node[decision,below=5mm of record] (terminate) {descending \&\\ below site?};
+  \node[oknode,right=12mm of terminate,text width=30mm] (nominal)
+    {\texttt{Nominal}\\ \footnotesize normal end of flight};
+  \node[decision,below=5mm of terminate] (noliftoff) {stuck on pad\\ past deadline?};
+  \node[failnode,right=12mm of noliftoff,text width=30mm] (nolift)
+    {\texttt{NoLiftoff}\\ \footnotesize thrust never beat weight};
+  \node[decision,below=5mm of noliftoff] (caps) {time / iteration\\ cap hit?};
+  \node[failnode,right=12mm of caps,text width=30mm] (maxtime)
+    {\texttt{MaxSimTimeExceeded}\\ \footnotesize runaway or never-descending flight};
+  \node[act,below=5mm of caps,text width=36mm] (advance)
+    {advance $t$ by the step\\ the integrator actually took};
+
+  % try/catch wrapper note
+  \node[failnode,left=12mm of step,text width=32mm] (integerr)
+    {\texttt{IntegratorError}\\ \footnotesize RKF45 step-underflow throw caught at loop scope};
+
+  \draw[flow] (start) -- (reset);
+  \draw[flow] (reset) -- (step);
+  \draw[flow] (step) -- (finite);
+  \draw[flow] (finite) -- node[flowlbl]{no} (nonfinite);
+  \draw[flow] (finite) -- node[flowlbl]{yes} (padhold);
+  \draw[flow] (padhold) -- (record);
+  \draw[flow] (record) -- (terminate);
+  \draw[flow] (terminate) -- node[flowlbl]{yes} (nominal);
+  \draw[flow] (terminate) -- node[flowlbl]{no} (noliftoff);
+  \draw[flow] (noliftoff) -- node[flowlbl]{yes} (nolift);
+  \draw[flow] (noliftoff) -- node[flowlbl]{no} (caps);
+  \draw[flow] (caps) -- node[flowlbl]{yes} (maxtime);
+  \draw[flow] (caps) -- node[flowlbl]{no} (advance);
+  \draw[flow] (advance.west) -- ++(-8mm,0) |- (step.west);
+  \draw[flow,dashed,qrRed] (step.west) -- (integerr);
+
+\end{tikzpicture}

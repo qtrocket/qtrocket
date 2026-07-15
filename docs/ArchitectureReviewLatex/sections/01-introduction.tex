@@ -1,0 +1,86 @@
+\section{Introduction \& scope}\label{sec:intro}
+
+QtRocket is an open-source model-rocket simulator built as a shared C++23 simulation core
+with three front ends: a Qt6 Widgets GUI (\code{qtrocket}), a Qt-free headless REPL
+(\code{qtrocket-cli}), and a standalone OpenGL design viewer (\code{qtrocket-visualizer}).
+This document is a whole-system architecture review: a survey of what the program can
+actually do today, how its layers fit together, and --- measured against OpenRocket as a
+reference point --- what it cannot do yet. It is written for maintainers and future
+contributors who need an honest map of the territory before choosing what to build next.
+
+Two framing points define the document's stance. First, QtRocket is an \emph{independent}
+project with design goals similar to OpenRocket's, not a clone of it; OpenRocket is used
+throughout as a comparison baseline because it is the de facto standard for what a mature
+open-source model-rocket simulator offers, not because feature parity is the goal
+(\cref{sec:comparison}). Second, the review reports the \emph{code}, not the project's
+aspirations: design documents under \srcf{docs/} were treated as claims to test against
+the source, never as facts to inherit, and where the two disagree this document says so.
+
+\subsection{The tree under review}
+
+Every statement in this document is pinned to one revision: commit \code{254cd41}
+(``Major comment cleanup''), reviewed with a clean working tree on 2026-07-06. That
+commit is the tip of the \code{development} line at the time of review and includes the
+completed Part Placement feature (the station-pair --- \code{StationLink} --- placement backbone specified in the
+companion whitepaper under \srcf{docs/PartPlacementDesignLatex/}). Two commits of
+in-flight GUI work exist beyond it on the \code{RocketTreeViewImplementation} branch ---
+an initial part-tree widget and work-in-progress design save/load wiring --- and are
+covered explicitly as future work (\cref{sec:interfaces,sec:roadmap}) rather than folded
+silently into the review. Code citations take the form \src{model/parts/Part.h}{42};
+line numbers will drift as the tree moves and should be read as anchors into that
+revision, not absolutes.
+
+\subsection{What the review found, in one paragraph}
+
+The load-bearing finding is a pattern, not a single fact. QtRocket today has a genuinely
+finished, well-guarded 3-DOF point-mass flight simulator --- composite part tree with
+time-aware mass, CG, and inertia; validated US Standard Atmosphere; adaptive RKF45
+integration; typed termination diagnostics; motor ingest from three sources; design
+persistence; a scriptable REPL that exercises all of it --- and, surrounding that core, a
+ring of machinery that is built, unit-tested, and consumed by nothing. The Barrowman
+center-of-pressure composition, the per-step composite inertia tensor (recorded, never integrated), the wind model,
+the quaternion slots in the state vector, and the \code{getTorques()} interface all
+exist and all have zero production consumers; the test suite says so itself
+(``nothing in production consumes this in P2,'' \src{model/tests/AeroTests.cpp}{18}).
+The project's engineering discipline --- fail-closed diagnostics, strict warnings,
+five-platform CI, pinned dependencies --- is well ahead of its feature completeness. The
+architecture is not the obstacle to a realistic flight simulation; \emph{consumption} of
+what the architecture already provides is.
+
+\begin{keyinsight}[How to read the gap findings]
+Throughout this document, ``dormant'' means built and tested but unreachable from any
+production code path; ``partial'' means reachable but with named gaps; ``absent'' means
+no trace in the tree (each absence claim was grounded in a failed search of the source,
+not an impression). The distinctions matter for planning: consuming a dormant seam is
+weeks of work where building an absent subsystem is months.
+\end{keyinsight}
+
+\subsection{Method}
+
+The review was produced by independent parallel deep-reads of eight subsystem areas ---
+the part tree and placement system, the motor subsystem, the simulation core,
+aerodynamics and flight fidelity, the GUI and visualizer, the CLI and persistence, build
+and test infrastructure, and a dedicated cross-cutting incompleteness sweep --- each
+grounded in a full read of its files and each followed by an adversarial verification
+pass that re-checked every file:line citation, every quoted snippet, and every
+implemented/dormant/absent status claim against the source. Two behaviors were
+confirmed by execution rather than reading: the CLI command inventory and an end-to-end
+flight through the built REPL binary. The OpenRocket baseline of \cref{sec:comparison}
+was researched from primary sources and reconciled against the verified findings.
+\Cref{sec:repro} records the full method and the document's own build pipeline.
+
+\subsection{Document roadmap}
+
+\Cref{sec:overview} maps the system: the three executables, the strict layering, and the
+build that enforces it. \Cref{sec:model,sec:motors,sec:sim} review the three pillars of
+the core --- the part tree with its placement resolver and mass-property machinery, the
+motor subsystem from thrust curves to the three ingest paths, and the propagator with its
+integrators and environment models. \Cref{sec:aero} is the keystone: what the force path
+actually computes, what sits dormant beside it, and what that means for flight fidelity.
+\Cref{sec:interfaces} reviews the three user-facing surfaces and their very different
+levels of completeness; \cref{sec:persistence} the design-file format and
+interoperability; \cref{sec:testing} the test suites, coverage tooling, and CI.
+\Cref{sec:comparison} sets the feature matrix against OpenRocket and ranks the
+functional deficiencies; \cref{sec:roadmap} consolidates every incomplete area found by
+the review into a severity-ordered inventory with a suggested sequencing. \Cref{sec:repro}
+closes with reproducibility: how this document builds and how the review was performed.

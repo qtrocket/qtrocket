@@ -1,0 +1,102 @@
+% Sequence diagram: one launch, front end -> QtRocket::launchRocket() -> Propagator loop.
+% Call names verified against notes/controller.md (QtRocket.cpp:54-65, RocketModel.cpp:105-109)
+% and notes/sim.md (Propagator.cpp:58-183, Integrator.h:82). Bare tikzpicture; the section
+% wraps it in a figure with \resizebox.
+\begin{tikzpicture}
+
+  % ---- participant heads (bottoms aligned; lifelines hang from y = 0.2) ----
+  \node[seqhead,text width=20mm,minimum height=10.5mm,anchor=south] (hFE) at (0,0.2)
+    {\textbf{front end}\\(GUI / CLI)};
+  \node[seqhead,text width=18mm,minimum height=10.5mm,anchor=south] (hQR) at (2.7,0.2)
+    {\textbf{QtRocket}};
+  \node[seqhead,text width=22mm,minimum height=10.5mm,anchor=south] (hRM) at (5.5,0.2)
+    {\textbf{RocketModel}};
+  \node[seqhead,text width=21mm,minimum height=10.5mm,anchor=south] (hMM) at (8.0,0.2)
+    {\textbf{MotorModel}};
+  \node[seqhead,text width=20mm,minimum height=10.5mm,anchor=south] (hPR) at (10.9,0.2)
+    {\textbf{Propagator}};
+  \node[seqhead,text width=22mm,minimum height=10.5mm,anchor=south] (hIN) at (13.7,0.2)
+    {\textbf{Integrator /}\\\textbf{DESolver}};
+
+  % ---- lifelines ----
+  \draw[seqlife] (0,0.2)    -- (0,-13.4);
+  \draw[seqlife] (2.7,0.2)  -- (2.7,-13.4);
+  \draw[seqlife] (5.5,0.2)  -- (5.5,-13.4);
+  \draw[seqlife] (8.0,0.2)  -- (8.0,-13.4);
+  \draw[seqlife] (10.9,0.2) -- (10.9,-13.4);
+  \draw[seqlife] (13.7,0.2) -- (13.7,-13.4);
+
+  % ---- loop fragment frame (bars/messages draw on top; label added after bars) ----
+  \draw[rounded corners=3pt,draw=qrDeep,line width=0.6pt]
+    (-0.85,-5.2) rectangle (14.35,-11.35);
+
+  % ---- activation bars ----
+  \draw[seqact] (-0.08,-0.75)  rectangle (0.08,-13.0);    % front end
+  \draw[seqact] (2.62,-0.9)    rectangle (2.78,-12.85);   % QtRocket: launchRocket()
+  \draw[seqact] (5.42,-1.6)    rectangle (5.58,-1.85);    % RocketModel: clearStates()
+  \draw[seqact] (10.82,-2.3)   rectangle (10.98,-2.55);   % Propagator: setCurrentTime()
+  \draw[seqact] (5.42,-3.0)    rectangle (5.58,-4.0);     % RocketModel: launch()
+  \draw[seqact] (7.92,-3.7)    rectangle (8.08,-3.95);    % MotorModel: startMotor()
+  \draw[seqact] (10.82,-4.6)   rectangle (10.98,-12.05);  % Propagator: runUntilTerminate()
+  \draw[seqact] (13.62,-5.8)   rectangle (13.78,-9.15);   % Integrator: step()
+  \draw[seqact] (5.42,-6.6)    rectangle (5.58,-7.45);    % RocketModel: ODE callbacks
+  \draw[seqact] (5.42,-10.0)   rectangle (5.58,-10.25);   % RocketModel: record sample
+  \draw[seqact] (5.42,-10.85)  rectangle (5.58,-11.1);    % RocketModel: terminateCondition()
+
+  % loop fragment label (after the bars, so the QtRocket bar cannot paint over it)
+  \node[anchor=north west,draw=qrDeep,fill=qrDeep!8,rounded corners=2pt,
+        line width=0.5pt,inner sep=2.5pt,font=\sffamily\scriptsize,text=qrInk]
+    at (-0.85,-5.2)
+    {\textbf{loop}\; [until \texttt{terminateCondition()} or a safety guard fires]};
+
+  % ---- messages: launch sequence (QtRocket.cpp:54-65) ----
+  \draw[seqmsg] (0.08,-0.9) -- (2.62,-0.9)
+    node[seqlbl,above,midway] {\texttt{launchRocket()}};
+  \draw[seqmsg] (2.78,-1.6) -- (5.42,-1.6)
+    node[seqlbl,above,midway] {\texttt{clearStates()}};
+  \draw[seqmsg] (2.78,-2.3) -- (10.82,-2.3)
+    node[seqlbl,above,midway] {\texttt{setCurrentTime(0.0)}};
+  \draw[seqmsg] (2.78,-3.0) -- (5.42,-3.0)
+    node[seqlbl,above,midway] {\texttt{launch()}}
+    node[flowlbl,below,midway] {initialState $\to$ currentState};
+  \draw[seqmsg] (5.58,-3.7) -- (7.92,-3.7)
+    node[seqlbl,above,midway] {\texttt{startMotor(0.0)}}
+    node[flowlbl,below,midway] {ignition at $t=0$};
+  \draw[seqmsg] (2.78,-4.6) -- (10.82,-4.6)
+    node[seqlbl,above,midway] {\texttt{runUntilTerminate()}};
+
+  % ---- loop body ----
+  \draw[seqmsg] (10.98,-5.8) -- (13.62,-5.8)
+    node[seqlbl,above,midway] {\texttt{step(t, pos, vel)}};
+  \draw[seqmsg] (13.62,-6.6) -- (5.58,-6.6)
+    node[seqlbl,above,midway] {\texttt{getForces(t, pos, vel, env)}};
+  \draw[seqmsg] (13.62,-7.3) -- (5.58,-7.3)
+    node[seqlbl,above,midway] {\texttt{getMass(t)}}
+    node[flowlbl,below,midway] {ODE: $\dot{x}=v,\ \dot{v}=F/m$};
+  \node[seqnote,text width=44mm] at (8.2,-8.4)
+    {derivative evaluations:\\
+     4 stages (RK4) / 6 stages (RKF45),\\
+     each at node time $t + c_i h$};
+  \draw[seqret] (13.62,-9.15) -- (10.98,-9.15)
+    node[seqlbl,above,midway,align=center]
+      {\texttt{StepResult\{state,}\\\texttt{rate, stepSize\}}}
+    node[flowlbl,below,midway,yshift=-2pt] {\texttt{currentTime += stepSize}};
+  \draw[seqmsg] (10.82,-10.0) -- (5.58,-10.0)
+    node[seqlbl,above,midway] {\texttt{writeMassProperties(t, st)}; \texttt{appendState(t, st)}}
+    node[flowlbl,below,midway] {record StateData sample (mass, cg, inertia)};
+  \node[seqnote,text width=31mm] at (1.15,-9.7)
+    {pad-hold clamp: until the first step with $z>0$, altitude is clamped to $0$ and velocity zeroed};
+  \draw[seqmsg] (10.82,-10.85) -- (5.58,-10.85)
+    node[seqlbl,above,midway] {\texttt{terminateCondition(t)} : bool}
+    node[flowlbl,below,midway] {$z<0$ and $v_z<0$ $\to$ done};
+
+  % ---- returns ----
+  \draw[seqret] (10.82,-12.05) -- (2.78,-12.05)
+    node[seqlbl,above,midway,align=center]
+    {\texttt{TerminationReason} stored; read via \texttt{getTerminationReason()}\\
+     {\ttfamily Nominal / NoLiftoff / NonFiniteState / MaxSimTimeExceeded / IntegratorError}};
+  \draw[seqret] (2.62,-12.85) -- (0.08,-12.85)
+    node[seqlbl,above,midway,align=center]
+    {then: \texttt{getStates()},\\\texttt{getTrajectoryStatistics()}};
+
+\end{tikzpicture}

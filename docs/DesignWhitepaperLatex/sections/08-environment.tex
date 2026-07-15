@@ -1,0 +1,489 @@
+\section{Environment models}\label{sec:environment}
+
+Of the three forces the propagator integrates --- thrust, gravity, and drag
+(\cref{sec:simcore}) --- the last two are the environment's to answer.
+\code{sim::Environment} is the container through which the flight dynamics see the outside
+world: it holds one live instance of each of three pluggable physics models --- a
+\code{GravityModel}, an \code{AtmosphericModel}, and a \code{GeoidModel}
+\src{sim/Environment.h}{27} --- selected by display-name string and defaulting to
+\code{"Constant Gravity"} plus \code{"Constant Atmosphere"} \src{sim/Environment.h}{31}. The
+container itself is deliberately thin: a 123-line header-only class
+\srcf{sim/Environment.h} whose whole job is to own the selected models and hand them out.
+The chapter walks the container first, then each model family. The centerpiece is the US
+Standard Atmosphere 1976 --- a closed-form, seven-layer implementation validated to 0.1\%
+(0.5\% at a handful of density points) against the published report tables --- and the
+chapter closes with the two deliberately
+simple atmospheres and the one model that exists but is consumed by nothing: wind.
+
+One asymmetry frames everything that follows. The environment can produce six physical
+quantities --- a gravity vector and five atmospheric properties --- but the flight dynamics
+consume exactly two of them: gravitational acceleration \src{model/RocketModel.cpp}{77} and
+air density \src{model/RocketModel.cpp}{86}. Pressure, temperature, speed of sound, and
+dynamic viscosity are computed, oracle-validated, and unconsumed --- they are the natural
+inputs for a future Mach-dependent drag coefficient and Reynolds-dependent skin friction
+(\cref{sec:aero}), and until that machinery lands they are dormant outputs behind a live
+interface. \Cref{fig:environment-uml} shows the arrangement.
+
+\tikzfig{uml-environment}{The environment subsystem. \texttt{Environment} owns one selected
+instance behind each of its two string-keyed registries plus the single geoid
+\srccap{sim/Environment.h}{28}; the abstract interfaces fan out to the concrete models named
+in the registries. The consumption chain runs from the \texttt{QtRocket} controller, which
+owns the one shared instance, through the \texttt{Propagator} into
+\texttt{RocketModel::getForces}, which consumes exactly two quantities: gravitational
+acceleration and air density. The atmosphere's other four properties are computed and
+unconsumed, and \texttt{WindModel} stands entirely outside the
+container.}{fig:environment-uml}
+
+\subsection{The container: registries, selection, and injection}\label{sec:environment-container}
+
+\code{Environment} is singleton-by-construction per application: its copy and move
+constructors and assignment operators are all deleted \src{sim/Environment.h}{37}, and the
+one instance is created by the \code{QtRocket} controller at startup
+\src{QtRocket.cpp}{43}. Internally it keeps two \code{std::map}s from display-name string to
+\cppinline|std::shared_ptr| --- three atmosphere keys (\code{"Constant Atmosphere"},
+\code{"US Standard 1976"}, \code{"Vacuum"}) \src{sim/Environment.h}{103} and two gravity
+keys (\code{"Constant Gravity"}, \code{"Spherical Gravity"}) \src{sim/Environment.h}{108}
+--- plus a selection string per registry \src{sim/Environment.h}{112} and the single eagerly
+constructed geoid \src{sim/Environment.h}{117}. The maps are declared with \emph{null}
+pointers; the constructor immediately calls both setters so that the two default selections
+point at live instances from the first moment \src{sim/Environment.h}{31}, and the defaults'
+observable behavior --- sea-level constants at every altitude, constant $(0, 0, -g_0)$
+gravity --- is pinned by \code{DefaultsToConstantAtmosphereAndConstantGravity}
+\src{sim/tests/EnvironmentTests.cpp}{45}.
+
+Selection is a string comparison, nothing more. \code{setAtmosphereModel} is an
+if/else-if chain over the three known names \src{sim/Environment.h}{74}; each matching
+branch records the name and builds a fresh instance ---
+\cppinline|atmosphereModels[atmosphereModel].reset(new sim::USStandardAtmosphere);|
+\src{sim/Environment.h}{84} --- and no \code{else} branch exists, so an unknown name changes
+nothing. The gravity setter is symmetric \src{sim/Environment.h}{60}, with the spherical
+branch injecting the geoid into the new model's constructor \src{sim/Environment.h}{70}.
+Retrieval is a map lookup on the current selection string \src{sim/Environment.h}{93}, and
+enumeration copies the map keys out with \cppinline|std::transform|
+\src{sim/Environment.h}{42} --- \code{std::map} iteration order makes both lists
+alphabetical, and a test pins the exact names and their order
+\src{sim/tests/EnvironmentTests.cpp}{58}.
+
+\begin{keyinsight}[Unknown names are no-ops; known names are fresh instances]
+Two selection semantics are easy to miss and both are load-bearing. First, the setters'
+if/else-if chains have no fallback branch \src{sim/Environment.h}{60}
+\src{sim/Environment.h}{74}: an unrecognized name silently leaves the current selection
+untouched, down to pointer identity --- the tests assert the \emph{same}
+\cppinline|shared_ptr| remains selected after a bogus request
+\src{sim/tests/EnvironmentTests.cpp}{102}. Second, every successful \code{set} call
+constructs a new model object, even when re-selecting the current name. All models are
+stateless (the spherical gravity model's cached ground radius reconstructs identically), so
+this is harmless today --- but a client that caches a fetched \cppinline|shared_ptr| keeps
+the \emph{old} instance alive and stops observing selection changes. Correct usage is to
+re-fetch per use, which is exactly what \code{RocketModel::getForces} does on every call
+\src{model/RocketModel.cpp}{75} \src{model/RocketModel.cpp}{83}. One related hazard:
+\code{getAtmosphericModel()} looks up the selection with \code{std::map::operator[]}
+\src{sim/Environment.h}{95}, which would silently insert a null entry if the selection
+string were ever not a key --- unreachable through today's public API, but armed the day a
+setter branch is added without a matching registry entry.
+\end{keyinsight}
+
+Silent rejection at this layer is safe because the layer above never guesses at names. The
+registries are, in the GUI's own words, ``the source of truth for valid names''
+\src{gui/SimOptionsTab.cpp}{31}: the GUI populates its combo boxes from the
+\code{getAvailable*Models} lists \src{gui/SimOptionsTab.cpp}{33}, the CLI validates a
+requested name against them before calling the setter and reports \code{ERR} on a miss
+\src{cli/Repl.cpp}{585} \src{cli/Repl.cpp}{612} (\cref{sec:interfaces}), and the CLI's
+prompt-state defaults carry a ``matches Environment default'' comment so the two layers
+cannot drift silently \src{cli/Repl.h}{45}.
+
+\begin{designrule}[Environment by injection, not by lookup]
+The environment reaches the physics by parameter, never by global lookup. \code{QtRocket}
+owns the single shared instance (\src{QtRocket.h}{82}, exposed at \src{QtRocket.h}{34});
+each \code{Propagator} receives it at construction \src{sim/Propagator.h}{44} and
+dereferences it into the force callback on every integrator stage ---
+\cppinline|object->getForces(t, state, rate, *environment)| \src{sim/Propagator.cpp}{41};
+and \code{RocketModel::getForces} takes it as \cppinline|sim::Environment&|
+\src{model/RocketModel.cpp}{68}. Front ends mutate the same shared instance in place --- the
+GUI's change slots write through it precisely so that changing the atmosphere cannot clobber
+the gravity selection \src{gui/SimOptionsTab.cpp}{91} --- and every holder observes the
+change on its next fetch.
+\end{designrule}
+
+\subsection{Gravity}\label{sec:environment-gravity}
+
+The constant model is one line of physics: at any position,
+\cppinline|return Vector3(0.0, 0.0, -utils::math::Constants::g0);|
+\src{sim/ConstantGravityModel.h}{20}, a uniform field of $9.80665\unit{m/s^2}$ pointing down
+the world $z$ axis. The value is not arbitrary: $\mathtt{g0} = 9.80665\unit{m/s^2}$
+\src{utils/math/Constants.h}{10} is \emph{standard gravity}, the conventional sea-level
+weight acceleration, and it quietly bundles more than gravitation --- see the box below.
+
+\begin{physbox}[Inverse-square gravity, and why $GM$ is one constant]
+Newton's law of gravitation for a spherically symmetric Earth gives
+\begin{equation*}
+\vec a \;=\; -\frac{GM}{r^{3}}\,\vec r,
+\end{equation*}
+where $\vec r$ is the geocentric position and $r = |\vec r|$. The product $GM$ --- the
+\emph{gravitational parameter} --- is kept as a single constant because it is known far more
+precisely than either factor alone: spacecraft tracking measures $GM$ directly, while $G$ is
+among the least precisely known fundamental constants. For Earth,
+$GM = 3.986004418\times10^{14}\unit{m^3/s^2}$. At the surface this gives
+$GM/R^{2} \approx 9.820\unit{m/s^2}$ --- about $0.14\%$ \emph{above} standard gravity's
+$9.80665$, because the conventional value folds in the centrifugal relief of Earth's
+rotation, which a purely gravitational model does not.
+\end{physbox}
+
+\code{SphericalGravityModel} implements exactly that law, with one preparatory step. The
+simulation state lives in a local launch frame --- origin at the pad, $z$ up, ground at
+$z = 0$ \src{sim/SphericalGravityModel.h}{19} --- so before applying an inverse-square law
+the model must re-express the position geocentrically. Its constructor caches the launch
+site's ground radius once, because the radius is constant for a site and \code{getAccel}
+runs on every integrator stage \src{sim/SphericalGravityModel.cpp}{18}; the geoid is asked
+at placeholder coordinates $(0, 0)$ ``until a real launch site is plumbed in''
+\src{sim/SphericalGravityModel.cpp}{19}. The acceleration itself is five lines
+\src{sim/SphericalGravityModel.cpp}{33}: in the code's names, with
+$\mathtt{gz} = z + \mathtt{groundLevel}$ and $\vec r_{\mathrm{geo}} = (x, y, \mathtt{gz})$,
+\begin{equation}
+\vec a \;=\; -\frac{\mathtt{earthGM}}{r^{3}}\,\vec r_{\mathrm{geo}},
+\qquad r = |\vec r_{\mathrm{geo}}|,
+\qquad \mathtt{earthGM} = 3.986004418\times10^{14}\unit{m^3/s^2}
+\end{equation}
+\src{sim/SphericalGravityModel.cpp}{36} \src{utils/math/Constants.h}{26}, written as a
+single scalar \code{factor} $= -\mathtt{earthGM}/(\mathtt{r2}\cdot\mathtt{r})$ so the
+vector multiply distributes over components. Tests pin the surface magnitude to $GM/R^{2}$
+within $10^{-12}$ relative error \src{sim/tests/EnvironmentTests.cpp}{123}, the
+$GM/(R+z)^{2}$ falloff at $10\unit{km}$
+\src{sim/tests/SphericalGeoidAndGravityTests.cpp}{67}, and the small inward horizontal
+component one kilometer downrange --- the vector points at Earth's center, not straight down
+\src{sim/tests/SphericalGeoidAndGravityTests.cpp}{82}.
+
+\begin{keyinsight}[The ground-radius offset fixed a real hang]
+The line \cppinline|const double gz = z + groundLevel;| is not a refinement; it is the fix
+for a located defect. An earlier \code{SphericalGravityModel} treated the pad-relative
+coordinates as geocentric and computed $GM/r^{3}$ at the pad's $r = 0$ --- producing NaN and
+hanging the propagator loop in an infinite iteration (the F1 defect recorded in the test
+file's header \src{sim/tests/SphericalGeoidAndGravityTests.cpp}{1}). Today the invariant is
+stated where it binds --- ``$|\mathrm{rvec}| \geq \mathrm{groundLevel}$ so it's never 0''
+\src{sim/SphericalGravityModel.cpp}{32} --- and defended twice: the
+\code{FiniteAtLaunchOrigin} regression test asserts finite acceleration at the exact origin
+\src{sim/tests/SphericalGeoidAndGravityTests.cpp}{48}, and the propagator's
+\code{NonFiniteState} guard aborts rather than loops if a NaN ever reaches the state again
+\src{sim/Propagator.cpp}{94} (\cref{sec:simcore}).
+\end{keyinsight}
+
+The ground radius comes from the geoid. A geoid, in theory, is the equipotential surface of
+Earth's gravity field --- ``mean sea level'' extended under the continents --- and the
+interface asks it a single question: how far is the ground from Earth's center at a given
+latitude and longitude \src{sim/GeoidModel.h}{14}. The only implementation,
+\code{SphericalGeoidModel}, ignores both arguments and returns
+$\mathtt{meanEarthRadiusWGS84} = 6\,371\,008.8\unit{m}$
+\src{sim/SphericalGeoidModel.cpp}{18} \src{utils/math/Constants.h}{24} --- the WGS84
+(World Geodetic System 1984) mean of Earth's polar and equatorial radii
+\src{sim/SphericalGeoidModel.h}{10}. There is no \code{setGeoidModel}; \code{Environment}
+constructs the one instance in-class and notes ``Only one geoid today; a registry can follow
+if needed'' \src{sim/Environment.h}{116}. Constancy across latitudes is itself pinned by
+test \src{sim/tests/SphericalGeoidAndGravityTests.cpp}{38}.
+
+End to end, the two gravity models agree the way the physics box predicts: an integration
+test flies the same rocket under both and requires the apogees to land within 5\% ---
+spherical $g \approx 9.82\unit{m/s^2}$ near the surface versus the constant model's
+$9.80665$ \src{tests/PhysicsIntegrationTests.cpp}{331}.
+
+\subsection{The US Standard Atmosphere 1976}\label{sec:environment-ussa}
+
+\code{USStandardAtmosphere} --- registry name \code{"US Standard 1976"} --- is the
+subsystem's centerpiece: a closed-form implementation of the 1976 US Standard Atmosphere's
+lower layers, from sea level through the mesosphere
+\srcf{sim/USStandardAtmosphere.cpp}. The reference document whose tables anchor both the
+implementation and its test oracles is bundled in the repository
+\srcf{docs/us-standard-atmosphere\_st76-1562\_noaa.pdf}. The physics behind the formulas
+fits in one box.
+
+\begin{physbox}[Two relations govern a standard atmosphere]
+A static column of air must support its own weight: the pressure drop across a horizontal
+slab of thickness $dh$ equals the slab's weight per unit area,
+\begin{equation*}
+\frac{dP}{dh} = -\rho\, g
+\qquad\text{(hydrostatic equilibrium).}
+\end{equation*}
+Density, pressure, and temperature are tied by the ideal gas law,
+$P = \rho\,\tfrac{R^{*}}{M}\,T$, with $R^{*}$ the universal gas constant and $M$ the mean
+molar mass of dry air. Substituting one into the other eliminates $\rho$:
+\begin{equation*}
+\frac{dP}{P} = -\frac{g_0 M}{R^{*}\,T(h)}\, dh.
+\end{equation*}
+The 1976 standard makes this integrable in closed form by \emph{prescribing} $T(h)$ as
+piecewise linear: seven layers, each with a constant lapse rate $L_b = dT/dh$. Two layer
+types result. In a \emph{gradient} layer ($L_b \neq 0$) the integral yields a power law,
+$P = P_b\,[T(h)/T_b]^{-g_0 M/(R^{*} L_b)}$; in an \emph{isothermal} layer ($L_b = 0$) it
+yields an exponential, $P = P_b\, e^{-g_0 M (h - h_b)/(R^{*} T_b)}$. Density then follows
+from the gas law --- dividing the pressure law by one more factor of $T(h)/T_b$ --- which is
+why the density exponent is the pressure exponent minus one, and why the isothermal branches
+of $P$ and $\rho$ share the same exponential. Physically: pressure falls with height because
+less air sits above you, roughly exponentially with an $8\unit{km}$ scale height ($\rho$
+drops $\sim$70\% by $11\unit{km}$ and 99.99\% by $71\unit{km}$); temperature zig-zags --- the
+troposphere cools with altitude, the stratosphere warms because ozone absorbs ultraviolet,
+the mesosphere cools again.
+\end{physbox}
+
+\paragraph{The constants.} The formulas run on the 1976 standard's own constants, not
+modern CODATA values: $\mathtt{Rstar} = 8.31432\unit{J\,mol^{-1}K^{-1}}$,
+$\mathtt{airMolarMass} = 0.0289644\unit{kg/mol}$, and $\mathtt{g0} = 9.80665\unit{m/s^2}$
+\src{utils/math/Constants.h}{9}, plus $\mathtt{gamma} = 1.4$ for the speed of sound
+\src{utils/math/Constants.h}{15} and the Sutherland pair
+$\mathtt{beta} = 1.458\times10^{-6}\unit{kg\,s^{-1}m^{-1}K^{-1/2}}$ --- ``empirically
+measured,'' the header notes, per the 1976 report --- and $\mathtt{S} = 110.4\unit{K}$
+\src{utils/math/Constants.h}{19}. Three neighbors in the same header are dead:
+\code{standardTemperature}, \code{standardDensity}, and \code{earthGM\_km} have no
+references outside their definitions \src{utils/math/Constants.h}{22} --- the first two
+share names with \code{USStandardAtmosphere}'s static tables, which are distinct entities
+and are what the formulas actually read.
+
+\paragraph{The lookup primitive.} Each per-layer quantity lives in a \code{utils::Bin}, a
+small piecewise-bin table: ``each inserted key is a bin's lower bound'' and
+\code{operator[]} returns the value of the bin containing the query key
+\src{utils/Bin.h}{15}. Insertion appends and re-sorts \src{utils/Bin.cpp}{41}; lookup walks
+forward until a bin base exceeds the key, and ``falling off the end means key is in the last
+bin'' \src{utils/Bin.cpp}{57} --- so the topmost layer extends upward without bound. Keys
+below the lowest base throw \code{std::out\_of\_range} rather than silently clamping
+\src{utils/Bin.cpp}{52}. A companion \code{getBinBase} returns the containing bin's
+lower-bound key instead \src{utils/Bin.cpp}{72}; the formulas below need both the layer's
+anchored value and its base altitude.
+
+\paragraph{The tables.} Four static \code{utils::Bin} members --- \code{temperatureLapseRate},
+\code{standardTemperature}, \code{standardDensity}, \code{standardPressure}
+\src{sim/USStandardAtmosphere.h}{28} --- are populated once at static-initialization time
+\src{sim/USStandardAtmosphere.cpp}{78} from the seven layer anchors in
+\cref{tab:environment-layers} \src{sim/USStandardAtmosphere.cpp}{21}. The layer-base
+pressures and densities are hard-coded from the report rather than derived recursively from
+the sea-level values, so each layer's formula is anchored directly to published numbers
+rather than to accumulated floating-point error.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+$h_b$ (m) & $T_b$ (K) & coded rate (K/m) & standard $L_b$ (K/km) & $P_b$ (Pa) & $\rho_b$ (kg/m$^3$) \\
+\midrule
+0     & 288.15 & $+0.0065$ & $-6.5$ & 101325  & 1.225    \\
+11000 & 216.65 & $0.0$     & $0$    & 22632.1 & 0.36391  \\
+20000 & 216.65 & $-0.001$  & $+1.0$ & 5474.89 & 0.08803  \\
+32000 & 228.65 & $-0.0028$ & $+2.8$ & 868.02  & 0.01322  \\
+47000 & 270.65 & $0.0$     & $0$    & 110.91  & 0.00143  \\
+51000 & 270.65 & $+0.0028$ & $-2.8$ & 66.94   & 0.00086  \\
+71000 & 214.65 & $+0.002$  & $-2.0$ & 3.96    & 0.000064 \\
+\bottomrule
+\end{tabular}
+\caption{The seven layers as coded \srccap{sim/USStandardAtmosphere.cpp}{21}: base altitude,
+base temperature, the stored \texttt{temperatureLapseRate}, the standard's lapse rate
+$L_b = dT/dh$ it corresponds to, and the hard-coded pressure and density anchors. The coded
+rate is the \emph{negative} of $L_b$ --- positive where temperature falls with altitude ---
+and every formula in the implementation uses that flipped convention
+consistently.}\label{tab:environment-layers}
+\end{table}
+
+\paragraph{Sign convention.} The stored \code{temperatureLapseRate} is the negative of the
+standard's $L_b$: the troposphere is coded $+0.0065\unit{K/m}$ --- temperature \emph{falls}
+6.5 K per kilometer --- while the warming layers based at 20 and 32 km are coded negative
+\src{sim/USStandardAtmosphere.cpp}{39}. The convention is harmless because all three
+formulas use it consistently; with $L = -L_b$ the coded power law below is algebraically
+identical to the report's equation (33a).
+
+\paragraph{Temperature.} With $h_b = \mathtt{standardTemperature.getBinBase}(h)$, temperature
+is linear within the layer \src{sim/USStandardAtmosphere.cpp}{114}:
+\begin{equation}
+T(h) \;=\; \mathtt{standardTemperature}[h] \;-\; (h - h_b)\cdot\mathtt{temperatureLapseRate}[h].
+\label{eq:environment-temp}
+\end{equation}
+
+\paragraph{Pressure.} \code{getPressure} branches on whether the layer is isothermal,
+testing \cppinline|floatingPointEqual(temperatureLapseRate[altitude], 0.0)|
+\src{sim/USStandardAtmosphere.cpp}{123} --- a ULP-scaled floating-point comparison
+\src{utils/math/UtilityMathFunctions.h}{21} that is exact here only because the two zero
+rates are stored as literal \code{0.0} \src{sim/USStandardAtmosphere.cpp}{40}. The
+isothermal branch (layers based at 11 and 47 km) is the exponential
+\src{sim/USStandardAtmosphere.cpp}{125}:
+\begin{equation}
+P(h) \;=\; \mathtt{standardPressure}[h]\;
+\exp\!\left(\frac{-\,\mathtt{g0}\cdot\mathtt{airMolarMass}\cdot(h - h_b)}
+                 {\mathtt{Rstar}\cdot\mathtt{standardTemperature}[h]}\right),
+\label{eq:environment-piso}
+\end{equation}
+and the gradient branch is the power law of \cref{lst:environment-pressure}: with
+$T_b = \mathtt{standardTemperature}[h]$, $L = \mathtt{temperatureLapseRate}[h]$, and
+$P_b = \mathtt{standardPressure}[h]$,
+\begin{equation}
+P(h) \;=\; P_b\cdot\mathtt{base}^{\,\mathtt{exponent}},
+\qquad
+\mathtt{base} = \frac{T_b - L\,(h - h_b)}{T_b},
+\qquad
+\mathtt{exponent} = \frac{\mathtt{g0}\cdot\mathtt{airMolarMass}}{\mathtt{Rstar}\cdot L}.
+\label{eq:environment-pgrad}
+\end{equation}
+Note that \code{base} is just $T(h)/T_b$ --- the ratio of local to layer-base temperature ---
+so \cref{eq:environment-pgrad} is the physics box's power law in the code's flipped-sign
+convention.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+      double base = (standardTemperature[altitude] - temperatureLapseRate[altitude] *
+                    (altitude - standardPressure.getBinBase(altitude))) / standardTemperature[altitude];
+
+      double exponent = (Constants::g0 * Constants::airMolarMass) /
+         (Constants::Rstar * temperatureLapseRate[altitude]);
+
+      return standardPressure[altitude] * std::pow(base, exponent);
+\end{minted}
+\caption{The gradient-layer pressure power law as coded
+\srccap{sim/USStandardAtmosphere.cpp}{132}: \texttt{base} is the temperature ratio
+$T(h)/T_b$, and four \texttt{Bin} lookups anchor the layer.}\label{lst:environment-pressure}
+\end{listing}
+
+\paragraph{Density.} \code{getDensity} is structurally identical --- the same isothermal test,
+the same two branches --- reading the \code{standardDensity} anchors instead of
+\code{standardPressure} \src{sim/USStandardAtmosphere.cpp}{93}, with exactly one difference:
+the gradient-layer exponent subtracts one \src{sim/USStandardAtmosphere.cpp}{107},
+\begin{equation}
+\rho(h) \;=\; \rho_b\cdot\mathtt{base}^{\,\frac{\mathtt{g0}\cdot\mathtt{airMolarMass}}{\mathtt{Rstar}\cdot L}\, -\, 1}.
+\label{eq:environment-rho}
+\end{equation}
+The $-1$ is the ideal gas law's doing: $\rho = PM/(R^{*}T)$, and dividing the pressure power
+law by one extra factor of $T(h)/T_b$ lowers the exponent by exactly one. In the isothermal
+branch $T$ is constant, so density and pressure share the same exponential form. Density is
+the one atmospheric number flight actually consumes, entering the drag force
+$\vec F_d = -\tfrac{1}{2}\rho\,|\vec v|\,C_d\,A\,\vec v$ at
+\src{model/RocketModel.cpp}{86} (\cref{sec:primer,sec:aero}).
+
+\paragraph{Auxiliary properties.} Speed of sound is the perfect-gas formula
+\src{sim/USStandardAtmosphere.cpp}{143} and dynamic viscosity is Sutherland's law
+\src{sim/USStandardAtmosphere.cpp}{150}, both driven by \cref{eq:environment-temp}:
+\begin{equation}
+a(h) = \sqrt{\frac{\mathtt{gamma}\cdot\mathtt{Rstar}\cdot T(h)}{\mathtt{airMolarMass}}},
+\qquad
+\mu(h) = \frac{\mathtt{beta}\cdot T(h)^{3/2}}{T(h) + \mathtt{S}}.
+\label{eq:environment-aux}
+\end{equation}
+Sutherland's law is kinetic theory with one correction: rigid-sphere molecules alone would
+give a viscosity growing as $\sqrt{T}$, and the empirical pair
+$\mathtt{beta} = 1.458\times10^{-6}\unit{kg/(m\,s\,K^{1/2})}$ and
+$\mathtt{S} = 110.4\unit{K}$ \src{utils/math/Constants.h}{19} models the weak
+intermolecular attraction that enlarges the effective collision cross-section when the
+gas is cold --- below temperatures of order $\mathtt{S}$ the molecules are measurably
+``stickier,'' and the $T^{3/2}/(T+\mathtt{S})$ form damps the hard-sphere growth
+accordingly. At $288.15\unit{K}$ these evaluate to $340.29\unit{m/s}$ and
+$1.7894\times10^{-5}\unit{Pa\,s}$ --- matching the constant atmosphere's hard-coded
+$340.294$ and $1.78938\times10^{-5}$ \src{sim/ConstantAtmosphere.h}{19}. Both are the 1976
+report's own auxiliary formulas, and both are unconsumed: a whole-tree search finds no
+caller of \code{getSpeedOfSound} or \code{getDynamicViscosity} outside the models and their
+tests --- no Mach number, no Reynolds number, nothing (\cref{sec:aero,sec:incomplete}).
+
+\tikzfig{atmosphere-profile}{The temperature profile $T(h)$ of the US Standard Atmosphere
+1976 as coded: piecewise linear between the seven layer bases whose temperature, pressure,
+and density anchors are hard-coded from the NOAA report
+\srccap{sim/USStandardAtmosphere.cpp}{21}. The shaded band marks the oracle-validated range,
+0--80 km; above it the last layer's formulas extrapolate without bound. The bottom note
+records the sign convention: the stored \texttt{temperatureLapseRate} is the negative of the
+standard's $L_b$.}{fig:environment-profile}
+
+\begin{designrule}[Validated against the report, not against itself]
+The oracle suite compares the implementation to the published NOAA tables, never to its own
+output, and every assertion is a \emph{relative} bound:
+\cppinline|EXPECT_NEAR(computed / published, 1.0, tol)|. Pressure and temperature must match
+to 0.1\% at twenty altitudes from 0 to $80\,000\unit{m}$
+\src{sim/tests/USStandardAtmosphereTests.cpp}{36}
+\src{sim/tests/USStandardAtmosphereTests.cpp}{64}; density must match to 0.1\% at thirteen
+altitudes \src{sim/tests/USStandardAtmosphereTests.cpp}{10} and to 0.5\% at seven more ---
+8--10 km and 50--80 km, where the file comments record a ``Slight deviation of calculated
+density from the given density in the report table''
+\src{sim/tests/USStandardAtmosphereTests.cpp}{24}. The 80 km points sit in the
+\emph{extrapolated} last bin (base $71\,000\unit{m}$) and still meet the 0.1\% pressure
+oracle. One loose end: \code{getDensity} still carries an open ``@todo Verify against the
+1976 US Standard Atmosphere / NOAA paper'' \src{sim/USStandardAtmosphere.h}{18} ---
+verification that now exists.
+\end{designrule}
+
+\begin{keyinsight}[The negative-altitude trap, and who guards it]
+The model's domain is altitude $\geq 0$: any query below the lowest bin base propagates
+\code{std::out\_of\_range} from \code{utils::Bin::operator[]} \src{utils/Bin.cpp}{52}. This
+was a real crash, not a hypothetical --- integrator trial states dip below $z = 0$ near
+landing, and before the fix a full flight under \code{"US Standard 1976"} died there. The
+guard lives on the \emph{consumer} side: \code{RocketModel::getForces} clamps ---
+``Clamp altitude to $\geq 0$: trial states crossing z=0 fall outside the atmosphere models'
+domain'' \src{model/RocketModel.cpp}{84} --- and the regression is pinned end-to-end by
+\code{USStandardAtmosphereCompletesWithoutCrash}
+\src{tests/PhysicsIntegrationTests.cpp}{280}. The trap hides behind a shared interface ---
+the constant and vacuum models are total functions over the same inputs
+(\cref{sec:environment-simple}), so a caller tested only against those two would pass every
+test and still crash here. Any new consumer of \code{AtmosphericModel} owes the same clamp.
+\end{keyinsight}
+
+Two further edges are honest limitations rather than defects. Above the last layer base
+there is no cap: the standard's tables end at $84\,852\unit{m}$ and switch to a kinetic
+model at 86 km, but the code's 71 km layer extrapolates its closed forms to arbitrary
+altitude because the last \code{Bin} is unbounded \src{utils/Bin.cpp}{57} --- accurate at 80
+km per the oracles, untested and increasingly wrong beyond. And the implementation feeds
+geometric altitude straight into tables the standard defines in \emph{geopotential} height
+--- no conversion $H = zR/(R + z)$ exists anywhere in the tree. Below 11 km the difference
+is under 0.2\%, which is negligible at model-rocket altitudes; at 50--80 km it is part of
+what the 0.5\% density tolerances absorb. Both belong to the consolidated inventory in
+\cref{sec:incomplete}.
+
+\subsection{The constant and vacuum atmospheres}\label{sec:environment-simple}
+
+The other two atmospheres are deliberately trivial, and each earns its keep in testing.
+\code{ConstantAtmosphere} --- the default selection --- returns the five sea-level standard
+values at every altitude: density $1.225\unit{kg/m^3}$, pressure $101\,325\unit{Pa}$,
+temperature $288.15\unit{K}$, speed of sound $340.294\unit{m/s}$, and dynamic viscosity
+$1.78938\times10^{-5}\unit{Pa\,s}$ \src{sim/ConstantAtmosphere.h}{15}. For flights that top
+out a few hundred meters up, a constant-density column is a fine first approximation, and it
+makes hand-checkable physics: the \code{TerminalVelocityForceBalance} integration test pulls
+$\rho$ and $g$ from the live default models and verifies the net force vanishes at
+$v_t = \sqrt{2mg/(\rho C_d A)}$ \src{tests/PhysicsIntegrationTests.cpp}{246}.
+
+\code{VacuumAtmosphere} returns zero for all five properties
+\src{sim/VacuumAtmosphere.h}{17}: ``drag vanishes and the flight reduces to thrust +
+gravity,'' making it the baseline that isolates integrator behavior from the aero model
+\src{sim/VacuumAtmosphere.h}{9}. That role is exercised constantly.
+\code{DragReducesApogeeVersusVacuum} flies the same rocket under vacuum and constant
+atmosphere and requires the drag apogee to fall below 75\% of the vacuum apogee
+\src{tests/PhysicsIntegrationTests.cpp}{227}; the design-matrix sweep flies each reference
+airframe's motor ladder twice --- once under \code{"Vacuum"} with $C_d = 0$, once under
+\code{"US Standard 1976"} with $C_d = 0.75$ --- and asserts drag always costs altitude,
+under both integrators \src{tests/DesignMatrixTests.cpp}{542}
+\src{tests/DesignMatrixTests.cpp}{559} (one motor per impulse class in the fast suite, the
+complete ladder under the \code{heavy} label; \cref{sec:testing}). One forward-looking wrinkle is
+documented in place: a vacuum has no sound, so \code{getSpeedOfSound} returns 0 and ``Callers
+computing a Mach number must guard against 0'' \src{sim/VacuumAtmosphere.h}{21} --- a
+division hazard that becomes live the day Mach-dependent drag arrives. Both simple models
+are total functions over pathological inputs; the test grid includes $-100\unit{m}$ and NaN
+\src{sim/tests/SimpleAtmosphereTests.cpp}{13}.
+
+\subsection{Wind: a dormant seam}\label{sec:environment-wind}
+
+\code{WindModel} completes the environment's inventory, and it is the subsystem's one fully
+dormant class: built, compiled, and consumed by nothing --- with no unit test naming it, it
+even falls short of the series' strict sense of \emph{dormant} (built \emph{and} tested).
+It is a concrete base class --- virtual but not pure, because the base \emph{is} the
+``no wind'' model --- with a single method
+\cppinline|virtual Vector3 getWindSpeed(double x, double y, double z);|
+\src{sim/WindModel.h}{16} whose implementation returns
+\cppinline|Vector3(0.0, 0.0, 0.0)| \src{sim/WindModel.cpp}{18}. It is compiled into the
+\code{sim} library \src{sim/CMakeLists.txt}{24}, and that CMake listing plus its own two
+source files are the only places its name appears in the tree: no subclasses, no
+\code{Environment} member, no registry entry, and zero call sites for
+\code{getWindSpeed}. Consequently the drag law computes drag from the vehicle's inertial
+velocity alone \src{model/RocketModel.cpp}{88} --- the airmass is implicitly at rest.
+
+Plumbing the seam is a bounded job, and the container shows the pattern. Aerodynamically,
+drag opposes the \emph{air-relative} velocity $\vec v - \vec w$, so consuming wind means: a
+wind registry and setter in \code{Environment} mirroring the other two registries
+\src{sim/Environment.h}{103}; one subtraction in \code{RocketModel::getForces}, replacing
+\code{velocity} with the relative velocity before the drag product
+\src{model/RocketModel.cpp}{88}; and a selection surface in the front ends. Under today's
+3-DOF point mass a steady wind would add only a lateral drag drift; the payoff that
+motivates wind in a rocket simulator --- weathercocking into the breeze off the launch rod
+--- additionally requires the angle-of-attack and torque machinery of \cref{sec:aero}. The
+consolidated inventory in \cref{sec:incomplete} carries both entries.
+
+The pattern across this chapter is the document's in miniature. What flight consumes from
+the environment is two numbers per integrator stage --- one gravity vector, one density ---
+and everything behind those numbers is small, closed-form, and validated well past the
+consumed surface: five-decade pressure oracles for a drag law that only reads $\rho$, a
+speed of sound nothing divides by yet, a wind vector nothing subtracts. When Mach-dependent
+drag or wind arrives, the environment will not need to grow; its consumers will.

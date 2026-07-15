@@ -1,0 +1,46 @@
+% The force path as it exists: three consumed terms on the left, and the dormant
+% machinery -- built, tested, and consumed by nothing -- on the right.
+% Cited from model/RocketModel.cpp getForces/getTorques.
+\begin{tikzpicture}[node distance=6mm and 12mm]
+
+  % --- consumed path (left column) ---
+  \node[comp,text width=46mm] (thrust)
+    {\textbf{Thrust} \footnotesize(motor part)\\[1pt]
+     \footnotesize always along world $+z$,\\ assumed through the CM};
+  \node[comp,text width=46mm,below=of thrust] (gravity)
+    {\textbf{Gravity} \footnotesize(pluggable)\\[1pt]
+     \footnotesize constant $-g\hat{z}$ or spherical\\ inverse-square};
+  \node[comp,text width=46mm,below=of gravity] (drag)
+    {\textbf{Drag} \footnotesize(scalar)\\[1pt]
+     \footnotesize $-\tfrac{1}{2}\rho(z)\,|v|\,C_d\,A\,\vec{v}$,\\
+     user-set constant $C_d$ and $A$};
+
+  \node[resolver,text width=44mm,right=16mm of gravity] (forces)
+    {getForces(t, x, v)\\[1pt]\normalfont\footnotesize the only force assembly\\ \srcfcap{model/RocketModel.cpp}};
+  \node[consumer,text width=40mm,right=14mm of forces] (ode)
+    {\textbf{3-DOF ODE}\\[1pt]\footnotesize $\dot{x}=v,\ \ \dot{v}=F/m(t)$\\ RK4 / RKF45};
+
+  % --- dormant machinery (below, red-edged) ---
+  \node[failnode,text width=40mm,below=16mm of drag] (barrowman)
+    {\textbf{Barrowman profile}\\[1pt]\footnotesize per-part $C_{N_\alpha}$, CP, static\\ margin --- built \& tested,\\ zero consumers};
+  \node[failnode,text width=34mm,right=6mm of barrowman] (wind)
+    {\textbf{WindModel}\\[1pt]\footnotesize compiled, returns\\ zeros, never called};
+  \node[failnode,text width=36mm,right=6mm of wind] (torques)
+    {\textbf{getTorques()}\\[1pt]\footnotesize returns $\vec{0}$; no caller;\\ orientation ODE\\ commented out};
+  \node[failnode,text width=34mm,right=6mm of torques] (inertia)
+    {\textbf{Inertia tensor}\\[1pt]\footnotesize composed per step,\\ recorded, never\\ integrated};
+
+  % --- edges ---
+  \draw[uses] (thrust.east) -- ++(6mm,0) |- (forces.west);
+  \draw[uses] (gravity.east) -- (forces.west);
+  \draw[uses] (drag.east) -- ++(6mm,0) |- (forces.west);
+  \draw[uses] (forces.east) -- (ode.west);
+
+  % extra fit point lifts the box top so the title clears the node row
+  \coordinate (dormantpad) at ($(barrowman.north west)+(0,7mm)$);
+
+  \begin{pgfonlayer}{background}
+    \titledbox{(dormantpad)(barrowman)(wind)(torques)(inertia)}{Dormant: exists, tested, unconsumed}{qrRed}
+  \end{pgfonlayer}
+
+\end{tikzpicture}

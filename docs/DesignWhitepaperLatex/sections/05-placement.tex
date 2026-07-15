@@ -1,0 +1,536 @@
+\section{Placement: stations, seats, and the resolver}\label{sec:placement}
+
+\Cref{sec:parts} described the rocket as an ownership tree of parts and the machinery that
+folds that tree into mass, center of mass (CM), and inertia. This section describes the
+other half of the model layer's geometry story: how the tree knows \emph{where} each part
+sits. The answer is deliberately indirect. QtRocket never stores a coordinate for any part.
+What it stores, on every parent$\to$child edge, is a small value called a
+\code{StationLink} --- a statement of \emph{physical intent} (``this rim seats against that
+rim, inserted this deep'') --- and every absolute position in the rocket is recomputed from
+those statements by exactly one resolver function whenever the structure changes
+\src{model/parts/Placement.h}{147}. The section walks the design from philosophy to
+enforcement: the rules, the data model (stations, seats, links), the resolver arithmetic
+term by term, the diagnostics that refuse impossible geometry, the narrow authoring
+surface that exists today, and the invariance suite that pins the system's observable
+behavior.
+
+\subsection{Philosophy: placement is intent, never coordinates}\label{sec:placement-philosophy}
+
+The placement system was designed in its own whitepaper
+(\srcf{docs/PartPlacementDesignLatex/}) and implemented essentially as designed; where the
+document and the shipped code disagree, this section reports the code and says so. The
+design opens with three rules stated before any type is introduced, because they constrain
+every later decision.
+
+\begin{designrule}[Three non-negotiable rules]
+(1) \emph{Placement is derived}: absolute position is recomputed by exactly one resolver
+--- neither an absolute coordinate nor a resolved pose is ever stored as truth.
+(2) \emph{The stored link is physical intent}: a feature-to-feature relationship between
+two parts, never an opaque offset; the center of mass falls out of geometry as a
+consequence. (3) \emph{The common case costs zero authored numbers}: a child attached with
+no link simply abuts its parent
+\src{docs/PartPlacementDesignLatex/sections/02-philosophy.tex}{21}.
+\end{designrule}
+
+The rules are a reaction to an observed failure. The representation they replaced stored
+one \code{Vector3} per child, defined as the child's CM relative to the parent's CM. A CM
+is a derived quantity --- a solid nose cone's sits a quarter length from the base, not at
+mid-length --- so every offset was a hand calculation, and the value's two consumers
+quietly disagreed about what it meant: the simulator applied it CM-to-CM as documented,
+the visualizer as a geometric-center-to-center translation. The two reconstructions of
+the same file diverged by exactly the cone's CM offset, and a committed design shipped
+with a coupler silently interpenetrating the nose cone --- no check fired, and a
+self-intersecting solid was fed to the integrator
+\src{docs/PartPlacementDesignLatex/sections/01-introduction.tex}{65}. The link recorded a
+derived quantity where the author actually knew a geometric fact --- two rims touch. The
+replacement stores the geometric fact.
+
+Storing intent also leaves nothing to go stale. Persisting the resolved transform
+alongside the intent was rejected in the design document as the same staleness bug
+reflected: edit a length and the stored transform is silently wrong
+\src{docs/PartPlacementDesignLatex/sections/02-philosophy.tex}{43}. Resolved poses exist
+in the shipped code only as a cache gated on a structural dirty flag
+(\cref{sec:placement-resolver}) --- an optimization that can never be wrong, not a second
+copy of the truth that can.
+
+\begin{designrule}[One resolver, two consumers, identical numbers]
+``The single authority for absolute placement: intent (StationLink) in, geometry (Pose)
+out. Both the simulator and the visualizer consume its output, so the two cannot
+disagree'' \src{model/parts/Placement.h}{148}. The mass-properties walk reads the
+resolver's cached output when it folds the tree \src{model/parts/Part.cpp}{199}, and the
+visualizer's mesh walk reads the same output when it draws it
+\src{visualizer/RocketMesh.cpp}{434} --- so the number the integrator uses to place a
+part's mass is, by construction, the number the renderer uses to draw it. The legacy
+divergence is structurally impossible.
+\end{designrule}
+
+One paragraph of contrast situates the choice. OpenRocket --- the comparison baseline of
+\cref{app:or-architecture} --- positions each component with a signed axial offset plus an
+\code{AxialMethod} enumerator (top, middle, bottom, absolute) selecting which datum of the
+parent the offset is measured from. That scheme also re-derives absolute coordinates from
+live parent geometry, so it is not a staleness hazard; the difference is semantic. The
+stored number is a coordinate displacement whose meaning is switched by a flag, and the
+physical relationship it encodes --- \emph{is} this coupler inserted into that tube, or
+merely near it? --- is not represented and cannot be checked. QtRocket's
+\code{StationLink} stores the mating itself: which stations of parent and child sit
+together, and in what radial relationship. That extra semantic content is what gives the
+diagnostics layer of \cref{sec:placement-diagnostics} something to enforce, and it is why
+QtRocket can afford to fail closed where OpenRocket's tradition is to warn and continue.
+
+\subsection{The data model: stations, links, and seats}\label{sec:placement-datamodel}
+
+\begin{physbox}[Stations, fore and aft]
+Aerospace drafting locates features on a vehicle by \emph{station}: a cross-section plane
+at a stated distance from a reference datum --- ``fuselage station 172'' names a plane,
+not a part. \emph{Fore} means toward the nose, \emph{aft} toward the tail. A rocket
+airframe is, to good approximation, a stack of axisymmetric bodies, so a station plus the
+radius profile there --- outer skin and, for hollow parts, inner bore --- captures
+everything about the cross-section that matters for fit. QtRocket's placement model is
+this drafting idea made executable: parts are mated station-to-station, and the radius
+profiles at the mated stations decide whether the mating is physically possible.
+\end{physbox}
+
+Every part lives in one shared local frame, established in \cref{sec:parts}: \zfwd, the
+part's own origin at its \emph{fore} plane, the body occupying $z \in [-L, 0]$
+\src{model/parts/Part.h}{130}. Stations are expressed as fractions: \code{station01}
+$\in [0,1]$ with $0$ the aft plane and $1$ the fore plane, mapped to a local coordinate by
+
+\begin{equation}\label{eq:placement-station}
+z(\mathtt{station01}) \;=\; (\mathtt{station01} - 1)\cdot L ,
+\end{equation}
+
+where $L$ is the part's \emph{live} length, re-read from \code{getLength()} on every
+resolve \src{model/parts/Part.cpp}{305}. \code{Part::stationAt} clamps the fraction to
+$[0,1]$, evaluates \cref{eq:placement-station}, and returns a \code{Station} landmark ---
+$\{z, r_{\mathrm{outer}}, r_{\mathrm{inner}}\}$, the coordinate plus the radius profile
+read at it --- which is always derived, never stored \src{model/parts/Placement.h}{62}.
+Fractions of live length are the anti-staleness property in miniature: lengthen a tube and
+every seam expressed against it moves to follow, because no stored number baked the old
+length in (pinned by test: \src{model/tests/ResolverSweepTests.cpp}{168}). One honest
+caveat: at the pinned commit \code{254cd41}, concrete parts are geometrically immutable
+after construction --- no length or radius setters exist \src{model/parts/BodyTube.h}{69}
+--- so the only structural edits are attach and detach, and the live-length machinery is
+future-proofing for an editing path not yet built (\cref{sec:incomplete}).
+
+The stored value on each edge is the \code{StationLink}
+(\cref{lst:placement-stationlink}): a fractional station on each of the two mated parts, a
+gap in meters, a seat kind, and a per-seam quaternion reserved for six-degree-of-freedom
+(6-DOF) work --- identity today, so a stored link is bit-identical to a pure translation
+\src{model/parts/Placement.h}{44}.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+struct StationLink
+{
+   double     parentStation01{0.0};             ///< 0 = aft plane, 1 = fore plane, on the PARENT
+   double     childStation01{1.0};              ///< 0 = aft plane, 1 = fore plane, on the CHILD
+   double     gap{0.0};                         ///< meters; meaning per SeatKind
+   SeatKind   seat{SeatKind::Abut};             ///< selects the radial check and the gap sign
+   Quaternion childRot{Quaternion::Identity()}; ///< (x,y,z,w) seam orientation; identity in 3-DOF
+};
+\end{minted}
+\caption{The only stored spatial relationship in the model \srccap{model/parts/Placement.h}{49}.
+The defaults are load-bearing: a default-constructed link means ``child fore plane abuts
+parent aft plane,'' the natural nose$\to$body$\to$fins build order, so the common case
+costs zero authored numbers.}\label{lst:placement-stationlink}
+\end{listing}
+
+The \code{SeatKind} enumeration is closed at three values by design: a rigid axisymmetric
+stack admits exactly three radial relationships \src{model/parts/Placement.h}{32}, and
+leaving the enum open ``would only invite half-defined cases''
+\src{docs/PartPlacementDesignLatex/sections/03-datamodel.tex}{126}. The seat does double duty:
+it names the radial compatibility semantics of the seam, and it fixes the \emph{sign} of
+the gap --- the direction in which the gap displaces the child
+(\cref{tab:placement-seats}). Encoding direction in the seat, rather than asking the author
+to sign the number, is what lets an insertion depth of $0.04\m$ and a forward standoff of
+$0.04\m$ both be written as a plain positive number. The non-negativity of a
+\code{NestInBore} depth is a documented contract of the authoring helpers, not a runtime
+check \src{model/parts/Placement.h}{133}; an out-of-contract value surfaces only if the
+resulting geometry trips the envelope sweep.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+Seat kind & Radial compatibility semantics & Gap meaning and sign \\
+\midrule
+\code{Abut} & Rim to rim: the two outer radii at the mated stations must match,
+  $|p.r_{\mathrm{outer}} - c.r_{\mathrm{outer}}| \le \mathrm{tol}$
+  \src{model/parts/Placement.cpp}{66} & Forward standoff along $+z$; flush at zero. The
+  default seat. \\
+\addlinespace
+\code{NestInBore} & Child outer diameter (OD) fits inside the parent's inner diameter (ID):
+  $c.r_{\mathrm{outer}} \le p.r_{\mathrm{inner}} + \mathrm{tol}$
+  \src{model/parts/Placement.cpp}{72} & Insertion \emph{depth}, driving the child aft
+  ($-z$); the one sign-flipping seat. \\
+\addlinespace
+\code{OnSurface} & Child seats radially on the parent's outer wall: child radius equals
+  the parent's outer radius at the seat station \src{model/parts/Placement.cpp}{69} &
+  Axial standoff along the wall. \\
+\bottomrule
+\end{tabularx}
+\caption{The three seat kinds \srccap{model/parts/Placement.h}{32}. Each seat selects both
+a radial check between the two mated \code{Station} landmarks and the direction the gap
+displaces the child. The radial semantics are implemented in \code{radialSeamCheck}; the
+enforcement status of that check is examined in \cref{sec:placement-diagnostics}.}
+\label{tab:placement-seats}
+\end{table}
+
+Three snap-operator verbs provide sugar over the brace-initializer form:
+\cppinline|abut(gap)|, \cppinline|nestInBore(depth)|, and
+\cppinline|seatOnWall(parentStation01)| each produce a \code{StationLink} by value
+\src{model/parts/Placement.h}{127}. Their defining property is what they do \emph{not} do:
+no verb reads a length, computes a station, stores a pose, or mutates a part
+\src{model/parts/Placement.h}{122}. Verbs name intent; only the resolver resolves it ---
+so a verb called before its operands are sized, or a link reused across designs, cannot
+bake in a stale coordinate.
+
+\tikzfig{placement-stationlink}{Anatomy of a \code{StationLink}, shown on the
+\code{xl75\_multi} stack that exercises all three seat kinds. Each parent$\to$child edge
+stores fractional stations on both parts, a seat kind, and a seat-signed gap; the resolver
+turns each link into a fore-plane pose in the nose-tip frame. The coupler's link
+(\code{NestInBore}, depth $0.04\m$ into the body's fore bore) resolves to origin
+$z=-0.26\m$; the fins' link (\code{OnSurface} at parent station $0.06$) seats them on the
+tube wall near its aft end. No stored number is an absolute coordinate.
+\srccap{model/parts/Placement.h}{49}}{fig:placement-stationlink}
+
+\subsection{The resolver, term by term}\label{sec:placement-resolver}
+
+The resolver's output frame is fixed by one convention: \code{resolvePlacements(root,
+Pose\{\})} plants the root part's fore plane --- for a conventional rocket, the nose tip
+--- at the origin, and the stack grows aft into $-z$
+\src{model/parts/Placement.cpp}{38}. Every derived quantity downstream inherits this
+\emph{nose-tip datum}: resolved part origins, the composite CM, and the composite center
+of pressure are all coordinates on the same tip-anchored axis, which is what makes the
+static margin of \cref{sec:aero} a literal subtraction. The datum is a fixed, recognizable
+geometric feature rather than anything mass-dependent --- a deliberate contrast with the
+retired CM-relative convention.
+
+Placing one child is a pure function of the parent's resolved pose, the two parts'
+geometry, and the link (\cref{lst:placement-resolver}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   const Station p = parent.stationAt(link.parentStation01);  // landmark on the parent
+   const Station c = child.stationAt(link.childStation01);    // landmark on the child
+
+   // signedGap encodes seat direction in +z = forward: NestInBore inserts aft (-z, gap is depth),
+   // Abut/OnSurface stand off forward (+z). The author always writes a non-negative number.
+   const double signedGap = (link.seat == SeatKind::NestInBore) ? -link.gap : link.gap;
+
+   // Line the child's station up with the parent's, then displace by the gap. The pose locates the
+   // child's fore plane, which sits c.z from its chosen station -- hence the `- c.z`.
+   const double childOriginZ = p.z + signedGap - c.z;
+
+   const Pose childInParent{Vector3(0.0, 0.0, childOriginZ), link.childRot};  // coaxial in 3-DOF
+   return parentPose.compose(childInParent);
+\end{minted}
+\caption{The entire resolver core \srccap{model/parts/Placement.cpp}{23}: two station
+lookups, one seat-signed gap, one subtraction, one rigid-transform composition. Everything
+else in the placement system exists to feed this arithmetic or to check its output.}
+\label{lst:placement-resolver}
+\end{listing}
+
+\begin{equation}\label{eq:placement-resolver}
+\mathtt{childOriginZ} \;=\; p.z \;+\; \mathtt{signedGap} \;-\; c.z,
+\qquad
+\mathtt{signedGap} \;=\;
+\begin{cases}
+-\,\mathtt{gap} & \text{\texttt{NestInBore},}\\
++\,\mathtt{gap} & \text{\texttt{Abut}, \texttt{OnSurface}.}
+\end{cases}
+\end{equation}
+
+Each term earns its place:
+
+\begin{itemize}
+\item $p.z$ is the parent-local coordinate of the chosen parent station,
+  $(\mathtt{parentStation01}-1)\cdot L_{\mathrm{parent}}$ by
+  \cref{eq:placement-station} --- \emph{where on the parent the seam sits}.
+\item $\mathtt{signedGap}$ is the authored gap with the seat's direction applied. A
+  \code{NestInBore} gap is an insertion depth, so it moves the child aft ($-z$); an
+  \code{Abut} or \code{OnSurface} gap is a standoff, so it moves the child forward
+  ($+z$) \src{model/parts/Placement.cpp}{28}. The author never signs the number; the
+  seat does.
+\item $-\,c.z$ converts a seam position into a fore-plane position. The \code{Pose}
+  locates the child's \emph{fore plane} --- its local origin --- but the seam was
+  expressed against the child's chosen station, which sits $c.z$ from that origin.
+  Subtracting $c.z$ re-expresses the one as the other
+  \src{model/parts/Placement.cpp}{30}.
+\end{itemize}
+
+The resulting child-in-parent pose is $(0, 0, \mathtt{childOriginZ})$ with orientation
+\code{link.childRot}: $x = y = 0$ because placement is coaxial in three degrees of freedom
+(3-DOF). Radial position is deliberately a \emph{check}, not a coordinate --- the radii
+recovered from the two stations feed the diagnostics, but no pose is ever displaced off
+axis \src{model/parts/Placement.cpp}{34}. The design document rejects off-axis seating in
+3-DOF explicitly: without orientation and a body-frame CM offset it would store a
+half-correct placement, the exact defect class the design exists to eliminate, relocated
+from the axial axis to the radial one
+\src{docs/PartPlacementDesignLatex/sections/04-resolver.tex}{132}. The pose is composed
+into the root frame by \code{Pose::compose} --- rotate-then-translate, which under
+identity quaternions degenerates bit-identically to vector addition
+\src{model/parts/Placement.h}{81}; carrying the quaternion anyway is the zero-schema path
+to 6-DOF (\cref{sec:incomplete}).
+
+\code{resolvePlacements} is then a depth-first search (DFS) from the root pose, calling
+\code{placeChild} for each \code{(child, link)} pair in attachment order and emitting one
+\code{Placed} --- a non-owning part pointer plus its resolved pose --- per part, in
+deterministic pre-order \src{model/parts/Placement.cpp}{38}. The determinism is pinned by
+test \src{model/tests/ResolverSweepTests.cpp}{151} because the overlap sweep's
+reproducibility depends on it. The resolver reads ``no CM, time, or mass''
+\src{model/parts/Placement.h}{158}: it is pure geometry, which is what allows it to run on
+a completely different cadence from the mass machinery.
+
+Worked numbers make the arithmetic concrete, on the \code{xl75\_multi} stack of
+\cref{fig:placement-stationlink}; every value below is pinned in
+\src{model/tests/ResolverSweepTests.cpp}{95} and reproduced end-to-end through the design
+file reader in \src{tests/PokeThroughRegressionTests.cpp}{70}. The nose (root, length
+$0.30\m$) plants at the identity pose: tip at $z=0$, base rim at $-0.30\m$. The body tube
+(length $0.90\m$) attaches with the default link --- zero authored numbers --- so
+$p.z=-0.30$, $c.z=0$, gap $0$: its fore plane lands at $-0.30\m$ and it spans
+$[-1.20,-0.30]$. The fins seat on the wall at parent station $0.06$: $p.z =
+(0.06-1)\cdot0.90 = -0.846$ (world $-1.146$), $c.z = -0.10$ (root chord), so the fin
+origin resolves to world $-1.046\m$. The interesting case is the coupler (length
+$0.08\m$), nested \cppinline|nestInBore(0.04)| in the body's fore bore:
+\[
+\mathtt{childOriginZ} = \underbrace{0}_{p.z\ \text{(bore mouth)}}
+  \underbrace{-\,0.04}_{\mathtt{signedGap}}
+  \underbrace{+\,0.08}_{-\,c.z\ \text{(aft plane)}} = +0.04
+\]
+in the body frame --- world $-0.26\m$, spanning $[-0.34, -0.26]$. Its aft $0.04\m$ is
+correctly buried in the bore; its fore $0.04\m$ projects forward past the body rim, a
+fact the resolver happily records and \cref{sec:placement-diagnostics} refuses.
+
+Where do the poses land? Each \code{Part} memoizes its own sub-tree's resolution in a
+mutable \code{resolvedCache}, rebuilt by \code{ensurePlacementCache} only when the
+\emph{structural} dirty flag \code{placementDirty} is set --- by attach and detach, never
+by a mass or inertia edit \src{model/parts/Part.h}{264}. The rebuild does two things in
+one breath: it re-resolves the poses (this part planted at the local origin) and re-runs
+the envelope sweep of \cref{sec:placement-diagnostics}, caching the verdict alongside the
+poses \src{model/parts/Part.cpp}{160}. Two in-tree consumers read the cache: the two-pass
+composite mass/CM/inertia walk of \cref{sec:parts} \src{model/parts/Part.cpp}{199} and
+the composite aerodynamics fold of \cref{sec:aero} \src{model/parts/Part.cpp}{231}. The
+visualizer's mesh walk invokes the same resolver on the same tree --- ``consume the same
+absolute placement the simulator does,'' its own comment says --- and reads the cached
+diagnostics verdict alongside it \src{visualizer/RocketMesh.cpp}{434}.
+
+\begin{keyinsight}[Two gates, two cadences]
+The mass-delta gate of \cref{sec:parts} fires every step while a motor burns, because
+composite mass moves every step; the placement gate fires only when the rocket is
+structurally rebuilt, because geometry is invariant under a burn
+\src{model/parts/Part.cpp}{162}. A white-box test proves the split: during a simulated
+burn the composite CM shifts every step while a counting part's radius-profile call
+count stays frozen --- the resolver and the sweep never re-fire inside the
+ordinary-differential-equation (ODE) loop \src{model/tests/DiagnosticsGateTests.cpp}{97}.
+\end{keyinsight}
+
+\subsection{Diagnostics: the envelope sweep and the fail-closed gate}\label{sec:placement-diagnostics}
+
+Deriving placement from intent removes the consumers-disagree error class, but not the
+other one: a set of links can be individually sensible and still describe a physically
+impossible rocket --- the worked coupler above pokes $0.04\m$ out of its bore into the
+solid nose. The resolver places it without complaint; placement is pure geometry. The
+diagnostics layer is the component that refuses such designs, and refuses them with a
+\emph{located} reason rather than a silent miscomputation.
+
+The enforced check is the \emph{envelope sweep}, \code{sweepOverlaps}
+\src{model/parts/Placement.cpp}{107}: a global one-dimensional spatial query over the
+resolved tree, run from \code{ensurePlacementCache} once per structural change
+\src{model/parts/Part.cpp}{160}. Its steps:
+
+\begin{enumerate}
+\item \emph{Intervals.} Each resolved part contributes a world axial interval
+  $[z_{\mathrm{aft}}, z_{\mathrm{fore}}] = [\mathtt{originZ} - \mathtt{axialLength},\,
+  \mathtt{originZ}]$ --- valid because orientation is identity in 3-DOF
+  \src{model/parts/Placement.cpp}{95}.
+\item \emph{Sort.} Intervals sort by aft station, making host lookup a sweep --- the
+  $O(N \log N)$ in the design's name \src{model/parts/Placement.cpp}{151}.
+\item \emph{Feature breakpoints.} Each offender is sampled at its own two endpoints plus
+  every other interval endpoint within its span \src{model/parts/Placement.cpp}{160} ---
+  exact rather than sampled, \emph{given} the premise that radius profiles are
+  closed-form and monotone between breakpoints (examined below).
+\item \emph{Host selection.} At each breakpoint the host is the smallest-id covering
+  interval, excluding the offender itself, its descendants (legitimate nesting), and its
+  direct seat parent \src{model/parts/Placement.cpp}{142}. Smallest-id is a
+  deterministic, reload-stable tie-break, pinned by test
+  \src{model/tests/ResolverSweepTests.cpp}{325}; stated plainly, the check is
+  single-host per breakpoint --- a violation against a larger-id covering host goes
+  unevaluated at that station.
+\item \emph{Capacity test.} The offender's outer radius is tested against the host's
+  capacity under the solid-host rule, with a guard exempting an offender on or outside a
+  hollow host's own skin --- a modeling artifact (a fin set's body disc over a co-radial
+  aft coupler), not a collision \src{model/parts/Placement.cpp}{192}.
+\item \emph{Verdict.} The deepest violation per (offender, host) pair is kept;
+  \code{SolveResult.ok} holds exactly when the diagnostics list is empty
+  \src{model/parts/Placement.cpp}{230}.
+\end{enumerate}
+
+\begin{designrule}[The solid-host rule]
+What radius does a host \emph{offer} an intruder? For a bored part, its bore; for a solid
+part, its outer skin. \cppinline|return isSolid() ? radiusOuterAt(zLocal) : radiusInnerAt(zLocal);|
+\src{model/parts/Part.cpp}{314} --- and an offender of radius $r$ fits iff
+$r \le \mathtt{innerCapacityAt}(z) + \mathrm{tol}$ \src{model/parts/Part.h}{158}. Without
+the rule, a naive OD-versus-bore predicate reads a solid cone's bore as zero everywhere
+and flags every neighbor; with it, the same single predicate is simultaneously the
+nesting check and the poke-through check, and call sites never branch on solidity.
+\end{designrule}
+
+On the worked stack the sweep catches exactly the violation the resolver recorded. Over
+$[-0.34, -0.30]$ the only interval covering the coupler is the body's --- its direct seat
+parent, excluded from host selection --- so no capacity test fires there. Over
+$[-0.30, -0.26]$ the covering envelope that survives exclusion is the solid nose --- a \emph{non-tree
+neighbor}: the coupler is linked to the body, not the nose, and the sweep sees the
+collision precisely because it does not restrict itself to the ownership tree. At the
+breakpoint $z=-0.26$ the nose skin has tapered to $0.0395 \cdot (0.26/0.30) =
+0.0342\m$, so the coupler's OD exceeds capacity by $0.0034\m$: the diagnostic names
+offender and host by stable id, the world station, and the penetration depth
+\src{model/tests/ResolverSweepTests.cpp}{249}. Ids, not names or pointers, are the only
+safe handle: part names need not be unique, and a raw pointer would dangle if the tree
+were edited between resolve and report \src{model/parts/Placement.h}{99}.
+
+The verdict is consumed fail-closed. \code{computeCompositeAt} --- the single walk behind
+the composite mass-property reads --- refuses a failed solve before doing any arithmetic
+(\cref{lst:placement-gate}), so both \code{getCompositeCm(t)} and \code{getCompositeI(t)}
+throw on a self-intersecting design \src{model/parts/Part.cpp}{148}; the behavior is
+pinned directly \src{model/tests/DiagnosticsGateTests.cpp}{66} and end-to-end through the
+design-file reader on a frozen poke-through fixture
+\src{tests/PokeThroughRegressionTests.cpp}{46}. Exactly one composite reader is
+deliberately exempt: \code{getCompositeMass(t)} stays an ungated live sum, because it is
+the hot ODE divisor and does no placement work
+\src{model/tests/DiagnosticsGateTests.cpp}{81}. The visualizer reads the same cached
+verdict through \code{placementDiagnostics()} \src{model/parts/Part.h}{125} and flags the
+offending part \src{visualizer/RocketMesh.cpp}{440} --- one verdict, two consumers,
+computed where the geometry changes rather than where it is consumed, so guarding the
+inner loop costs a single boolean read.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   // A self-intersecting design is a hard, located failure, never a silently-wrong mass/inertia. The
+   // verdict is cached (computed once per structural resolve), so this is a flag read, not a re-sweep.
+   if(!resolvedDiagnostics.ok)
+   {
+      const std::string detail = resolvedDiagnostics.diagnostics.empty()
+                                    ? std::string("self-intersecting geometry")
+                                    : resolvedDiagnostics.diagnostics.front().message;
+      throw std::runtime_error("Part::computeCompositeAt: placement solve failed -- " + detail);
+   }
+\end{minted}
+\caption{The fail-closed gate at the top of the composite walk
+\srccap{model/parts/Part.cpp}{182}: the thrown error carries the first located diagnostic,
+so the caller learns who intruded into what, where, and by how much.}
+\label{lst:placement-gate}
+\end{listing}
+
+\begin{hardfail}[The monotonicity premise fails for the sphere]
+The breakpoint scheme's exactness rests on the claim that every radius profile is
+``closed-form and monotone between breakpoints'' \src{model/parts/Placement.cpp}{161}.
+True for tubes (constant), cones (linear taper), and fin sets (body disc) --- false for
+\code{HollowSphere}, whose silhouette $\sqrt{r_o^2 - (z + r_o)^2}$ is zero at both poles
+(its own interval endpoints) and maximal at the mid-span equator
+\src{model/parts/HollowSphere.cpp}{53}. A sphere nested in a too-narrow tube evaluates
+$r \approx 0$ at every breakpoint and passes undetected; no sweep test exercises a sphere
+\srcf{model/tests/ResolverSweepTests.cpp}. The placement design document itself listed
+``a sphere bulges'' among the monotone profiles --- one of the places the companion
+documents disagree with the shipped code, and the Architecture Review's code-verified
+finding wins. \fail
+\end{hardfail}
+
+Two further layers of the designed diagnostics stack deserve an honest status report. The
+\emph{radial seam check} --- Layer 1 in the design document, the per-seam radial
+compatibility test of \cref{tab:placement-seats} --- is implemented in full as
+\code{radialSeamCheck} \src{model/parts/Placement.cpp}{56} and unit-tested across all
+three seats \src{model/tests/ResolverSweepTests.cpp}{188}, but it is \emph{dormant}: the
+cached verdict contains Layer-2 sweep output only \src{model/parts/Part.cpp}{170}, and no
+production code calls the function. The design document places it ``on every resolve''
+\src{docs/PartPlacementDesignLatex/sections/06-diagnostics.tex}{66}; the as-built
+resolver does not run it, and its \code{zWorld} field is left parent-local behind the
+comment ``the root-frame z is added once a pose is known''
+\src{model/parts/Placement.cpp}{87} --- a promise no caller exists to fulfill. The
+practical consequence: a pure rim-radius mismatch producing no axial-interval overlap is
+not in the cached verdict today. Layer 3 --- degree-of-freedom accounting, a detector
+warning when a child is under-constrained under free orientation --- exists only in the
+design document \src{docs/PartPlacementDesignLatex/sections/06-diagnostics.tex}{179}; no
+corresponding code exists anywhere in \srcf{model/parts/}. Both gaps are inventoried in
+\cref{sec:incomplete}.
+
+\subsection{Authoring today: one verb reaches the front ends}\label{sec:placement-authoring}
+
+The placement model's vocabulary is far richer than any interface that speaks it. At the
+pinned commit, exactly one placement operation is reachable from a front end: the
+command-line interface's (CLI's) \code{addpart} command, which attaches every new part
+with \cppinline|model::part::abut(offset.z())| --- the child's fore plane against the
+parent's aft plane, with an optional forward standoff taken from a parsed \code{z=} token
+\src{cli/Repl.cpp}{872}. The grammar accepts \code{x=} and \code{y=} too, but they are
+parsed and discarded: placement is coaxial in 3-DOF, and only the axial component reaches
+the link \src{cli/Repl.cpp}{189}. The graphical interface authors no structure at all at
+this commit (\cref{sec:interfaces}), so the CLI's single verb \emph{is} the interactive
+authoring surface.
+
+Everything else arrives by other roads. The full seat vocabulary ---
+\code{NestInBore}, \code{OnSurface}, non-default stations, arbitrary gaps --- is reachable
+from a design file, where the serializer reads a \code{<link>} element's seat, stations,
+and gap \src{model/DesignSerializer.cpp}{186} and rejects an unknown seat string
+fail-closed \src{model/DesignSerializer.cpp}{184} (\cref{sec:persistence}), and from C++,
+where the one production author of a link with non-default stations is the motor attachment:
+\code{RocketModel::setMotorModel} joins the airframe root's CM station to the motor's CM
+station with an \code{Abut} link whose gap is a motor offset that is zero today
+\src{model/RocketModel.cpp}{124}. Nothing in production sets the reserved \code{childRot}
+to a non-identity value. A richer authoring surface --- interactive seat selection,
+station editing, the geometry mutation that would finally exercise the live-length
+machinery --- is future work the data model was expressly shaped for;
+\cref{sec:incomplete} carries the inventory.
+
+\subsection{The invariance gate: the system's contract}\label{sec:placement-invariance}
+
+The placement system replaced a load-bearing representation underneath a working
+simulator, and its correctness argument is embodied in a test suite that predates the
+implementation: \srcf{tests/PlacementInvarianceTests.cpp}, written as Phase~0 of the
+migration before any production type changed \src{tests/PlacementInvarianceTests.cpp}{1}.
+The gate loads the 24 committed design fixtures \src{tests/PlacementInvarianceTests.cpp}{66}
+and compares, per design, the quantities the integrator consumes against an immutable
+committed baseline generated by the \emph{legacy} CM-to-CM reader before the refactor:
+
+\begin{itemize}
+\item composite mass and composite inertia about the CM --- datum-independent quantities
+  --- match the frozen baseline to a relative $10^{-9}$, a tolerance chosen to admit
+  unit-in-the-last-place drift and nothing else
+  \src{tests/PlacementInvarianceTests.cpp}{147};
+\item the composite CM matches after one known, deliberate correction: the datum change
+  from the root's own CM to the nose tip, re-expressed by the single fixed offset of the
+  root's local CM station \src{tests/PlacementInvarianceTests.cpp}{286};
+\item every part's resolved axial station matches under the same single shift
+  \src{tests/PlacementInvarianceTests.cpp}{299};
+\item the static margin is deliberately \emph{not} compared: the legacy center of
+  pressure was contaminated by part CMs, and correcting it was part of the point
+  \src{tests/PlacementInvarianceTests.cpp}{318};
+\item a save--reload round trip through the current design writer reproduces the same
+  snapshot, pinning idempotence of the intent serialization
+  \src{tests/PlacementInvarianceTests.cpp}{358}.
+\end{itemize}
+
+Two hand-computed pins guard the specific defects the migration corrected: the solid nose
+cone's local CM at $-0.225\m$ for $L = 0.30\m$ --- three quarters of the length aft of
+the tip, computed by hand independently of both code paths, isolating the cone's
+historical reversed-frame sign \src{tests/PlacementInvarianceTests.cpp}{445} --- and the
+fin set's axial CM reference, worth half a root chord, guarding the end-versus-mid-chord
+confusion \src{tests/PlacementInvarianceTests.cpp}{458}.
+
+\begin{keyinsight}[Invariance is defined by the incumbent, not the spec]
+The baseline is the legacy reader's literal output --- including its mis-placements ---
+not a re-derivation from each design's intended geometry, because a re-derivation could
+silently share whatever bug the legacy path contained. The file's own header declares it
+immutable ground truth that must never be regenerated to make a failing migration pass
+\src{tests/PlacementInvarianceTests.cpp}{30}. Correcting a design's actual geometry (the
+interpenetrating coupler) was done separately and visibly: the fixed corpus resolves
+clean, and the original defect survives as a frozen regression fixture that must keep
+failing \src{tests/PokeThroughRegressionTests.cpp}{46}.
+\end{keyinsight}
+
+The gate is the placement system's contract in the strongest sense available to a
+refactor: every observable the flight path consumes is pinned across the representation
+change, every deliberate deviation (the tip datum, the corrected CP) is named and
+accounted for, and the one behavior that was supposed to change --- a self-intersecting
+design failing loudly instead of simulating silently --- is regression-guarded from the
+design file all the way to the thrown, located error. Placement intent in, geometry out,
+and a test suite standing over the seam.

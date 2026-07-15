@@ -1,0 +1,89 @@
+% US Standard Atmosphere 1976 temperature profile as coded in
+% sim/USStandardAtmosphere.cpp: piecewise-linear T(h) anchored at the seven
+% layer bases. Right-hand column gives each base altitude, base temperature,
+% and the standard's lapse rate L_b = dT/dh; the bottom note records the
+% code's sign flip. Coordinates: x = temperature (K), y = altitude (km).
+% Bare tikzpicture; the section wraps it in a figure with \resizebox.
+\begin{tikzpicture}[x=0.75mm, y=1.2mm]
+
+  % oracle-validated band: the NOAA-report test tables cover 0-80 km
+  \begin{pgfonlayer}{background}
+    \fill[qrGreen!6] (180,0) rectangle (304,80);
+  \end{pgfonlayer}
+
+  % ---- axes ----
+  \draw[axis] (180,0) -- (180,89)
+    node[above,font=\sffamily\small] {altitude $h$ (km)};
+  \draw[axis] (180,0) -- (304,0);
+  \node[font=\sffamily\small] at (242,-6) {temperature $T$ (K)};
+  \foreach \T in {180,200,220,240,260,280,300}
+    \draw[qrInk,line width=0.5pt] (\T,0) -- (\T,-1.2)
+      node[below,font=\sffamily\scriptsize] {\T};
+  \foreach \h in {20,40,60,80}
+    \draw[qrInk,line width=0.5pt] (180,\h) -- (177.5,\h)
+      node[left,font=\sffamily\scriptsize] {\h};
+
+  % ---- layer-base station lines (0 km base coincides with the T axis) ----
+  \foreach \h in {11,20,32,47,51,71}
+    \draw[station] (180,\h) -- (304,\h);
+
+  % right-hand column: base altitude, base temperature, standard lapse rate
+  \node[anchor=west,font=\sffamily\scriptsize\itshape,text=qrGray] at (306,75)
+    {layer bases: $h_b$,\ $T_b$,\ $L_b=\mathrm{d}T/\mathrm{d}h$};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,71)
+    {71 km\ \ 214.65 K\ \ $L_b=-2.0$ K/km};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,51)
+    {51 km\ \ 270.65 K\ \ $L_b=-2.8$ K/km};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,47)
+    {47 km\ \ 270.65 K\ \ $L_b=0$ (isothermal)};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,32)
+    {32 km\ \ 228.65 K\ \ $L_b=+2.8$ K/km};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,20)
+    {20 km\ \ 216.65 K\ \ $L_b=+1.0$ K/km};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,11)
+    {11 km\ \ 216.65 K\ \ $L_b=0$ (isothermal)};
+  \node[anchor=west,font=\sffamily\scriptsize] at (306,2)
+    {0 km\ \ 288.15 K\ \ $L_b=-6.5$ K/km};
+
+  % ---- T(h): the seven layer-base anchors, piecewise linear between them ----
+  \coordinate (b0)  at (288.15,0);
+  \coordinate (b11) at (216.65,11);
+  \coordinate (b20) at (216.65,20);
+  \coordinate (b32) at (228.65,32);
+  \coordinate (b47) at (270.65,47);
+  \coordinate (b51) at (270.65,51);
+  \coordinate (b71) at (214.65,71);
+  \coordinate (v80) at (196.65,80);   % last tested oracle: 196.650 K
+  \coordinate (x86) at (184.65,86);   % code's extrapolation of the 71 km layer
+
+  \draw[qrBlue,line width=1pt]
+    (b0) -- (b11) -- (b20) -- (b32) -- (b47) -- (b51) -- (b71) -- (v80);
+  \draw[ghost] (v80) -- (x86);
+  \foreach \p in {b0,b11,b20,b32,b47,b51,b71}
+    \node[cmdot] at (\p) {};
+  \node[font=\sffamily\scriptsize,text=qrBlue] at (262,42) {$T(h)$};
+
+  % ---- validated-range bracket (left of the altitude axis) ----
+  \draw[dimline] (170,0) -- (170,80);
+  \node[rotate=90,anchor=south,font=\sffamily\scriptsize,
+        text=qrGreen!70!black] at (170,40)
+    {validated vs NOAA-report oracles, 0--80 km ($T$, $P$ 0.1\%; $\rho$ 0.1--0.5\%)};
+
+  % ---- annotations inside the plot ----
+  \node[anchor=west,font=\sffamily\footnotesize,text=qrDeep] at (196,88)
+    {\texttt{sim::USStandardAtmosphere} --- registry name \texttt{"US Standard 1976"}};
+  \node[font=\sffamily\scriptsize\itshape,text=qrGray] at (250,83.5)
+    {above 80 km: untested extrapolation --- the last layer has no upper cap in code};
+  \node[font=\sffamily\scriptsize\itshape,text=qrGray] at (204,5.5)  {troposphere};
+  \node[font=\sffamily\scriptsize\itshape,text=qrGray] at (201,39.5) {stratosphere};
+  \node[font=\sffamily\scriptsize\itshape,text=qrGray] at (201,61)   {mesosphere};
+
+  % ---- code sign convention ----
+  \node[umlnote,text width=98mm,anchor=north] at (245,-11)
+    {code sign convention: \texttt{temperatureLapseRate} stores $-L_b$ --- the
+     troposphere is coded $+0.0065$ K/m --- and
+     $T(h) = T_b - (h - h_b)\cdot\mathrm{rate}$;\;
+     \textcolor{qrRed}{$\bullet$} marks the seven layer bases whose $T_b$,
+     $P_b$, $\rho_b$ anchors are hard-coded from the report.};
+
+\end{tikzpicture}

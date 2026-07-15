@@ -1,0 +1,517 @@
+\section{Simulation-methods comparison with OpenRocket}\label{app:or-methods}
+
+Where \cref{app:or-features} compares the two simulators feature by feature, this appendix
+compares them \emph{method by method}: for each area of flight physics, what OpenRocket
+computes, what QtRocket computes, and a short assessment of the distance between the two.
+It is written for the reader who wants the actual equations. OpenRocket's methods are taken
+from its technical documentation\footnote{Sampo Niskanen, \emph{OpenRocket technical
+documentation, for OpenRocket version 13.05}, 2013-05-10,
+\url{https://openrocket.sourceforge.net/techdoc.pdf} --- the updated form of Niskanen's 2009
+Master's thesis. Cited hereafter as ``techdoc'' with its own section and equation numbers.}
+and, where the 2013 techdoc has been overtaken by later development (geodesy, Coriolis,
+multi-level wind), from the current source.\footnote{OpenRocket source, \code{unstable}
+branch of \url{https://github.com/openrocket/openrocket} (fetched 2026-07-07), files under
+\code{core/src/main/java/info/openrocket/core/}. Cited hereafter by class name.}
+As \cref{app:or-context} establishes, OpenRocket-side claims are condensed from those
+sources --- researched, but not line-verified in the way QtRocket claims are. Every QtRocket
+claim cites the pinned commit \code{254cd41}. \Cref{tab:or-methods-summary} condenses the
+whole appendix into one table.
+
+\subsection{Flight dynamics}\label{app:or-methods-dynamics}
+
+\emph{OpenRocket.} Ascent is a genuine six-degree-of-freedom (6-DOF) simulation: world-frame
+position and velocity plus a unit orientation quaternion and body angular velocity, written
+as a first-order system and stepped together (techdoc \S 4.2.1, \S 4.2.4, eqs.~4.17--4.19).
+Every force evaluation recomputes local wind, angle of attack (AoA), and Mach number, then
+the full aerodynamic coefficient set at those instantaneous conditions, then thrust,
+gravity, mass, and moments of inertia (techdoc \S 4.2.4, steps 0--6). In the code the linear
+equation is assembled in rocket coordinates as $(-f_N,\,-f_{side},\,T-D_{axial})/m$, rotated
+to the world frame, with gravity and Coriolis acceleration added; the pitch, yaw, and roll
+moments are referred to the center of gravity (CG) and divided by exactly \emph{two} scalar
+moments of inertia --- longitudinal for pitch/yaw, axial for roll --- so the inertia tensor
+is treated as diagonal and axisymmetric, never as a full $3\times 3$
+tensor.\footnote{\code{simulation/RK4SimulationStepper.java},
+\code{computeAcceleration()}.} A deliberate $\pm 0.0005$ uniform random perturbation is
+added to $C_m$ and $C_{yaw}$ at every evaluation ``to prevent over-perfect
+flight''.\footnote{\code{RK4SimulationStepper}, constant \code{PITCH\_YAW\_RANDOM}.}
+The 6-DOF model is also deliberately abandoned when it stops earning its keep: ``When a
+parachute is deployed the rocket typically splits in half, and it is no longer practical to
+compute the orientation of the rocket'' (techdoc \S 4.2.5), so recovery descent and the
+descent of unstable, tumbling stages (techdoc \S 3.5) run as 3-DOF point masses under a
+different stepper. Fidelity is matched to flight phase.
+
+\emph{QtRocket.} The integrated state is three linear degrees of freedom, full stop. The
+entire physics reaching the integrator is one lambda,
+$\dot{\mathtt{state}} = \mathtt{rate}$,
+$\dot{\mathtt{rate}} = \mathtt{getForces}(t)/\mathtt{getMass}(t)$
+\src{sim/Propagator.cpp}{36}, with thrust hardwired along world $+z$
+\src{model/RocketModel.cpp}{71} --- there is no attitude for it to follow.
+\code{StateData} reserves quaternion orientation and rate, a direction-cosine matrix, and
+3-2-1 Euler-angle slots, and nothing anywhere writes them \src{sim/StateData.h}{46}; the
+orientation integrator exists as a commented-out member with a design note
+\src{sim/Propagator.h}{103}; \code{getTorques()} is declared on the bridge interface
+\src{model/Propagatable.h}{30}, implemented as the zero vector
+\src{model/RocketModel.cpp}{94}, and called by no production code. All of this is dormant
+seam, inventoried in \cref{sec:incomplete} and described in \cref{sec:simcore}.
+
+\begin{keyinsight}[The inertia inversion]
+The data models run in the opposite direction from the dynamics. OpenRocket integrates real
+attitude but represents inertia as two scalars; QtRocket integrates no attitude but records
+the \emph{full} $3\times 3$ composite inertia tensor about the instantaneous composite CM
+into every retained state sample \src{sim/StateData.h}{62}, refreshed each step through
+\code{writeMassProperties} \src{sim/Propagator.cpp}{132} and pinned by a test that watches
+$I_{xx}$ shrink through the burn and freeze after burnout
+\src{tests/PhysicsIntegrationTests.cpp}{356}. QtRocket thus carries a strictly richer
+rotational data model than the one OpenRocket actually flies with --- and integrates none of
+it. The recorded tensor is the declared seam the future 6-DOF rotational ODE will read.
+\end{keyinsight}
+
+The distance here is one of kind, not tuning: for weathercocking, gravity turns, spin, or
+dispersion, OpenRocket computes and QtRocket cannot yet.
+
+\subsection{Aerodynamic coefficients}\label{app:or-methods-aero}
+
+\emph{OpenRocket.} The normal-force machinery is an \emph{extended} Barrowman method,
+re-evaluated at the instantaneous flight condition on every force call. Instead of the
+classic $\alpha \to 0$ derivative, OpenRocket defines, for $\alpha > 0$,
+\begin{equation}
+C_{N_\alpha} \equiv \frac{C_N}{\alpha}, \qquad C_{m_\alpha} \equiv \frac{C_m}{\alpha}
+\end{equation}
+so the whole coefficient set depends on the actual AoA and Mach number (techdoc \S 3.1.1,
+eq.~3.8). The extensions beyond classic Barrowman, each with its techdoc equation: body lift
+per Galejs, $C_N^{\text{lift}} = K\,(A_{\mathrm{plan}}/A_{\mathrm{ref}})\sin^2\alpha$ with
+$K \approx 1.1$, acting at the planform centroid (eqs.~3.26--3.27); free-form fin planforms
+via numerically integrated mean-aerodynamic-chord (MAC) integrals (eqs.~3.30--3.32);
+arbitrary fin counts with empirical interference multipliers falling to $0.750$ beyond eight
+fins (eq.~3.54); fin--body interference $K_{T(B)} = 1 + r_t/(s + r_t)$ (eqs.~3.55--3.56);
+pitch and yaw damping proportional to $\omega^2/v_0^2$ (eqs.~3.59--3.60); and full roll
+forcing/damping strip theory for canted fins (eqs.~3.66, 3.69--3.72). Compressibility runs
+through everything: the Prandtl factor $1/\beta$ with $\beta = \sqrt{|M^2-1|}$
+(eqs.~3.13--3.14), Busemann third-order strips for supersonic fins (eqs.~3.41--3.49), and a
+moving fin center of pressure (CP): fixed at quarter-MAC below $M\,0.5$, the empirical
+$X_f/\bar c = (\mathcal{AR}\beta - 0.67)/(2\mathcal{AR}\beta - 1)$ above $M\,2$, and a
+fifth-order polynomial in $M$ with matched values and derivatives bridging the transonic gap
+between them (eqs.~3.35--3.36).
+
+\emph{QtRocket.} The Barrowman layer is the classic zero-AoA linearization, computed per
+part and folded over the placement-resolved tree (\cref{sec:aero}). A nose cone contributes
+$\mathtt{cnAlpha} = 2\pi\,\mathtt{baseRadius}^2/\mathtt{refArea}$ with its CP at $2L/3$ aft
+of the tip \src{model/parts/ConicalNoseCone.cpp}{64}; a fin set contributes the standard
+trapezoidal-fin slope \src{model/parts/FinSet.cpp}{77} multiplied by an interference factor
+\emph{identical in form to OpenRocket's} eq.~3.55,
+$K = 1 + \mathtt{bodyRadius}/(\mathtt{span} + \mathtt{bodyRadius})$
+\src{model/parts/FinSet.cpp}{76}; body tubes contribute zero slope, exactly as slender-body
+theory demands. Contributions are summed as slope-weighted CP moments so the composite CP is
+a guarded ratio \src{model/parts/Part.cpp}{231}, \src{sim/Aero.h}{51}. What the layer does
+\emph{not} have: any $\alpha$ dependence beyond the linear slope, any body-lift term, any
+damping or roll coefficient, and any Mach dependence at all --- nothing in the tree computes
+a Mach number, and the atmosphere's speed-of-sound accessor has no production caller
+\src{sim/USStandardAtmosphere.cpp}{143}. And the layer is dormant: the test suite states
+``nothing in production consumes this'' verbatim \src{model/tests/AeroTests.cpp}{18}.
+
+The assessment writes itself: formula by formula the two projects share an ancestor, and
+where they overlap (fin slope, interference factor, CP-moment composition) they agree.
+OpenRocket then evaluates its extended version at flight conditions every step and flies on
+the result; QtRocket's classic version is evaluated at $\alpha \to 0$, with no Mach anywhere,
+by tests alone.
+
+\subsection{Drag}\label{app:or-methods-drag}
+
+\emph{OpenRocket.} Zero-AoA drag is a per-component, semi-empirical build-up (techdoc
+\S 3.4): skin friction, body and fin pressure drag, base drag, and parasitic (launch-guide)
+drag, with interference drag explicitly neglected. Skin friction assumes a fully turbulent
+boundary layer, using the smooth-wall correlation and a roughness-limited floor
+\begin{equation}
+C_f = \frac{1}{(1.50\,\ln R - 5.6)^2}
+\qquad\text{and}\qquad
+C_f = 0.032\left(\frac{R_s}{L}\right)^{0.2}
+\end{equation}
+selected piecewise by a roughness-critical Reynolds number, with separate subsonic and
+supersonic compressibility corrections (eqs.~3.78--3.84) and body/fin geometry factors when
+scaled to the reference area (eq.~3.85). Nose pressure drag is per-shape: a stagnation-based
+blunt-cylinder limit, a closed form for cones, an ogive shape-factor scaling, and stored
+experimental transonic curves for ellipsoid/power/parabolic/Haack profiles, interpolated in
+Mach and fineness ratio (techdoc App.~B); high-subsonic values are bridged by a constrained
+power law (eq.~3.87). Base drag is empirical,
+\begin{equation}
+(C_{D\bullet})_{\mathrm{base}} =
+\begin{cases}
+0.12 + 0.13\,M^2 & M < 1\\[2pt]
+0.25/M & M > 1
+\end{cases}
+\end{equation}
+with a thrusting motor's cross-section subtracted from the base area (eq.~3.94); launch lugs
+are blunt cylinders at stagnation pressure with a flow-through correction (eqs.~3.95--3.96).
+Finally the zero-AoA total (eq.~3.97) is stretched over AoA by an empirical two-part
+polynomial $C_A(\alpha) = C_{D_0} f(\alpha)$ with $f(0)=1$, a hump of $1.3$ at
+$\alpha = 17^\circ$, and $f(90^\circ) = 0$ (techdoc \S 3.4.7).
+
+\emph{QtRocket.} The production drag model is one line
+\src{model/RocketModel.cpp}{88}:
+\begin{equation}
+\vec F_{\mathrm{drag}} = -\tfrac{1}{2}\,\rho(\mathtt{altitude})\,
+\lVert \mathtt{velocity} \rVert \,
+\mathtt{dragCoefficient}\cdot\mathtt{referenceArea}\cdot\mathtt{velocity},
+\end{equation}
+a single constant $C_d$ (default $1.0$, \src{model/RocketModel.h}{138}) times a single
+constant reference area (default $1.134\times 10^{-3}\,\mathrm{m}^2$, a 38\,mm disc,
+\src{model/RocketModel.h}{141}), opposing the full velocity vector, with density sampled
+at the trial altitude clamped to $z \ge 0$ \src{model/RocketModel.cpp}{85}. There is no
+Mach or Reynolds dependence, no AoA dependence, and no per-component build-up: the
+\code{AeroComponent} value type carries a per-part \code{cd} field for exactly that purpose,
+and every concrete part returns zero --- the body tube's comment defers skin friction over
+its (unconsumed) wetted area to future work \src{model/parts/BodyTube.cpp}{41},
+\src{model/parts/ConicalNoseCone.cpp}{67}, \src{model/parts/FinSet.cpp}{89},
+\src{model/parts/BodyTube.h}{51}.
+
+\begin{hardfail}[The reference area never reaches the drag law]
+QtRocket implements the max-frontal-disc reference-area convention correctly ---
+\code{deriveReferenceAreaFromGeometry()} \src{model/RocketModel.cpp}{48} walks the part tree
+taking the maximum frontal disc \src{model/parts/Part.cpp}{251} --- but the function has no
+production caller; its only call site outside its own definition is a test
+\src{model/tests/AeroTests.cpp}{201}. Design load applies a saved area only when the design
+was saved with a manual override \src{model/DesignSerializer.cpp}{263}, and all 25 bundled
+design fixtures carry \code{referenceAreaOverridden="false"}, so every loaded design flies
+on whatever scalar was previously staged --- by default the 38\,mm disc --- regardless of the
+airframe's real diameter. Drag does not scale with airframe class at this commit. \fail
+\end{hardfail}
+
+Distance: OpenRocket's drag is five semi-empirical families evaluated per component per
+step; QtRocket's is one user-supplied number, currently wired to one defective constant.
+This is the widest methods gap in the whole comparison.
+
+\subsection{Atmosphere and wind}\label{app:or-methods-atmosphere}
+
+Both atmospheres are members of the same family --- the International Standard Atmosphere
+(ISA) and the US Standard Atmosphere 1976 are identical below 32\,km --- and this is the one
+area where the two simulators are nearly peers. OpenRocket linearly interpolates temperature
+between eight ISA layer bases (0 to 84.852\,km) and integrates the hydrostatic/ideal-gas
+pair within each layer (techdoc \S 4.1.1, Table~4.1); the current code adds a launch-site
+override that inserts an extra layer with a back-computed sea-level lapse rate, converts
+geometric to geopotential height with $R = 6\,356\,766$\,m, and precomputes layer conditions
+for speed.\footnote{\code{models/atmosphere/ExtendedISAModel.java}.} QtRocket's
+\code{USStandardAtmosphere} hard-codes the same first seven layer anchors (0 to 71\,km ---
+it has no 84.852\,km top row) with published base pressures and densities
+\src{sim/USStandardAtmosphere.cpp}{78}, and evaluates the closed-form gradient-layer power
+law and isothermal exponential exactly within each layer
+\src{sim/USStandardAtmosphere.cpp}{121}, the density exponent carrying the ideal-gas
+$-1$ \src{sim/USStandardAtmosphere.cpp}{107}. The differences are at the edges: QtRocket has
+no launch-site override (the registry offers exactly Constant, US Standard 1976, and Vacuum,
+\src{sim/Environment.h}{74}), no geopotential conversion, throws below $0$\,m
+\src{utils/Bin.cpp}{52} (its one consumer clamps, \src{model/RocketModel.cpp}{85}), and
+extrapolates the 71\,km layer upward without bound \src{utils/Bin.cpp}{59}. Against that,
+QtRocket's implementation is the more aggressively \emph{verified} of the two: pressure and
+temperature match the bundled NOAA report tables to 0.1\% relative at twenty altitudes from
+0 to 80\,km \src{sim/tests/USStandardAtmosphereTests.cpp}{36},
+\src{sim/tests/USStandardAtmosphereTests.cpp}{64}, and density to 0.1\%/0.5\%
+\src{sim/tests/USStandardAtmosphereTests.cpp}{10},
+\src{sim/tests/USStandardAtmosphereTests.cpp}{24}.
+
+Wind is not close. OpenRocket models wind as a steady average plus pink-noise turbulence
+with spectrum $1/f^{\alpha}$, $\alpha = 5/3$, generated by a two-pole Kasdin filter over
+Gaussian white noise at a fixed 20\,Hz and scaled by the filter's precomputed standard
+deviation 2.252 (techdoc \S 4.1.2, eqs.~4.5--4.6);\footnote{Constants verbatim in
+\code{models/wind/PinkNoiseWindModel.java}: \code{ALPHA} $=5/3$, \code{POLES} $=2$,
+\code{STDDEV} $=2.252$, \code{DELTA\_T} $=0.05$.} since release 24.12, arbitrary altitude
+levels each carry their own pink-noise model, with the instantaneous wind vectors of the two
+adjacent levels linearly interpolated component-wise.\footnote{%
+\code{models/wind/MultiLevelPinkNoiseWindModel.java}; OpenRocket ReleaseNotes.md, 24.12.}
+QtRocket's \code{WindModel} is a concrete class returning the zero vector
+\src{sim/WindModel.cpp}{16} with zero call sites and no \code{Environment} slot
+\src{sim/Environment.h}{103}; drag is computed from inertial velocity, so the airmass is
+implicitly at rest \src{model/RocketModel.cpp}{88}.
+
+\subsection{Gravity and geodesy}\label{app:or-methods-gravity}
+
+The 2013 techdoc states flat-Earth Cartesian coordinates and ``the coriolis effect \ldots{}
+is not simulated'' (techdoc \S 4.2) --- and is obsolete on this point. Current OpenRocket
+offers three geodetic strategies --- flat, spherical great-circle (the default), and a full
+Vincenty direct geodesic on the WGS84 (World Geodetic System 1984) ellipsoid --- and adds
+Coriolis acceleration $-2\boldsymbol{\Omega}\times\vec v$ to every force evaluation under
+the latter two.\footnote{\code{util/GeodeticComputationStrategy.java};
+\code{simulation/RK4SimulationStepper.java} and \code{simulation/AbstractEulerStepper.java}.}
+Gravity is either a user constant or Somigliana normal gravity on the ellipsoid,
+\begin{equation}
+g_0(\lambda) = 9.7803267714\;
+\frac{1 + 0.00193185138639\,\sin^2\lambda}{\sqrt{1 - 0.00669437999013\,\sin^2\lambda}},
+\end{equation}
+with an inverse-square altitude correction
+$g = g_0\,\bigl(R_E/(R_E+h)\bigr)^2$.\footnote{\code{models/gravity/WGSGravityModel.java}.}
+
+QtRocket offers two gravity models (\cref{sec:environment}): a constant field
+$(0,0,-g_0)$ with $g_0 = 9.80665\,\mathrm{m/s^2}$ \src{sim/ConstantGravityModel.h}{18},
+\src{utils/math/Constants.h}{10} (the default, \src{sim/Environment.h}{33}), and a true
+Newtonian central force over a spherical Earth:
+\begin{equation}
+\vec a = -\frac{\mathtt{earthGM}}{r^3}\,\vec r_{\mathrm{geo}},
+\qquad \vec r_{\mathrm{geo}} = (x,\ y,\ z + \mathtt{groundLevel}),
+\end{equation}
+where the pad's geocentric radius comes from a geoid model
+\src{sim/SphericalGravityModel.cpp}{33}, \src{sim/SphericalGravityModel.cpp}{36}. The only
+geoid returns the WGS84 mean radius $6\,371\,008.8$\,m at every latitude and longitude
+\src{sim/SphericalGeoidModel.cpp}{18}, and the gravity model caches it at the placeholder
+site $(0,0)$ \src{sim/SphericalGravityModel.cpp}{20}. The spherical model is in one sense
+the more literal of the two central-force treatments --- a downrange displacement picks up a
+genuine inward horizontal component, pinned by test
+\src{sim/tests/SphericalGeoidAndGravityTests.cpp}{82}, and the surface magnitude matches
+$GM/R^2$ to $10^{-12}$ relative \src{sim/tests/EnvironmentTests.cpp}{123} --- but QtRocket
+has no latitude dependence, no Coriolis term, and no launch-site concept at all. For
+low-altitude model rockets both simulators' options agree to well under 1\%; the OpenRocket
+extras matter for long boosted flights and dispersion analysis, which QtRocket does not yet
+attempt.
+
+\subsection{Numerical integration}\label{app:or-methods-integration}
+
+\begin{physbox}[What an embedded pair buys]
+A Runge--Kutta step of order $p$ commits an unknown local error of order $h^{p+1}$. An
+\emph{embedded pair} evaluates one shared set of stage derivatives and combines them twice,
+with weight sets of order $p$ and $p+1$; the difference of the two results is a nearly free
+estimate of the lower-order solution's local error, which a controller can compare against a
+tolerance to \emph{reject and retry} a too-large step or grow a wastefully small one. A
+fixed-step or heuristically stepped integrator, however well tuned, never measures its own
+error; an embedded-pair integrator measures it every step. The cost is extra stages (six for
+Fehlberg's 4(5) pair versus four for classical RK4) and the machinery of acceptance and
+rejection.
+\end{physbox}
+
+\emph{OpenRocket.} The ascent stepper is classical fixed-formula RK4 (techdoc \S 4.2.4,
+eqs.~4.20--4.21) with the quaternion updated multiplicatively and renormalized each step.
+Step-size control is heuristic and a priori: after evaluating only $k_1$, the stepper takes
+the minimum of eight candidate steps --- the user step (default 0.05\,s, divided by 5 on the
+launch rod), the time to the next scheduled flight event, a $3^\circ$ default cap on pitch
+angle per step, a roll-angle step of $2\times 28.32^\circ$ (deliberately an uneven division
+of the circle, to sample the wind), a $2^\circ$ roll-rate-change cap, a $4^\circ$
+pitch/yaw-acceleration cap, a launch-rod resolution term, and a $1.5\times$ growth limiter
+--- floored at 0.001\,s.\footnote{\code{simulation/RK4SimulationStepper.java},
+\code{step()}; the candidate list is verbatim from the code comment. Defaults:
+\code{RECOMMENDED\_TIME\_STEP} $=0.05$\,s, \code{RECOMMENDED\_ANGLE\_STEP} $=3^\circ$,
+\code{MIN\_TIME\_STEP} $=0.001$\,s.} There is no error estimate and no step rejection: the
+$k_1$ rates decide the step before it is taken, and the step is never re-integrated. (An RK6
+stepper with the same heuristic selection exists on the development branch; it is not in the
+24.12 release notes and should be treated as unreleased.) Recovery and tumble descend under
+a separate 3-DOF second-order Euler stepper with a 0.5\,s base step, exact root-solves to
+land precisely on apogee and ground crossings, and a jerk-based oscillation
+guard.\footnote{\code{simulation/AbstractEulerStepper.java}.}
+
+\emph{QtRocket.} The \code{Integrator} facade offers two runtime-selectable backends
+\src{sim/Integrator.h}{32}: a fixed-step classical RK4 \src{sim/RK4Solver.h}{27} and a true
+Runge--Kutta--Fehlberg 4(5) embedded pair whose Butcher tableau matches the textbook
+Fehlberg coefficients digit for digit \src{sim/RK45Solver.h}{172}. Each attempt evaluates
+six stages at their proper node times, forms both the fourth- and fifth-order estimates, and
+accepts or rejects on the estimated local error (\cref{lst:or-methods-rkf45}): rejection
+shrinks $h$ by $(\mathtt{tol}/\mathtt{err})^{1/4}$ floored at $0.1$ and \emph{retries the
+step}; acceptance grows the next guess by $(\mathtt{tol}/\mathtt{err})^{1/5}$ capped at
+$5\times$ \src{sim/RK45Solver.h}{141}, clamps it to $h_{\max} = 10\times$ the seeded step
+\src{sim/RK45Solver.h}{66}, \src{sim/RK45Solver.h}{147} --- the clamp is a correctness
+requirement, since exactly-integrated coasting drives $\mathtt{err}\to 0$ and unbounded
+growth --- and advances with the fifth-order estimate. Below
+$h_{\min} = 10^{-15}$\,s the solver throws \src{sim/RK45Solver.h}{80}, which the run loop
+converts to a typed \code{IntegratorError} verdict \src{sim/Propagator.cpp}{171}
+(\cref{sec:simcore}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+         // Local error estimate: magnitude of the 5th-vs-4th-order difference across state and rate.
+         const double err = std::sqrt((y5State - y4State).squaredNorm()
+                                      + (y5Rate - y4Rate).squaredNorm());
+
+         if(err > tol)
+         {
+            // Reject: shrink the step and retry, flooring the shrink factor at 0.1.
+            const double scale = std::pow(tol / err, 0.25);
+            h *= (scale < 0.1) ? 0.1 : scale;
+            continue;
+         }
+\end{minted}
+\caption{The step-rejection core OpenRocket's ascent stepper has no analogue of: an
+embedded-pair error estimate compared against a tolerance, with the step retried when it
+fails. \srccap{sim/RK45Solver.h}{120}}
+\label{lst:or-methods-rkf45}
+\end{listing}
+
+\begin{keyinsight}[What each scheme does and does not control]
+OpenRocket's heuristics bound the \emph{geometry} of a step --- degrees of pitch or roll per
+step --- which is an excellent proxy for the stiff part of a 6-DOF problem, but they never
+measure integration error and cannot detect a step that was numerically too coarse; accuracy
+rests on the caps being conservative. QtRocket's RKF45 measures the local truncation error
+of exactly what it integrates and rejects steps that exceed tolerance --- a genuine
+methodological advantage, and the one area where QtRocket's numerics are strictly ahead ---
+but three qualifiers bound the claim. The error norm is a single absolute Euclidean norm
+mixing meters and meters/second \src{sim/RK45Solver.h}{121}, flagged in-source as a possible
+refinement \src{sim/RK45Solver.h}{36}; there is no safety factor or PI controller, only the
+$0.1/5\times$ clamps; and the tolerance (default $10^{-6}$, \src{sim/RK45Solver.h}{46}) is
+reachable from no front end --- \code{setErrorTolerance}/\code{setMaxStepSize} have no
+production callers \src{sim/tests/RK45SolverTests.cpp}{112}. And with only three linear DOF
+integrated, the adaptive machinery currently controls a far easier problem than OpenRocket's.
+\end{keyinsight}
+
+Head to head on the same 3-DOF flight, QtRocket's RKF45 reproduces its RK4 apogee to about
+$0.05\%$ while taking roughly $530$ steps where RK4 at the same seed takes about $4050$
+\src{tests/PhysicsIntegrationTests.cpp}{164}, \src{tests/PhysicsIntegrationTests.cpp}{171}.
+QtRocket's default fixed step is 0.01\,s \src{sim/Propagator.h}{110} against OpenRocket's
+default 0.05\,s --- the finer default compensating for the absence of angle-based caps.
+
+\subsection{Motors}\label{app:or-methods-motors}
+
+Both simulators represent thrust identically in kind: a measured thrust curve, linearly
+interpolated between samples, zero outside the burn. OpenRocket's
+\code{ThrustCurveMotor} carries (time, thrust, CG$+$mass) sample lists and linearly
+interpolates all three;\footnote{\code{motor/ThrustCurveMotor.java}.} QtRocket's
+\code{ThrustCurve} interpolates thrust the same way \src{model/ThrustCurve.cpp}{83},
+including a regression-pinned ramp from an implicit $(0,0)$ origin when a curve omits its
+first sample \src{model/ThrustCurve.cpp}{76} (\cref{sec:motors}).
+
+Mass depletion is where they part. When a RockSim \code{.rse} file supplies measured
+per-sample mass and CG, OpenRocket uses those samples directly; only for RASP \code{.eng}
+files (which carry just total and propellant mass) does it fall back to distributing mass
+loss proportional to burned impulse,
+$\Delta m_i \propto \tfrac12 (f_i + f_{i+1})\,\Delta t_i$, scaled to consume exactly the
+propellant mass.\footnote{\code{file/motor/AbstractMotorLoader.calculateMass()}.} QtRocket
+\emph{always} reconstructs mass under the constant-Isp assumption, even when measured data
+is present: the RSE loader reads only each sample's \code{t} and \code{f} attributes and
+discards the file's per-sample \code{m} and \code{cg} \src{model/RSEDatabaseLoader.cpp}{88},
+and \code{computeMassCurve} builds a 128-point table \src{model/MotorModel.cpp}{134} by
+left-Riemann depletion proportional to delivered impulse,
+\begin{equation}
+\mathtt{propMass}_{i+1} = \mathtt{propMass}_i
+- F(t_i)\,\Delta t\,\frac{\mathtt{propWeight}}{\mathtt{totalImpulse}},
+\qquad \Delta t = \frac{\mathtt{burnTime}}{127},
+\end{equation}
+\src{model/MotorModel.cpp}{141}, forcing the final point to exact depletion so post-burn
+mass is exactly the casing mass \src{model/MotorModel.cpp}{143}. The physical content is the
+same as OpenRocket's RASP fallback --- mass flow proportional to thrust --- so the practical
+difference appears only for motors whose measured burn deviates from constant effective
+exhaust velocity. Two QtRocket-side quirks are worth restating from \cref{sec:motors}: mass
+and thrust gate burnout on different clocks (metadata \code{burnTime} versus the curve's
+last sample time, \src{model/MotorModel.cpp}{36}, \src{model/MotorModel.cpp}{72}), and a
+derived \code{isp} member is computed and never read \src{model/MotorModel.cpp}{130}.
+
+Ignition and delays: OpenRocket treats motor ignition, burnout, and ejection charges as
+flight events, each trigger optionally carrying a delay time --- this is how staging and
+dual deployment are expressed (techdoc \S 4.2.6, Table~4.2). QtRocket ignites its single
+motor exactly once, at $t = 0$, from \code{RocketModel::launch()}
+\src{model/RocketModel.cpp}{105}; \code{ThrustCurve::setIgnitionTime} has zero call sites
+\src{model/ThrustCurve.h}{31}, and ejection-delay lists are parsed by every loader and
+consumed by nothing \src{model/MotorModel.h}{303}.
+
+\subsection{Recovery physics}\label{app:or-methods-recovery}
+
+OpenRocket has a complete recovery subsystem. A parachute is a drag device with default
+$C_D = 0.8$ on its canopy area;\footnote{\code{rocketcomponent/Parachute.java},
+\code{DEFAULT\_CD}; techdoc \S 4.2.5.} a streamer's drag comes from Niskanen's own
+wind-tunnel experiments,
+\begin{equation}
+C_{D} = 0.034\cdot
+\frac{\rho_m + 25\ \mathrm{g/m^2}}{105\ \mathrm{g/m^2}}\cdot
+\frac{l + 1\ \mathrm{m}}{l},
+\end{equation}
+good to roughly 15\% in descent rate (techdoc App.~C, eq.~C.6); tumbling stages use a
+two-component drop-test model with $C_{D,f} = 1.42$ and $C_{D,bt} = 0.56$ (techdoc \S 3.5,
+eq.~3.99). Deployment is driven by the flight-event system --- apogee detection,
+altitude-threshold main deployment, ejection-charge delays --- and switches the active
+stepper from 6-DOF RK4 to the 3-DOF Euler landing stepper (techdoc \S 4.2.5--4.2.6).
+
+QtRocket has none of this: no recovery device exists in the part vocabulary, no deployment
+event exists in the simulation loop, and descent is simply the same constant-$C_d$ point
+mass falling until the nominal termination condition --- descending \emph{and} below the
+launch site, $z < 0 \wedge v_z < 0$ \src{model/RocketModel.cpp}{65} --- ends the flight. The
+only event-like machinery is the typed termination taxonomy itself
+\src{sim/Propagator.h}{35}. Recovery is an absence, not a dormancy; \cref{sec:incomplete}
+carries it in the consolidated inventory.
+
+\subsection{Validation posture}\label{app:or-methods-validation}
+
+OpenRocket published flight-data validation. Against altimeter flights of a small model
+rocket, apogee error was $+16\%$ and $+7\%$ (versus RockSim's $+24\%$ and $+19\%$ on the
+same flights); a hybrid-powered flight came in at $-16\%$; a magnetometer-instrumented
+rolling rocket spun at 16\,rev/s where the simulation predicted about 8 --- roll rate
+under-predicted by roughly $2\times$, cause unknown; wind-tunnel comparison put the
+simulated CP within a few percent of body length at subsonic speeds. The headline claim is
+CP and drag-coefficient accuracy of ``approximately 10\% at subsonic velocities'' (techdoc
+ch.~6--7).
+
+QtRocket, at this commit, has no whole-flight field validation: no test compares a simulated
+trajectory against a recorded flight, and every oracle in the six test binaries is analytic
+or table-derived. What it has instead is unusually dense component-level
+\emph{verification}: atmosphere properties to 0.1--0.5\% of the NOAA report tables
+\src{sim/tests/USStandardAtmosphereTests.cpp}{36}; the RKF45 solver against exact solutions
+--- constant acceleration to $10^{-9}$ \src{sim/tests/RK45SolverTests.cpp}{43}, a harmonic
+oscillator to $10^{-4}$ \src{sim/tests/RK45SolverTests.cpp}{126}, exponential decay to
+$10^{-5}$ \src{sim/tests/RK45SolverTests.cpp}{150}, a thrust-ramp analogue to $10^{-6}$
+\src{sim/tests/RK45SolverTests.cpp}{175}; a ballistic arc's apogee against $v_0^2/2g$ to
+0.5\% \src{tests/PropagatorTests.cpp}{178}; the drag law against the analytic
+terminal-velocity balance to $10^{-6}$\,N \src{tests/PhysicsIntegrationTests.cpp}{262};
+inverse-square surface gravity to $10^{-12}$ relative
+\src{sim/tests/EnvironmentTests.cpp}{123}.
+
+\begin{keyinsight}[Verification is not validation]
+The two projects' accuracy numbers answer different questions and should not be compared
+digit for digit. OpenRocket's $\sim$10\% is \emph{validation}: model versus nature, with all
+modeling error included --- and its published misses (roll off $2\times$, supersonic drag
+over-predicted) are part of the claim's honesty. QtRocket's $10^{-4}$-to-$10^{-12}$ oracles
+are \emph{verification}: code versus its own stated mathematics, guaranteeing the
+implementation computes the declared model correctly while saying nothing about whether that
+model matches a real flight. Given the force model this appendix has documented --- constant
+$C_d$ on a defective reference area, no wind, no attitude --- QtRocket could not currently
+support an OpenRocket-style 10\% whole-flight claim, and it does not make one. The honest
+statement is: OpenRocket's physics is validated to $\sim$10\%; QtRocket's physics is
+verified to compute exactly what it says, and what it says is still a point mass.
+\end{keyinsight}
+
+\subsection{Summary}\label{app:or-methods-summary-sec}
+
+\begin{table}[htbp]
+\small
+\caption{Methods at a glance. OpenRocket per its techdoc and current source; QtRocket per
+the pinned commit \code{254cd41}. ``Dormant'' marks machinery that is built and tested with
+zero production consumers.}
+\label{tab:or-methods-summary}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.6cm}XX@{}}
+\toprule
+\textbf{Area} & \textbf{OpenRocket} & \textbf{QtRocket} \\
+\midrule
+Degrees of freedom & 6-DOF quaternion ascent, two scalar inertias; deliberate 3-DOF
+degradation for recovery and tumble & 3-DOF point mass; quaternion slots and full
+$3\times 3$ recorded inertia dormant \\
+\addlinespace
+Aero coefficients & Extended Barrowman at instantaneous AoA/Mach each step: body lift,
+interference, damping, roll, transonic fin CP & Classic Barrowman at $\alpha\to 0$, no Mach
+dependence; complete, tested, dormant \\
+\addlinespace
+Drag & Per-component semi-empirical build-up: friction with roughness floor, per-shape wave
+drag, base $0.12+0.13M^2$, lug, $C_A(\alpha)$ hump & Single constant $C_d \times$ constant
+reference area; geometry-derived area implemented but never called \\
+\addlinespace
+Atmosphere & ISA, 8 layers, launch-site override, geopotential conversion & US Standard
+1976, 7 layers, closed-form; no overrides; verified 0.1--0.5\% to 80\,km \\
+\addlinespace
+Wind & Average $+$ 2-pole pink-noise turbulence, 20\,Hz; multi-level profiles (24.12) &
+Zero-wind stub, zero call sites \\
+\addlinespace
+Gravity/geodesy & Somigliana latitude gravity, flat/spherical/WGS84-Vincenty positions,
+Coriolis & Constant $g_0$ or true inverse-square over mean-radius geoid; no latitude, no
+Coriolis, no launch site \\
+\addlinespace
+Integration (ascent) & RK4, heuristic a-priori step caps (8 candidates, $3^\circ$ angle), no
+error estimate, no rejection & RK4 or embedded-pair RKF45 with acceptance/rejection,
+$h_{\max}$ clamp; tolerance not user-reachable \\
+\addlinespace
+Integration (descent) & Adaptive 2nd-order Euler, exact apogee/ground root-solves & Same
+3-DOF loop as ascent; termination at $z<0 \wedge v_z<0$ \\
+\addlinespace
+Motor mass & Manufacturer per-sample mass/CG when available; impulse-proportional fallback
+for RASP & Constant-Isp 128-point reconstruction always; measured RSE mass/CG discarded \\
+\addlinespace
+Recovery & Parachute/streamer/tumble models, event-driven deployment with delays & Absent \\
+\addlinespace
+Validation & Flight-data validated: $\sim$10\% apogee subsonic; roll off $\sim 2\times$ &
+Component-level analytic/table oracles ($10^{-4}$--$10^{-12}$); no whole-flight field data \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Read column-wise, the table repeats the conclusion of \cref{app:or-features} in numerical
+form: the gap is concentrated in what QtRocket \emph{consumes}, not in what it has built.
+The one method where QtRocket is ahead --- a genuine embedded-pair integrator with step
+rejection --- is also the one whose advantage will matter most on the day the dormant
+machinery in the other rows is wired in.

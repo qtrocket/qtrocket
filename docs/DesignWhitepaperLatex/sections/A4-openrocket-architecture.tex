@@ -1,0 +1,406 @@
+\section{Architecture comparison with OpenRocket}\label{app:or-architecture}
+
+The two preceding appendices compared what the tools offer (\cref{app:or-features}) and how
+their physics is computed (\cref{app:or-methods}). This appendix compares them as software:
+how each is built and modularized, how each represents a rocket in memory, how each
+positions parts and computes mass properties, how each structures a simulation run, where
+each lets outside code in, and how each persists its work. The framing of
+\cref{app:or-context} applies throughout --- QtRocket is an independent project, OpenRocket
+is a calibration baseline, and the comparison measures distance, not conformance. It is also
+worth saying once what the comparison is \emph{for}: the two architectures were shaped by
+different pressures (a seventeen-year-old product with a large user base; a young core built
+seams-first), and reading them side by side shows which of QtRocket's choices are genuine
+alternatives and which are simply earlier points on the same road.
+
+Provenance differs by side, as everywhere in these appendices. OpenRocket statements were
+researched from the project's repository at tag \code{release-24.12} and branch
+\code{unstable} (examined 2026-07-07) and from its published developer
+documentation\footnote{\url{https://github.com/openrocket/openrocket} and
+\url{https://openrocket.readthedocs.io/en/latest/dev_guide/architecture.html}. Class, enum,
+and package names quoted below are exact; short code excerpts are verbatim from the tagged
+sources.}; they are not file-and-line verified the way QtRocket claims are. QtRocket
+statements carry \code{file:line} citations into the pinned commit \code{254cd41}.
+\Cref{tab:or-architecture-summary} is the map; the subsections walk it row by row.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Dimension} & \textbf{OpenRocket 24.12} & \textbf{QtRocket \code{254cd41}} \\
+\midrule
+Language / build & Java 17, Gradle, two JPMS modules & C++23, CMake, layered static libraries \\
+\addlinespace
+Wiring & Guice injector behind a static locator & Controller singleton; constructor injection at the composition root \\
+\addlinespace
+Design tree & 23 concrete \code{RocketComponent} classes, per-class child-compatibility rules & 5 \code{Part} types in one composite, 4 factory-constructible \\
+\addlinespace
+Mass properties & External \code{MassCalculator}, recomputed per step, hookable & In-tree composite cache behind dirty flags and a mass-delta gate \\
+\addlinespace
+Positioning & \code{AxialMethod} + \code{RadiusMethod} offsets; nose-tip origin, $+x$ aft & \code{StationLink} placement intent + one resolver; nose-tip datum, \zfwd \\
+\addlinespace
+Simulation control & Event queue, 16 event types, four phase steppers, forking per stage & Single loop, typed termination, no events \\
+\addlinespace
+Extensibility & Per-step listener hooks, GraalJS scripting, annotation-scanned plugins & No plugin surface; machine-scriptable REPL protocol \\
+\addlinespace
+Persistence & Versioned \code{.ork} ZIP+XML; byte-signature multi-format import & Single-format \code{.qrd} XML; placement intent; fail-closed loads \\
+\addlinespace
+Motor data & Bundled snapshot (SQLite pipeline on \code{unstable}) & Ships empty; three ingest paths including live REST \\
+\addlinespace
+GUI & Mature Swing product with live background simulation & Thin Qt front end; authoring is CLI-first \\
+\bottomrule
+\end{tabularx}
+\caption{The architecture comparison at a glance. Each row is expanded, with sources, in the
+subsection that follows it.}\label{tab:or-architecture-summary}
+\end{table}
+
+\subsection{Language, runtime, and build}\label{app:or-architecture-build}
+
+OpenRocket is Java: \code{Application.java} hard-codes
+\cppinline|SUPPORTED_JRE_VERSIONS = { 17 }|, and CI builds against Temurin~17. The build is
+Gradle, producing two subprojects that are also two Java Platform Module System (JPMS)
+modules, each with its own \code{module-info.java}: \code{info.openrocket.core} --- the
+simulation engine, file formats, and design classes, deliberately headless and reusable ---
+and \code{info.openrocket.swing}, the GUI, which depends on core and carries the application
+entry point. Object wiring uses Google Guice~7: a static service locator,
+\code{info.openrocket.core.startup.Application}, holds the injector, and code obtains
+services through it (\code{FlightConfiguration}, for example, calls
+\cppinline|Application.getInjector().getInstance(RocketDescriptor.class)|); the older
+generation of static accessors is marked deprecated in favor of the injector
+(``\code{@deprecated} Fetch the db from Guice instead'').
+
+QtRocket is C++23 \src{CMakeLists.txt}{5} under CMake, and its modularity is the link graph
+rather than a module system: \code{utils} links only third-party math and networking
+\src{utils/CMakeLists.txt}{14}, \code{sim} links only \code{utils}
+\src{sim/CMakeLists.txt}{28}, \code{model} links \code{utils} and \code{sim}
+\src{model/CMakeLists.txt}{44}, and the controller compiles once into the
+\code{qtrocket\_core} static library that every executable links \src{CMakeLists.txt}{224}.
+Qt is confined to the GUI executable and the visualizer; the core, like OpenRocket's, is
+headless by construction (\cref{sec:overview}). Wiring is manual: the controller is a
+process-wide singleton \src{QtRocket.cpp}{19} acting as the composition root, and the one
+dependency that must vary per run --- the \code{Environment} --- is injected into the
+\code{Propagator}'s constructor there \src{QtRocket.cpp}{48}, never reached through a
+global.
+
+The honest version of the ``DI container versus singletons'' contrast is narrower than the
+labels suggest. OpenRocket's injector is itself resolved through a static locator, so most
+call sites still reach a global --- what the container buys is \emph{rebindability}: tests
+and plugins can install different bindings without touching call sites, and the plugin
+framework (\cref{app:or-architecture-ext}) depends on exactly that. QtRocket's object graph
+is small enough to wire by hand; it pays for its two singletons with a known blemish (the
+controller's double-checked initialization reads its flag outside the mutex
+\src{QtRocket.cpp}{21}, where the \code{Logger} one layer down already uses the safe Meyers
+form \src{utils/Logger.cpp}{19}) and gets its rebindability from ordinary constructor
+seams instead --- the injected \code{Environment}, and the fake-injectable
+\code{ThrustCurveAPI} interface behind the motor database \src{model/ThrustCurveClient.h}{68}.
+
+\begin{designrule}[One instinct, two enforcement mechanisms]
+Both projects enforce the same first-order rule --- a headless core that must not know
+about its GUI. OpenRocket enforces it with the module system: \code{swing} requires
+\code{core}, never the reverse, and the JVM checks the boundary. QtRocket enforces it with
+the link graph and one comment stated where it binds: ``Bottom layer: utils must not depend
+on model/ or sim/'' \src{utils/CMakeLists.txt}{13}, with Qt appearing only in front-end link
+lists \src{CMakeLists.txt}{286}. A module system checks the rule mechanically; a link graph
+makes violating it a build failure. Either way, the invariant is load-bearing, not
+documentation.
+\end{designrule}
+
+\subsection{The design tree and mass properties}\label{app:or-architecture-tree}
+
+Both projects model a rocket as a tree of components; the trees differ in breadth and,
+more interestingly, in where the rules live. OpenRocket's
+\code{info.openrocket.core.rocketcomponent} package defines roughly 23 concrete classes
+under three abstract families --- \code{ComponentAssembly} (the \code{Rocket} root, stages,
+pods), \code{ExternalComponent} (body tubes, transitions, nose cones, four fin-set classes,
+lugs, rail buttons), and \code{InternalComponent} (rings, couplers, bulkheads, mass objects,
+recovery devices) --- with cross-cutting capability interfaces such as \code{MotorMount} and
+\code{RingInstanceable}. Tree legality is enforced per class: every component implements
+\cppinline|isCompatible(Class<? extends RocketComponent> type)|, and \code{addChild()}
+throws when the answer is no. \code{Rocket} accepts only \code{AxialStage}; \code{BodyTube}
+accepts pods, internals, and any external component that is not itself a body --- fins
+attach to tubes, tubes do not nest in tubes. The type system carries the domain rules.
+
+QtRocket's composite has five concrete \code{Part} types registered in one umbrella header
+\src{model/parts/Parts.h}{4}, four of them constructible through a factory that dispatches
+on the type name and validates required fields \src{model/parts/PartFactory.cpp}{27} over a
+single type-agnostic parameter struct \src{model/parts/PartFactory.h}{27} (the \code{Motor}
+is deliberately excluded \src{model/parts/PartFactory.cpp}{73}). Attachment rules are
+structural rather than typed: \code{addChildPart} rejects null, already-parented, and
+cycle-forming children \src{model/parts/Part.cpp}{71}, but any part may parent any other ---
+there is no \code{isCompatible} analogue. What QtRocket has instead is a \emph{geometric}
+legality gate: the placement sweep of \cref{sec:placement} checks the resolved tree for
+self-intersection and fails the mass computation closed when it finds one
+\src{model/parts/Part.cpp}{184}. OpenRocket asks ``may this class contain that class?'' at
+edit time; QtRocket asks ``does this geometry physically fit?'' at resolve time. The two
+checks are complementary, and neither project currently has both.
+
+The mass-properties split is the genuinely different philosophy. OpenRocket keeps mass
+\emph{out} of the components: the \code{masscalc} package is deliberately small ---
+\code{MassCalculator}, \code{MassCalculation}, and \code{RigidBody}, the aggregate
+mass-and-inertia result --- and the calculator walks the component tree afresh whenever the
+simulation needs mass properties; nothing is cached inside components. QtRocket computes
+composite mass, CM, and inertia \emph{inside} the tree: a two-pass, time-aware walk
+\src{model/parts/Part.cpp}{175} whose per-part tensors follow the per-unit-mass convention
+\src{model/parts/Part.h}{30} and whose results are cached behind a structural dirty flag and
+the mass-delta gate \src{model/parts/Part.cpp}{137} (\cref{sec:parts}).
+
+\begin{designrule}[OpenRocket: components describe, a calculator computes]
+Because mass computation is a free-standing service rather than a component method, it is
+naturally an interception point: the listener interface of
+\cref{app:or-architecture-ext} exposes \code{preMassCalculation}/\code{postMassCalculation}
+hooks that can replace or adjust the \code{RigidBody} a step sees. The components stay a
+pure description of the rocket; every consumer --- simulator, analysis dialogs, plugins ---
+goes through one calculator. The price is recomputation on every step and no natural home
+for a cache.
+\end{designrule}
+
+\begin{keyinsight}[QtRocket: the cache that can never be wrong --- under one assumption]
+Storing the composite in the tree buys QtRocket a property OpenRocket's per-step calculator
+does not have: after burnout, when \code{getMass(t)} repeats bit-for-bit, the cache freezes
+and repeated or rejected integrator stage queries are served bit-stably
+\src{model/parts/Part.h}{248}, while the ungated live mass sum stays cheap as the ODE
+divisor \src{model/parts/Part.cpp}{118}. The price is that the gate keys on \emph{total}
+mass alone, so its soundness is coupled to the single-motor assumption
+\src{model/RocketModel.cpp}{13} --- two simultaneous burners holding total mass constant
+while shifting CM would be served stale properties. Neither design dominates: OpenRocket
+pays per step for generality; QtRocket pays in coupled assumptions for bit-stability.
+\end{keyinsight}
+
+\subsection{Positioning models}\label{app:or-architecture-pos}
+
+OpenRocket positions components with a pair of enums. Each component stores an
+\code{(AxialMethod, offset)} pair, where \code{AxialMethod} is one of \code{ABSOLUTE},
+\code{AFTER}, \code{TOP}, \code{MIDDLE}, \code{BOTTOM}; each value implements
+\cppinline|getAsPosition(offset, innerLength, outerLength)| returning the component's
+front-face coordinate in the parent's frame (\code{MIDDLE}, for instance, is
+$\mathtt{offset} + (\mathtt{outerLength} - \mathtt{innerLength})/2$). \code{AFTER} is the
+internal sibling-stacking mode for body components in sequence; the GUI exposes the other
+four. Radial placement is a second enum, \code{RadiusMethod} (\code{COAXIAL}, \code{FREE},
+\code{RELATIVE}, \code{SURFACE} --- the last a flush mount on the parent's outer surface).
+The arithmetic is purely geometric: component lengths only, never mass or CM. The global
+frame puts the origin at the nose tip with $+x$ pointing \emph{aft}.
+
+QtRocket stores a \code{StationLink} per attachment --- fractional stations on both ends of
+the seam, a gap, and a seat kind \src{model/parts/Placement.h}{49}, with the seat kind
+closed at three values because a rigid axisymmetric stack admits only three radial
+relationships \src{model/parts/Placement.h}{32} --- and derives every absolute pose through
+one resolver, ``intent (StationLink) in, geometry (Pose) out''
+\src{model/parts/Placement.h}{148}, whose core is two lines of arithmetic
+\src{model/parts/Placement.cpp}{20}. The frame puts the datum at the nose tip with \zfwd:
+each part occupies $z \in [-L, 0]$ in its own frame \src{model/parts/Part.h}{130}. The
+frame-convention difference is therefore concrete: both projects plant the origin at the
+nose tip, but their longitudinal axes run in \emph{opposite directions} --- a station aft
+of the tip has positive $x$ in OpenRocket and negative $z$ in QtRocket, and OpenRocket uses
+$x$ where QtRocket uses $z$. Any future \code{.ork} import will live or die on getting that
+sign flip right once, in one place.
+
+The deeper distinction is what is stored. OpenRocket stores geometry directly: the offset
+is a signed length between anchor planes, computed by the author, and the method names
+which planes. QtRocket stores intent and derives the geometry: the link names which feature
+of the child seats against which feature of the parent, the seat kind selects the gap's
+sign and the radial compatibility rule, and the resolver --- pure geometry, ``No CM, time, or
+mass'' \src{model/parts/Placement.h}{158} --- turns it into coordinates on
+every read (\cref{sec:placement}). The gap between the two is smaller than it first appears:
+OpenRocket's \code{TOP}/\code{MIDDLE}/\code{BOTTOM} anchors are themselves re-evaluated
+against live lengths at query time, so both systems survive a parent-length edit. What
+OpenRocket's scheme does not carry is radial semantics in the axial store (radius is a
+separate method with no compatibility meaning) or a validation gate coupled to placement;
+what QtRocket's scheme does not carry is OpenRocket's \code{FREE}/\code{RELATIVE} radial
+freedom --- off-axis seating is deliberately deferred to 6-DOF (\cref{sec:incomplete}).
+Both projects converged independently on the same load-bearing rule: placement arithmetic
+must never involve mass. QtRocket arrived there the hard way, by replacing a CM-coupled
+legacy scheme (\cref{sec:placement}); OpenRocket appears to have started there.
+
+\subsection{The simulation engine}\label{app:or-architecture-engine}
+
+This is the largest structural difference between the two codebases. OpenRocket's engine,
+\code{BasicEventSimulationEngine}, is event-driven: a time-ordered \code{EventQueue} rides
+on the mutable \code{SimulationStatus}, the run begins by pushing a \code{LAUNCH} event, and
+the loop alternates between handling due events and advancing the ODE, clamping each step so
+it never overshoots the next queued event. The \code{FlightEvent.Type} enum names sixteen
+event kinds --- among them \code{IGNITION}, \code{LIFTOFF}, \code{LAUNCHROD},
+\code{BURNOUT}, \code{EJECTION\_CHARGE}, \code{STAGE\_SEPARATION}, \code{APOGEE},
+\code{RECOVERY\_DEVICE\_DEPLOYMENT}, \code{GROUND\_HIT}, \code{TUMBLE}, and
+\code{SIMULATION\_END}. Integration is delegated to a \code{SimulationStepper} chosen per
+flight phase (\cref{lst:or-architecture-steppers}): full 6-DOF RK4 under power and coast, a
+simplified 3-DOF stepper under a deployed recovery device, a tumble stepper, and a ground
+stepper after landing. Stage separation \emph{forks the simulation}: the engine pushes a
+copy of \code{SimulationStatus} onto a \code{toSimulate} stack and later pops it to fly the
+separated booster, each branch producing its own \code{FlightDataBranch} in the result.
+
+\begin{listing}[htbp]
+\begin{minted}{java}
+private final SimulationStepper flightStepper  = new RK4SimulationStepper();
+private final SimulationStepper landingStepper = new BasicLandingStepper();
+private final SimulationStepper tumbleStepper  = new BasicTumbleStepper();
+private final SimulationStepper groundStepper  = new GroundStepper();
+\end{minted}
+\caption{The four phase steppers of OpenRocket's event-driven engine, quoted from
+\code{BasicEventSimulationEngine.java} at tag \code{release-24.12}. The engine swaps
+steppers as events change the flight phase; the fidelity of the dynamics is a per-phase
+decision, not a global one.}\label{lst:or-architecture-steppers}
+\end{listing}
+
+QtRocket's engine is a single loop: \code{Propagator::runUntilTerminate()}
+\src{sim/Propagator.cpp}{58} advances one solver (RK4 or the embedded-error RKF45, selected
+at runtime through the integrator facade \src{sim/Integrator.h}{52}) until the model's own
+predicate says the flight is over --- descending below the launch site
+\src{model/RocketModel.cpp}{62} --- or one of the guard exits fires. There is no event
+queue, no phase steppers, and no forking; what QtRocket has instead is the typed
+five-value termination taxonomy \src{sim/Propagator.h}{35} that partitions every possible
+exit into a diagnosis (\cref{sec:simcore}). The two designs are honest reflections of their
+feature sets: OpenRocket needs an event architecture because recovery, staging, and
+tumbling \emph{are} events; QtRocket's every flight is single-phase and ballistic, so a
+loop with a predicate is the whole requirement. The event system is precisely the
+architectural piece QtRocket's planned recovery and staging work will need, and the
+termination taxonomy is its natural seed (\cref{sec:incomplete}).
+
+\subsection{Extension surfaces}\label{app:or-architecture-ext}
+
+OpenRocket lets outside code into the running simulation. Three listener interfaces attach
+to a run: \code{SimulationListener} (start/end/pre-step/post-step, with a boolean pre-step
+veto), \code{SimulationEventListener} (observe or veto flight events), and --- the key
+mechanism --- \code{SimulationComputationListener}, which brackets \emph{every physics
+sub-computation} with paired hooks: \code{pre}/\code{post} around acceleration, the
+atmospheric model, wind, gravity, flight conditions, aerodynamics, mass calculation, and
+thrust. A \code{pre*} hook returning non-null replaces the model's output for that step; a
+\code{post*} hook may modify the result. On top of the listeners sit simulation extensions
+(the tree ships a \code{JavaCode} extension and script-backed ones), JavaScript scripting through GraalJS behind the
+standard JSR-223 API, and a plugin framework in which providers are discovered by classpath
+annotation scan (\code{@Plugin}, ClassGraph) and bound through Guice modules --- runtime
+plugin JARs, enabled by the container architecture of
+\cref{app:or-architecture-build}.
+
+QtRocket has no listener, plugin, or scripting mechanism of any kind. Its pluggability is
+internal and compile-time-shaped: string-keyed registries select among the built-in
+gravity, atmosphere \src{sim/Environment.h}{31}, and integrator implementations
+\src{sim/Integrator.h}{52}, and the front ends enumerate those registries so their
+vocabulary cannot drift from the core's \src{gui/SimOptionsTab.cpp}{32}. What QtRocket
+offers outside code instead is the REPL: 33 commands over a machine-parseable stdout
+protocol --- exactly one \code{OK}/\code{ERR} line per command, \code{CSV} paths, \code{\#}
+comments \src{cli/Repl.cpp}{245} --- deliberately kept clean by silencing the logger to
+ERROR in the CLI binary \src{cli/CliMain.cpp}{17} (\cref{sec:interfaces}). These are
+different answers to different questions. OpenRocket extends \emph{inward}: injected code
+runs between physics sub-steps and can replace a model mid-flight, which is what active
+control experiments, custom wind fields, or air-starts need. QtRocket extends
+\emph{outward}: an external program drives whole runs over a text protocol, which is what
+parameter sweeps, CI harnesses, and reproducible batch studies need --- and which
+OpenRocket itself has no interactive equivalent for (its headless story is a separate
+Python helper module, \code{orhelper}\footnote{\url{https://github.com/openrocket/orhelper}
+--- an org-maintained Python module ``to facilitate interacting and scripting with
+OpenRocket.''}).
+Neither surface subsumes the other: an outward protocol cannot touch a flight mid-step, and
+an inward hook is no substitute for a scriptable process boundary.
+
+\subsection{Persistence}\label{app:or-architecture-persist}
+
+OpenRocket's design file, \code{.ork}, is a ZIP archive containing a versioned XML document
+(\code{rocket.ork}) plus attached resources, and its format history is explicit: version
+1.8 landed with release 22.02, 1.10 with 24.12, and 1.11 (embedding thrust curves in the
+archive) is staged for the next release\footnote{Format-version table and archive layout:
+\url{https://openrocket.readthedocs.io/en/latest/dev_guide/file_specification.html}.}.
+The loader, \code{GeneralRocketLoader}, auto-detects what it is fed by byte signature ---
+GZIP, ZIP, bare \code{<openrocket} XML, RockSim's \code{<RockSimDoc}, RASAero's
+\code{<RASAeroDoc} --- so files from two foreign ecosystems and every historical
+OpenRocket version load through one entry point; RockSim is supported for both import and
+export. QtRocket persists designs in exactly one format: \code{.qrd} XML at version 0.2
+\src{model/DesignSerializer.cpp}{220}, which stores placement \emph{intent} --- the
+\code{<link>} elements --- and re-resolves geometry on every load
+\src{model/DesignSerializer.cpp}{93}. Its loader is fail-safe in structure and fail-closed
+in vocabulary: the tree is built detached and installed atomically so a bad file leaves the
+current design untouched \src{model/DesignSerializer.cpp}{255}, an unknown seat kind is
+rejected outright \src{model/DesignSerializer.cpp}{184}, and the retired 0.1 format is
+refused with an explicit ``must be re-created'' rather than migrated
+\src{model/DesignSerializer.cpp}{194} (\cref{sec:persistence}).
+
+The postures could not be more different, and each is right for its context. OpenRocket's
+loader is maximally forgiving because two decades of user files and three neighboring
+ecosystems exist; rejecting any of them would strand real work. QtRocket's loader is
+maximally strict because almost no files exist yet, so rejection is cheaper than a
+migration framework and guarantees that anything loaded is coherent. The asymmetry has a
+shelf life: the \code{.ork} version table is a precedent for exactly the machinery
+\code{.qrd} will need once users accumulate files, and OpenRocket's content-sniffing entry
+point is the natural shape for any future foreign-format import
+(\cref{sec:incomplete}).
+
+\subsection{Motor data}\label{app:or-architecture-motors}
+
+OpenRocket ships its motor corpus with the application: release 24.12 bundles a 3.3\,MB
+serialized snapshot of thrustcurve.org data (\code{thrustcurves.ser}), and the
+\code{unstable} branch replaces it with an SQLite database
+(\code{initial\_motors.db}, 1,458 motors and 1,591 curves per its metadata) published
+from a dedicated data-pipeline repository\footnote{\url{https://github.com/openrocket/motor-database}
+--- ``a motor database for OpenRocket based on thrustcurve.org data and other sources,''
+republished as \code{motors.db.gz} for in-app updates.} --- motor data curation has been
+moved out of the application into a data engineering pipeline. QtRocket inverts the
+default: the shipped database is empty (the bundled \code{.rse} file is wired into test
+binaries only, via a compile definition \src{tests/CMakeLists.txt}{16}), and motors arrive
+at run time through three ingest paths behind one facade --- the RockSim \code{.rse} loader
+\src{model/RSEDatabaseLoader.cpp}{24}, the strict validating RASP \code{.eng} parser
+\src{model/RASPLoader.cpp}{137}, and a live thrustcurve.org REST client hidden behind the
+fake-injectable \code{ThrustCurveAPI} seam \src{model/ThrustCurveClient.h}{68}. The
+loaders are owned inside the database and never touched by front ends
+\src{model/MotorModelDatabase.cpp}{63}; storage is a common-name-keyed map
+\src{model/MotorModelDatabase.h}{129} (\cref{sec:motors}).
+
+Architecturally this is offline-first versus online-first. OpenRocket's user is never
+blocked by the network and never sees an empty chooser; the cost is a release-time curation
+pipeline and data that ages between releases. QtRocket's user gets live search against the
+canonical source --- a workflow the baseline's in-app selection does not lead with
+(OpenRocket's core carries thrustcurve.org client classes, but its chooser is fed by the
+bundled corpus) --- at the cost
+of a first run that begins with nothing until a file is imported or the network answers.
+The designs are converging from opposite ends: OpenRocket's new SQLite pipeline adds
+in-app updating to a bundled corpus, and QtRocket's natural next step is bundling a
+snapshot in front of its live client.
+
+\subsection{GUI architecture}\label{app:or-architecture-gui}
+
+OpenRocket's Swing GUI is the product: one document window hosting the 2-D rocket figure
+and JOGL-based 3-D view, per-component configuration dialogs, plotting, printing, and an
+optimizer. Its most architecturally interesting habit is \emph{live background simulation}:
+\code{RocketPanel} owns a static \code{ExecutorService} --- ``a fixed-sized thread pool for
+all background simulations with all threads in daemon mode and with minimum priority'' ---
+and every design edit re-runs a simulation off the interaction thread to refresh the
+altitude, velocity, and stability readouts drawn on the design canvas, alongside
+continuously recomputed CP/CG markers. Simulation is treated as a rendering input, cheap
+enough to run speculatively on every edit.
+
+QtRocket's GUI is a thin front end over the same core its CLI drives, and at the pinned
+commit it is the narrowest of the three surfaces: the design widgets are constructor-only
+stubs \src{gui/RocketTreeView.cpp}{3}, the File actions ship disabled
+\src{gui/MainWindow.ui}{117}, and design authoring lives in the REPL
+(\code{newdesign} \src{cli/Repl.cpp}{784}, \code{addpart} \src{cli/Repl.cpp}{825}).
+Its threading posture is the inverse of OpenRocket's twice over: the entire Qt event loop
+runs on a \emph{spawned} \cppinline|std::thread| that constructs \code{QApplication}
+\src{gui/GuiRunner.cpp}{62} --- an inversion of Qt's main-thread convention whose
+consequences \cref{sec:interfaces} examines --- while simulation runs \emph{synchronously
+on} that GUI thread from the launch button's slot \src{gui/CannonballTab.cpp}{116}.
+OpenRocket pushes simulation off the interaction thread by default; QtRocket has not yet
+separated the two at all. The one place the QtRocket rendering story is architecturally
+ahead is outside the GUI proper: the standalone visualizer positions geometry with the
+exact resolver the simulator's mass pass consumes (\cref{sec:interfaces}), a
+single-source-of-truth property OpenRocket's separate figure-rendering path does not have.
+
+\subsection{What each architecture makes easy}\label{app:or-architecture-close}
+
+Read as wholes, the two architectures optimize for different verbs. OpenRocket's makes
+\emph{extending the flight} easy: a new flight phenomenon is a new event type absorbed by
+an engine already built around a queue; a new physics variant is a listener hook away; a
+foreign file is one more byte signature; and the container wiring lets plugins rebind
+services without touching call sites. The costs are the ones mature products accept ---
+behavior assembled at run time by injection and annotation scan is harder to trace
+statically, the loader's forgiveness dilutes invariants, and the simulation's
+warn-and-continue posture (\cref{app:or-context}) means a produced number does not always
+certify a coherent model. QtRocket's architecture makes \emph{trusting the number} easy:
+the link graph is the layering, placement has one resolver shared by physics and rendering,
+incoherent designs fail closed with located diagnostics, and a deterministic core behind a
+text protocol makes every result reproducible from a script. Its costs are the mirror
+image: no way into a flight mid-step, a closed persistence world, an empty first run, and
+--- the expensive one --- no event architecture, so the recovery and staging features that
+define the baseline's flight realism require growing a new control structure, not just new
+physics (\cref{sec:incomplete}). Neither project would be improved by adopting the other's
+architecture wholesale; each is shaped correctly for its stage. The useful reading of
+OpenRocket for QtRocket's purposes is a preview of which seams get consumed next --- the
+event queue, the background-simulation executor, the format-version table --- because the
+baseline demonstrates, in shipped code, what those seams are for.

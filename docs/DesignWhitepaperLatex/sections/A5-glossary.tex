@@ -1,0 +1,284 @@
+\section{Glossary}\label{app:glossary}
+
+The vocabulary this document leans on, in two parts: general rocketry, aerodynamics, and
+numerical-methods terms first, then QtRocket's own terms of art --- the vocabulary shared
+with the companion Architecture Review --- quoting the project's in-tree definitions
+verbatim where they exist. Entries are alphabetical within each part; each cross-references
+the chapter where the concept lives, and code citations anchor to the pinned commit
+\code{254cd41}.
+
+\subsection{Rocketry and physics terms}\label{app:glossary-physics}
+
+\begin{description}
+
+\item[Adaptive step control.] Letting an ODE solver choose its step size from a local error
+  estimate: shrink and retry above tolerance, regrow while the dynamics are smooth.
+  QtRocket's RKF45 shrinks with exponent $1/4$ and grows with exponent $1/5$, under fixed
+  clamps \src{sim/RK45Solver.h}{124} (\cref{sec:simcore}).
+
+\item[Angle of attack (AoA).] The angle between the body axis and the velocity through the
+  air; at small angles each component's aerodynamic normal force is proportional to it.
+  Computed nowhere at the pinned commit (\cref{sec:aero}).
+
+\item[Apogee.] Peak altitude, where vertical velocity crosses zero and real flights deploy
+  recovery. Recorded as a running maximum every step \src{sim/TrajectoryStatistics.h}{26}
+  (\cref{sec:simcore}).
+
+\item[Ballistic.] Flight under gravity and drag alone. Every QtRocket flight ends
+  ballistically: descent runs under the ascent drag law until the vehicle is below the
+  launch site and descending \src{model/RocketModel.cpp}{65}
+  (\cref{sec:simcore,sec:incomplete}).
+
+\item[Barrowman method.] The standard model-rocketry stability calculation (James and
+  Judith Barrowman, 1966): each component contributes a normal-force slope $C_{N_\alpha}$
+  and a center of pressure at small angle of attack, composed by a $C_{N_\alpha}$-weighted
+  average. Implemented per part and per composite; dormant (\cref{sec:aero}).
+
+\item[Burnout.] The end of the propellant burn: zero thrust afterward
+  \src{model/MotorModel.cpp}{72}, casing mass only. See \emph{two burnout clocks} in
+  \cref{app:glossary-qtrocket} (\cref{sec:motors}).
+
+\item[Caliber.] One body diameter, the conventional unit for static margin; one to two
+  calibers is the hobby rule of thumb. The word appears nowhere in the tree
+  (\cref{sec:aero}).
+
+\item[Center of gravity / center of mass (CG, CM).] The mass-weighted mean position of the
+  vehicle's material. Computed time-aware from the part tree, so the burning motor moves it
+  every step \src{model/parts/Part.cpp}{196} (\cref{sec:parts}).
+
+\item[Center of pressure (CP).] The station where the aggregate aerodynamic normal force
+  acts; a rocket is statically stable when it sits aft of the CG. Composed as the guarded
+  moment ratio \code{cnAlphaXcp / cnAlpha} \src{sim/Aero.h}{51}, unconsumed in flight
+  (\cref{sec:aero}).
+
+\item[Degrees of freedom (3-DOF, 6-DOF).] The coordinates a simulation integrates: three
+  translational, or six with attitude. QtRocket integrates exactly the three linear DOF
+  \src{sim/Propagator.cpp}{36}; the rotational half is typed, never-integrated scaffolding
+  (\cref{sec:simcore}).
+
+\item[Dynamic pressure.] $q = \tfrac12 \rho v^2$, the pressure scale of aerodynamic forces;
+  present inside the drag law \src{model/RocketModel.cpp}{88}, never a standalone variable
+  (\cref{sec:aero}).
+
+\item[Ejection charge; ejection delay.] The charge a motor fires a fixed delay after
+  burnout to deploy recovery. The RSE and RASP loaders parse delay lists and the motor
+  database persists them --- 1000 is the sentinel for a plugged motor with no charge
+  \src{model/MotorModel.h}{303}; the thrustcurve.org client leaves them empty, a marked
+  \code{TODO} --- and nothing consumes them (\cref{sec:motors,sec:incomplete}).
+
+\item[Geoid.] The equipotential surface of Earth's gravity field (``mean sea level'').
+  QtRocket's only geoid returns the WGS84 mean radius, $6\,371\,008.8\m$, for any
+  coordinates \src{sim/SphericalGeoidModel.cpp}{18} (\cref{sec:environment}).
+
+\item[Impulse class.] The letter designations (A, B, C, \ldots) each doubling the previous
+  class's total-impulse ceiling, with 1/4A and 1/2A below A; derived from the motor code
+  \src{model/MotorModel.cpp}{97} (\cref{sec:motors}).
+
+\item[Inertia tensor.] The $3\times3$ symmetric matrix mapping angular velocity to angular
+  momentum --- how a body resists rotation about every axis. Carried in two conventions;
+  see \emph{per-unit-mass tensor} in \cref{app:glossary-qtrocket} (\cref{sec:parts}).
+
+\item[Lapse rate.] The rate of temperature change with altitude. The 1976 US Standard
+  Atmosphere prescribes one constant lapse rate per layer, which makes pressure and density
+  integrable in closed form; the coded sign is the negative of the standard's
+  \src{sim/USStandardAtmosphere.cpp}{114} (\cref{sec:environment}).
+
+\item[Mach number.] Speed over the local speed of sound. The atmosphere can supply the
+  speed of sound \src{sim/USStandardAtmosphere.cpp}{143}, but no Mach number is computed
+  anywhere and $C_d$ is speed-independent (\cref{sec:aero,sec:environment}).
+
+\item[Parallel-axis theorem.] (Huygens--Steiner.) The rule for shifting a centroidal
+  inertia tensor to a point displaced by $\vec d$:
+  $I = I_{\mathrm{cm}} + m\big((\vec d\cdot\vec d)\,I_3 - \vec d\,\vec d^{\mathsf T}\big)$.
+  Coded as \code{parallelAxisTerm} \src{model/parts/Part.cpp}{19} (\cref{sec:parts}).
+
+\item[Quaternion.] A four-component, gimbal-lock-free representation of 3-D rotation,
+  stored $(x, y, z, w)$ project-wide. \code{StateData}'s orientation quaternions are
+  zero-initialized --- not a rotation at all --- and never written \src{sim/StateData.h}{46}
+  (\cref{sec:simcore}).
+
+\item[Recovery; dual deployment.] Parachute or streamer descent; dual deployment fires a
+  drogue at apogee and the main chute at low altitude. No deployment event of any kind
+  exists (\cref{sec:incomplete}).
+
+\item[Reynolds number.] The ratio of inertial to viscous forces in a flow, which governs
+  skin friction. Sutherland viscosity is implemented
+  \src{sim/USStandardAtmosphere.cpp}{150}; no Reynolds number is computed (\cref{sec:aero}).
+
+\item[Runge--Kutta 4 (RK4).] The classical fixed-step fourth-order integrator: four
+  derivative evaluations per step, combined with weights $\tfrac16(1,2,2,1)$. QtRocket's
+  default solver \src{sim/RK4Solver.h}{45} (\cref{sec:simcore}).
+
+\item[Runge--Kutta--Fehlberg 4(5) (RKF45); embedded pair.] An adaptive integrator forming a
+  fourth- and a fifth-order estimate from the \emph{same} six stages; their difference is a
+  free local-error estimate that drives the step controller \src{sim/RK45Solver.h}{120}
+  (\cref{sec:simcore}).
+
+\item[Specific impulse ($I_{sp}$).] Impulse per unit weight of propellant,
+  $I_{tot}/(g_0\, m_{prop})$, in seconds. Computed and never read
+  \src{model/MotorModel.cpp}{130}; the constant-$I_{sp}$ assumption nonetheless underlies
+  the derived motor mass curve (\cref{sec:motors}).
+
+\item[Standard atmosphere.] A reference model of temperature, pressure, and density versus
+  altitude. The US Standard Atmosphere 1976 uses seven piecewise-linear temperature layers;
+  QtRocket implements the closed forms, validated to 80\,km
+  \src{sim/USStandardAtmosphere.cpp}{93} (\cref{sec:environment}).
+
+\item[Static margin.] The CP--CG separation in calibers; positive (CP aft) means a small
+  angle of attack produces a restoring moment. In QtRocket a subtraction by construction
+  --- \code{cp() - cg()} on a shared datum \src{sim/Aero.h}{25} --- computed nowhere in
+  production (\cref{sec:aero}).
+
+\item[Thrust curve.] The measured (time, thrust) sample table from a motor's certification
+  test. Interpolated linearly, zero outside the burn window \src{model/ThrustCurve.cpp}{47}
+  (\cref{sec:motors}).
+
+\item[Total impulse.] $I_{tot} = \int F\,dt$ (N$\cdot$s), which fixes the impulse class;
+  the RASP loader derives it from the samples by trapezoidal integration
+  \src{model/RASPLoader.cpp}{189} (\cref{sec:motors}).
+
+\item[Weathercocking.] A statically stable rocket's rotation into the wind during boost.
+  It requires wind and attitude dynamics; QtRocket has neither --- the wind model returns
+  the zero vector and has no call sites \src{sim/WindModel.cpp}{16}
+  (\cref{sec:aero,sec:incomplete}).
+
+\end{description}
+
+\subsection{QtRocket terms of art}\label{app:glossary-qtrocket}
+
+\begin{description}
+
+\item[\code{Abut}.] The seat kind meaning rim-to-rim at equal radii, with the gap a signed
+  forward standoff \src{model/parts/Placement.h}{34}. The default seat, and the only one
+  reachable from the REPL (\cref{sec:placement}).
+
+\item[Dirty flag.] Two staleness flags propagated up the parent chain:
+  \code{needsRecomputing} gates the composite mass-properties cache
+  \src{model/parts/Part.h}{239}; \code{placementDirty} gates the placement cache
+  \src{model/parts/Part.h}{283} and is set only by structural edits --- a burn moves no
+  geometry (\cref{sec:parts}).
+
+\item[Dormant.] Status vocabulary inherited from the Architecture Review: \emph{built and
+  tested but unreachable from any production code path}. Distinct from \emph{partial}
+  (reachable, with named gaps) and \emph{absent} (no trace in the tree);
+  \cref{sec:incomplete} carries the inventory.
+
+\item[Fail-closed.] Refusing to produce a number from an incoherent model: a failed
+  placement solve throws with the first located diagnostic rather than returning a silently
+  wrong mass or inertia \src{model/parts/Part.cpp}{182}; legacy design files are rejected,
+  never migrated (\cref{sec:parts,sec:persistence}).
+
+\item[Hard, located failure.] A refusal that carries \emph{who, into what, where, and by
+  how much} --- the \code{OverlapDiagnostic} fields \src{model/parts/Placement.h}{102}.
+  The antonym throughout this document is silent miscomputation (\cref{sec:placement}).
+
+\item[Heavy/fast test split.] The ctest label \code{heavy} plus
+  \code{QTROCKET\_FULL\_LADDER=1} \src{tests/CMakeLists.txt}{96}: the fast loop flies one
+  motor per impulse class; the heavy registration re-runs the flight sweeps over the
+  complete 1/4A$\to$M ladder (\cref{sec:testing}).
+
+\item[Implicit-origin ramp.] When a query precedes a thrust curve's first sample, thrust
+  ramps linearly from an implicit $(0,0)$ origin \src{model/ThrustCurve.cpp}{76} --- the
+  guard that replaced an out-of-bounds read which made apogee vary run to run
+  (\cref{sec:motors}).
+
+\item[Mass-delta cache.] The composite mass/CM/inertia cache, rebuilt iff structurally
+  dirty \emph{or} the composite mass changed --- an exact \code{!=} against a NaN-seeded
+  sentinel \src{model/parts/Part.cpp}{137}. It recomputes every step during a burn and
+  freezes bit-stably after burnout (\cref{sec:parts}).
+
+\item[Motor DFS.] \code{findMotorInTree}, the first-match depth-first search that
+  re-borrows the single \code{Motor} handle after every tree edit
+  \src{model/RocketModel.cpp}{15}. It embodies the single-motor assumption: a second motor
+  is silently ignored by thrust (\cref{sec:motors}).
+
+\item[One-step timestamp offset.] The recorder appends the state reached at $t+h$ against
+  timestamp $t$ \src{sim/Propagator.cpp}{133}; every consumer of the flight history
+  inherits the offset (\cref{sec:simcore}).
+
+\item[Pad hold.] The kinematic clamp standing in for a pad's normal force: until the first
+  step ending above $z=0$ under power, position and velocity are held at rest
+  \src{sim/Propagator.cpp}{105}, so the implicit-origin ramp's near-zero first step cannot
+  terminate the flight (\cref{sec:simcore}).
+
+\item[Per-unit-mass tensor.] A part's own tensor is geometric --- inertia divided by mass,
+  m$^2$ --- while composites are full mass-weighted kg$\cdot$m$^2$ about the composite CM
+  \src{model/parts/Part.h}{30}. Factoring density out lets a motor's tensor stay constant
+  while its mass burns down (\cref{sec:parts}).
+
+\item[Pinned commit.] Commit \code{254cd41}, the revision every code citation anchors to
+  (\cref{sec:intro}); reproduction recipe in \cref{app:repro}. Line numbers are anchors
+  into that revision, not absolutes.
+
+\item[Placement intent.] What the tree stores about position: a feature-to-feature
+  physical relationship (``this rim seats against that rim''), never an opaque offset or a
+  resolved coordinate. Realized as the \code{StationLink} (\cref{sec:placement}).
+
+\item[Resolver.] \code{resolvePlacements}, ``The single authority for absolute placement:
+  intent (StationLink) in, geometry (Pose) out'' --- both the simulator and the visualizer
+  consume its output, ``so the two cannot disagree'' \src{model/parts/Placement.h}{148}
+  (\cref{sec:placement}).
+
+\item[Seam.] An interface or capability built and tested ahead of its consumer --- the
+  load-bearing metaphor of this document and its companions. The canonical in-tree example:
+  per-step mass/CG/inertia snapshots are ``the seam the 6-DOF rotational ODE will read''
+  \src{sim/StateData.h}{59} (\cref{sec:incomplete}).
+
+\item[Seat kind.] The closed three-value enum governing a link's radial-compatibility
+  check and the sign of its gap \src{model/parts/Placement.h}{32}: \code{Abut} (rim to
+  rim), \code{NestInBore} (child outer diameter inside the parent bore; the gap an
+  insertion depth moving the child aft --- the one sign-flipping seat), and
+  \code{OnSurface} (child on the parent's outer wall; the gap an axial standoff). Closed
+  because a rigid axisymmetric stack admits exactly three radial relationships
+  (\cref{sec:placement}).
+
+\item[Solid-host rule.] A host's radius budget at a station is its bore when hollow and
+  its outer skin when solid \src{model/parts/Part.cpp}{314}; an offender fits iff its outer
+  radius stays within that capacity --- one predicate for both nesting and poke-through
+  (\cref{sec:placement}).
+
+\item[Station.] A position along a part's axis as a fraction of \emph{live} length in
+  $[0,1]$: 0 the aft plane, 1 the fore plane, mapped to $z = (s-1)L$ on every read
+  \src{model/parts/Part.cpp}{305} --- so editing a length moves the seam
+  (\cref{sec:placement}).
+
+\item[\code{StationLink}.] The only stored spatial relationship: a parent station, a child
+  station, a seat-signed gap in meters, a seat kind, and a quaternion reserved for 6-DOF
+  \src{model/parts/Placement.h}{49}. A default-constructed link means ``child fore plane
+  abuts parent aft plane'' \src{model/parts/Placement.h}{46}, so the common stack costs
+  zero authored numbers (\cref{sec:placement,sec:persistence}).
+
+\item[stdout protocol.] The CLI's machine-readable contract: one \code{OK}/\code{ERR} line
+  per command, \code{WARN:} on non-nominal termination, \code{CSV} paths, with logging
+  demoted to keep those lines distinct \src{cli/CliMain.cpp}{16}. The termination-reason
+  switch has no \code{default}, so a new reason fails to compile until handled
+  \src{cli/Repl.cpp}{39} (\cref{sec:interfaces}).
+
+\item[Termination taxonomy.] The five-value \code{TerminationReason} enum ---
+  \code{Nominal}, \code{NoLiftoff}, \code{NonFiniteState}, \code{MaxSimTimeExceeded},
+  \code{IntegratorError} --- partitioning every exit from the run loop
+  \src{sim/Propagator.h}{35} (\cref{sec:simcore}).
+
+\item[Tip datum.] The whole-assembly reference frame planted at the root part's fore plane
+  --- the nose tip. Composite CM and CP are both reported on it, which is what makes the
+  static margin a plain subtraction \src{model/parts/Part.cpp}{231}
+  (\cref{sec:placement,sec:aero}).
+
+\item[Two burnout clocks.] The verified asymmetry that \code{getMass} gates the burn on the
+  metadata burn time \src{model/MotorModel.cpp}{36} while \code{getThrust} gates on the
+  curve's last sample time \src{model/MotorModel.cpp}{72}; RASP motors are immune by
+  construction, RockSim motors are not (\cref{sec:motors}).
+
+\item[ULP tolerance.] The tests' floating-point idiom: error budgets measured in units in
+  the last place, the spacing between adjacent representable doubles.
+  \code{utils::floatingPointEqual} defaults to a 4-ULP band
+  \src{utils/math/UtilityMathFunctions.h}{21} --- the same width GoogleTest's
+  \code{EXPECT\_DOUBLE\_EQ} enforces --- and the idiom recurs from factory round-trips
+  (\cref{sec:parts}) to burnout mass lookups (\cref{sec:motors}).
+
+\item[Vacuum step-runaway clamp.] The RKF45 cap $h \le h_{max}$, default ten times the
+  seeded step \src{sim/RK45Solver.h}{144}. Required, not cosmetic: vacuum coasting is
+  integrated exactly by both embedded orders, so the error estimate vanishes and the step
+  would otherwise grow five-fold indefinitely (\cref{sec:simcore}).
+
+\end{description}

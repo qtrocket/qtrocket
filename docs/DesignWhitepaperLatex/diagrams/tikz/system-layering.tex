@@ -1,0 +1,78 @@
+% Component diagram: three executables over one Qt-free core; strict downward layering.
+% Bare tikzpicture; the system-overview section wraps it in a figure and \resizebox.
+\begin{tikzpicture}[node distance=7mm and 8mm]
+
+  % --- executables (top row) ---
+  \node[consumer,text width=40mm] (gui)
+    {\textbf{qtrocket} (GUI)\\[1pt]\footnotesize\ttfamily main.cpp + gui/*\\
+     \rmfamily Qt6 Widgets \textbullet\ PrintSupport \textbullet\ vendored qcustomplot\\
+     \footnotesize\texttt{gui::run} keeps the controller Qt-free};
+  \node[consumer,text width=38mm,right=of gui] (cli)
+    {\textbf{qtrocket-cli} (REPL)\\[1pt]\footnotesize\ttfamily cli/ Repl + CliMain\\
+     \rmfamily headless, no Qt\\
+     \footnotesize Repl built as a lib so tests can drive it};
+  \node[consumer,text width=38mm,right=of cli] (viz)
+    {\textbf{qtrocket-visualizer}\\[1pt]\footnotesize\ttfamily visualizer/ RocketGLWidget, RocketMesh\\
+     \rmfamily Qt6 Widgets \textbullet\ OpenGL\\
+     \footnotesize standalone 3D viewer};
+
+  % --- controller / core lib ---
+  \node[resolver,text width=104mm,below=11mm of cli] (core)
+    {qtrocket\_core \textcolor{qrGray}{(static lib --- QtRocket.cpp, built once)}\\[2pt]
+     \normalfont\footnotesize Qt-free QtRocket controller singleton: owns the one
+     \mbox{(RocketModel, Propagator)} pair, Environment, \mbox{MotorModelDatabase}
+     \textbullet\ \mbox{launchRocket()} / \mbox{setInitialState()} / \mbox{getStates()}\\
+     composition root: wires the Environment into the Propagator};
+
+  % --- model + sim (side by side) ---
+  \node[comp,text width=47mm,below=11mm of core.south west,anchor=north west] (model)
+    {\textbf{model/} \footnotesize physical description\\[1pt]
+     \footnotesize Part composite tree (\texttt{parts/*})\\
+     Propagatable + RocketModel\\
+     MotorModel + ThrustCurve\\
+     motor DB + RASP / RSE loaders\\
+     ThrustCurveClient (REST)\\
+     DesignSerializer (.qrd)};
+  \node[comp,text width=47mm,below=11mm of core.south east,anchor=north east] (sim)
+    {\textbf{sim/} \footnotesize numerics\\[1pt]
+     \footnotesize Propagator ODE loop\\
+     RK4 / RK45 solvers \textbullet\ StateData\\
+     Environment: gravity, atmosphere,\\
+     geoid \textbullet\ WindModel (dormant)\\
+     Aero \textbullet\ TrajectoryStatistics};
+
+  % --- utils (foundation) ---
+  % anchored off the lower of the two mid-layer boxes, so it can never paint
+  % over the row above regardless of which box wraps taller.
+  \path let \p1 = (model.south west), \p2 = (sim.south) in
+    coordinate (midrowbottom) at (\x1, {min(\y1,\y2)});
+  \node[comp,text width=104mm,anchor=north west,fill=qrGray!8,draw=qrGray]
+    (utils) at ([yshift=-7mm]midrowbottom)
+    {\textbf{utils/} \footnotesize Logger singleton \textbullet\ Eigen typedefs
+     (\texttt{Vector3}, \texttt{Matrix3}, \texttt{Quaternion}) \textbullet\
+     CurlConnection (libcurl GET) \textbullet\ Bin\\
+     \footnotesize links only libcurl + eigen --- never includes model/ or sim/,
+     which keeps the layering acyclic};
+
+  % --- model <-> sim bridge note ---
+  \node[draw=qrTeal,fill=qrTeal!7,rounded corners=2pt,line width=0.5pt,
+        text width=31mm,align=left,font=\footnotesize,right=5mm of core.east,anchor=west] (bridge)
+    {\textbf{Propagatable} (in \texttt{model/}) is the model$\leftrightarrow$sim
+     bridge: 6 pure virtuals --- \texttt{getForces()}, \texttt{getTorques()},
+     \texttt{getMass(t)}, \texttt{terminateCondition()}, \ldots\ The Propagator
+     holds it as a \texttt{shared\_ptr}.};
+
+  % --- edges ---
+  \draw[uses] (gui.south) -- (core.north -| gui.south) node[flowlbl,midway]{links};
+  \draw[uses] (cli.south) -- (core.north);
+  \draw[uses] (viz.south) -- (core.north -| viz.south) node[flowlbl,midway]{links};
+  \draw[dep] (core.south -| model.north) -- (model.north);
+  \draw[dep] (core.south -| sim.north) -- (sim.north);
+  % model links sim (real dependency: Propagatable/RocketModel use sim::Aero, StateData)
+  \draw[dep] ([yshift=-4mm]model.north east) -- ([yshift=-4mm]sim.north west)
+    node[flowlbl,pos=0.5,above=6mm]{uses \texttt{sim::Aero}, StateData};
+  \draw[dep] (model.south) -- (model.south |- utils.north);
+  \draw[dep] (sim.south) -- (sim.south |- utils.north);
+  \draw[->,qrTeal,line width=0.6pt,dashed] (bridge.west) -- (core.east);
+
+\end{tikzpicture}

@@ -1,0 +1,318 @@
+\section{The model layer: part tree, placement, and mass properties}\label{sec:model}
+
+The model layer describes a rocket as a composite tree of \code{model::part::Part} nodes, each of
+which is simultaneously one component and the root of a sub-tree whose mass, center of mass, and
+inertia tensor it aggregates on demand (\src{model/parts/Part.h}{25}). Three mechanisms define the
+layer: an ownership tree with move-only attachment, stable ids, and polymorphic deep-copy; an
+intent-based placement model whose only stored spatial relationship is a \code{StationLink}, every
+absolute pose being derived by a single resolver; and a two-pass, time-aware mass-properties walk
+cached behind a mass-delta gate. The layer also exhibits, in concentrated form, this review's
+recurring motif: several of its seams --- the reserved placement quaternion, the per-seam radial
+check, the live-length re-resolution machinery, the Barrowman composition --- are finished and
+tested but have no production consumer yet.
+
+\subsection{Tree ownership, identity, and duplication}\label{sec:model-tree}
+
+\code{Part} is an abstract base --- \code{typeName()} and \code{cloneShallow()} are pure
+(\src{model/parts/Part.h}{181}, \src{model/parts/Part.h}{217}) --- owning its children as a vector
+of \cppinline|std::pair<std::shared_ptr<Part>, StationLink>| (\src{model/parts/Part.h}{288}),
+with a non-owning \cppinline|Part* parent| used solely to propagate staleness upward
+(\src{model/parts/Part.h}{222}). At the value level a part is neither copyable nor movable ---
+assignment is deleted and the copy constructor protected, so a subclass cannot be sliced and ``a
+part lives at one place in one tree'' (\src{model/parts/Part.h}{66}). Attachment transfers
+ownership by move: \code{addChildPart} rejects a null child, an already-parented child, and any
+cycle-forming attachment as logged no-ops (\src{model/parts/Part.cpp}{73}), then re-parents,
+emplaces, and dirties both the composite and placement caches up the ancestor chain
+(\src{model/parts/Part.cpp}{97}). \code{removeChildById} moves the owning pointer out, clears the
+detached node's parent, dirties the ex-parent chain, and returns the intact sub-tree
+(\src{model/parts/Part.cpp}{277}).
+
+Identity is separated from naming: each part gets a process-unique \code{Id} from a relaxed atomic
+counter starting at 1, with 0 reserved as none/invalid (\src{model/parts/Part.cpp}{28}); ids
+survive adoption, are refreshed on copy, and are deliberately not serialized
+(\src{model/parts/Part.h}{171}). Duplication has one path: \code{clone()} calls the pure
+\code{cloneShallow()} (implemented per type via the protected copy constructor,
+\src{model/parts/BodyTube.h}{63}) to reproduce the node's dynamic type, then recursively clones
+children and copies each \code{StationLink} verbatim (\src{model/parts/Part.cpp}{106}). One
+consequence deserves stating plainly: apart from \code{setMass}/\code{setI}
+(\src{model/parts/Part.h}{74}), a part is immutable after construction --- no concrete type
+exposes a geometry setter (\src{model/parts/BodyTube.h}{69}), so changing a dimension means
+building a replacement part and losing the id.
+
+\subsection{Frame convention and the StationLink placement model}\label{sec:model-placement}
+
+Every part lives in its own \zfwd{} frame, occupying $z \in [-L, 0]$ with the fore plane at the
+local origin (\src{model/parts/Part.h}{130}). Geometry is exposed through closed-form silhouette
+virtuals \code{radiusOuterAt}/\code{radiusInnerAt} (\src{model/parts/Part.h}{138}), an
+\code{axialLength()} envelope span defaulting to \code{getLength()}
+(\src{model/parts/Part.h}{146}), an \code{isSolid()} heuristic (\src{model/parts/Part.h}{151}),
+and \code{stationAt(station01)}, which clamps to $[0,1]$ and maps the fraction to $z = (s-1)L$
+(\src{model/parts/Part.cpp}{305}). \code{innerCapacityAt} encodes the solid-host rule the
+diagnostics rely on: a bored part is bounded by its inner wall, a solid part by its outer skin
+(\src{model/parts/Part.cpp}{314}).
+
+Placement is expressed as intent, not coordinates. A \code{StationLink} carries a fractional
+station on the parent (default 0, aft plane), one on the child (default 1, fore plane), a gap in
+metres whose sign convention is selected by a \code{SeatKind}, and a quaternion \code{childRot}
+``reserved for 6-DOF; identity in 3-DOF'' (\src{model/parts/Placement.h}{49}). \code{SeatKind} is
+closed at three values --- \code{Abut} (rim-to-rim, gap a forward standoff), \code{NestInBore}
+(child OD inside parent ID, gap an insertion depth moving the child aft), and \code{OnSurface}
+(child on the parent's outer wall) --- since a rigid axisymmetric stack admits only three radial
+relationships (\src{model/parts/Placement.h}{32}). Sugar verbs \code{abut}, \code{nestInBore}, and
+\code{seatOnWall} build links by value (\src{model/parts/Placement.h}{127}); the default link
+means ``child fore plane abuts parent aft plane'' (\src{model/parts/Placement.h}{46}). A single
+resolver converts intent to geometry (\src{model/parts/Placement.cpp}{20}):
+
+\begin{minted}{cpp}
+   const double signedGap = (link.seat == SeatKind::NestInBore) ? -link.gap : link.gap;
+
+   // Line the child's station up with the parent's, then displace by the gap. The pose locates the
+   // child's fore plane, which sits c.z from its chosen station -- hence the `- c.z`.
+   const double childOriginZ = p.z + signedGap - c.z;
+\end{minted}
+
+\noindent Both stations are read at live lengths and composition is coaxial in 3-DOF
+(\src{model/parts/Placement.cpp}{34}); \code{Pose} pairs a fore-plane origin with a quaternion
+whose \code{compose()} is the general rigid-transform law, degenerating to vector addition under
+identity (\src{model/parts/Placement.h}{74}); \code{resolvePlacements} is a depth-first walk
+yielding one pose per part in deterministic attachment order
+(\src{model/parts/Placement.cpp}{38}).
+
+\begin{designrule}[Placement is derived, never stored]
+Absolute pose exists only as resolver output --- ``the single authority for absolute placement:
+intent (StationLink) in, geometry (Pose) out. Both the simulator and the visualizer consume its
+output, so the two cannot disagree'' (\src{model/parts/Placement.h}{148}). The serializer honors
+the rule: a \code{.qrd} file stores only \code{<link>} intent and re-resolves on load
+(\src{model/DesignSerializer.cpp}{93}; \cref{sec:persistence}).
+\end{designrule}
+
+Two caveats temper the picture. The stations are documented against \emph{live} length ---
+``editing a part's length moves the seam'' (\src{model/parts/Placement.h}{42}), echoed by the
+placement-gate comment's ``or a length changed'' (\src{model/parts/Part.cpp}{162}) --- yet no
+geometry mutation path exists, so the live-length machinery is future-proofing with no current
+trigger. And the authoring surface is far narrower than the model: the REPL's \code{addpart}
+attaches everything with \cppinline|abut(offset.z())| (\src{cli/Repl.cpp}{872}), leaving
+\code{NestInBore}, \code{OnSurface}, and non-default stations reachable only from a design file or
+C++ (\src{model/DesignSerializer.cpp}{186}; \cref{sec:interfaces}).
+
+\subsection{Envelope-sweep diagnostics and the fail-closed gate}\label{sec:model-sweep}
+
+Of the two diagnostic layers shipped, exactly one is wired in. Layer~2, \code{sweepOverlaps}, is
+the enforced gate: it builds a world axial interval per part from \code{axialLength()}
+(\src{model/parts/Placement.cpp}{112}), excludes an offender's legitimate neighbours --- itself,
+its descendants, its direct seat parent (\src{model/parts/Placement.cpp}{124}) --- sorts intervals
+by aft station (\src{model/parts/Placement.cpp}{151}), samples each offender's outer radius at
+feature breakpoints (its own endpoints plus every other endpoint within its span,
+\src{model/parts/Placement.cpp}{160}), tests it against the smallest-id covering host's capacity
+under the solid-host rule (\src{model/parts/Placement.cpp}{185}), and keeps the worst violation
+per (offender, host) pair (\src{model/parts/Placement.cpp}{201}). A hollow-host guard suppresses
+the false positive of an offender sitting on or outside the host skin, e.g.\ a fin set's body disc
+over a co-radial aft coupler (\src{model/parts/Placement.cpp}{193}); diagnostics name parts by
+stable id, never by name or pointer (\src{model/parts/Placement.h}{99}). Resolve and verdict are
+cached per structural change --- mass edits never set \code{placementDirty}
+(\src{model/parts/Part.cpp}{160}) --- and consumed fail-closed: \code{computeCompositeAt} refuses
+a failed solve with a \cppinline|std::runtime_error| carrying the first located diagnostic, on the
+stated principle that ``a self-intersecting design is a hard, located failure, never a
+silently-wrong mass/inertia'' (\src{model/parts/Part.cpp}{182}), and the visualizer reads the same
+cached verdict to flag the offender (\src{visualizer/RocketMesh.cpp}{440}). The sweep runs once
+per edit, so the per-step cost is a flag read (\src{model/tests/DiagnosticsGateTests.cpp}{66}).
+
+Three things bound what the sweep checks. The first is a correctness hole:
+
+\begin{hardfail}[The monotonicity premise fails for the sphere]
+The breakpoint scheme is justified in-source by ``profiles are closed-form and monotone between
+breakpoints, so this is exact, not sampled'' (\src{model/parts/Placement.cpp}{161}). That premise
+is false for \code{HollowSphere}, whose silhouette $\sqrt{r_o^2 - (z + r_o)^2}$ is zero at both
+poles --- its own interval endpoints --- and maximal at the mid-span equator
+(\src{model/parts/HollowSphere.cpp}{53}). A sphere nested inside a tube narrower than its diameter
+evaluates radius $\approx 0$ at every breakpoint (unless another part's endpoint happens to land
+near the equator) and passes the sweep undetected. No test exercises a sphere in the sweep: the
+fixtures are tubes, cones, and fins (\src{model/tests/ResolverSweepTests.cpp}{188}). \fail
+\end{hardfail}
+
+The second is a scoping rule: at each breakpoint the sweep tests capacity against a \emph{single}
+host --- the smallest id among covering, non-excluded intervals
+(\src{model/parts/Placement.cpp}{185}) --- so a violation against a larger-id covering host goes
+unevaluated at that station. The tie-break is pinned by test as intended
+(\src{model/tests/ResolverSweepTests.cpp}{325}), but it makes the sweep a per-breakpoint
+single-host check, not an all-hosts check. The third is the dormant Layer~1:
+\code{radialSeamCheck} validates one seam's mated radii per \code{SeatKind}
+(\src{model/parts/Placement.cpp}{56}) and is implemented and unit-tested, but nothing in
+production calls it --- not \code{ensurePlacementCache}, not \code{addChildPart}, not the
+serializer or CLI (\src{model/parts/Part.cpp}{170}; call sites only in
+\src{model/tests/ResolverSweepTests.cpp}{194}). Its \code{zWorld} is even left parent-local behind
+a comment promising ``the root-frame z is added once a pose is known''
+(\src{model/parts/Placement.cpp}{87}) --- a promise no caller exists to fulfil. This is the
+built-but-unconsumed motif in miniature.
+
+\subsection{The two-pass composite walk and its caches}\label{sec:model-composite}
+
+The tensor convention drives everything else: the bare tensor (\code{getI}/\code{setI}) is
+\emph{per-unit-mass} (geometric, $\mathrm{m^2}$) for this part alone, while \code{getCompositeI}
+is the full mass-weighted tensor ($\mathrm{kg\,m^2}$) of the sub-tree about the composite CM
+(\src{model/parts/Part.h}{30}); the constructor seeds the composite as \cppinline|m * I|
+(\src{model/parts/Part.cpp}{41}). All closed-form tensors in \code{model::InertiaTensors} ---
+spheres, tube, solid cone, conical shell, and the trapezoidal fin set with its baked-in $N$-fin
+rotate-and-sum (\srcf{model/InertiaTensors.h}, \src{model/InertiaTensors.cpp}{11}) --- follow the
+per-unit-mass convention and are pinned against numeric-integration oracles
+(\src{model/tests/InertiaTensorsTests.cpp}{186}; \cref{sec:testing}).
+
+\code{computeCompositeAt(t)} re-weights the cached geometry by \code{getMass(t)}. Pass~1 forms the
+mass-weighted composite CM, locating each part at its resolved fore-plane origin plus the local CM
+station $-L/2 + \code{getCenterMassOffset()}.z()$ (\src{model/parts/Part.cpp}{199}), with a guard
+that leaves a fully massless sub-tree's CM at the origin rather than dividing by zero
+(\src{model/parts/Part.cpp}{210}). Pass~2 shifts each part's mass-weighted tensor to that CM with
+the parallel-axis displacement tensor $f(d) = (d \cdot d)\,I_3 - d\,d^{\mathsf T}$
+(\src{model/parts/Part.cpp}{19}), accumulating
+\cppinline|c.mass * c.part->getI() + c.mass * parallelAxisTerm(d)|
+(\src{model/parts/Part.cpp}{221}). What pass~2 deliberately omits is the $R\,I\,R^{\mathsf T}$
+rotation of each child tensor --- identity in 3-DOF, skipped ``to stay bit-stable'' with an
+explicit \code{TODO(6-DOF)} (\src{model/parts/Part.cpp}{217}); the class doc names the inertia
+shift as ``the one piece still assuming identity'' (\src{model/parts/Part.h}{38}). The omission
+already shapes the catalog: an azimuthally-arrayed component cannot be $N$ rotated children, which
+is precisely why \code{FinSet} bakes its $N$-fin sum into one analytic leaf
+(\src{model/parts/FinSet.h}{25}).
+
+The result sits behind two gates: the structural flag (set by \code{setMass}/\code{setI} and the
+tree mutators, propagated up the parent chain, \src{model/parts/Part.h}{239}), and the
+\emph{mass-delta gate} (\src{model/parts/Part.cpp}{136}):
+
+\begin{minted}{cpp}
+   const double mNow = getCompositeMass(t);
+   if(needsRecomputing || mNow != builtAtCompositeMass)
+   {
+      const CompositeProperties c = computeCompositeAt(t);
+      compositeMass          = c.mass;
+      compositeCm            = c.cm;
+      compositeInertiaTensor = c.inertia;
+      builtAtCompositeMass   = mNow;
+      needsRecomputing       = false;
+   }
+\end{minted}
+
+\noindent The exact \cppinline|!=| against a NaN-seeded sentinel (\src{model/parts/Part.h}{248})
+is deliberate: during a burn the motor mass differs every step, so CM and tensor recompute every
+step; after burnout \code{getMass(t)} repeats bit-for-bit and the cache freezes, immune to the
+integrator's repeated and rejected stage-time queries. \code{getCompositeMass(t)} itself stays an
+ungated cheap live sum --- the ODE divisor and the gate key, doing no tensor or placement work
+(\src{model/parts/Part.cpp}{118}) and deliberately not diagnostics-gated
+(\src{model/tests/DiagnosticsGateTests.cpp}{81}).
+
+\begin{keyinsight}[The gate keys on total mass alone]
+The mass-delta gate compares only the composite total (\src{model/parts/Part.cpp}{137}). A second
+time-varying-mass part whose burn kept the total constant while shifting the CM would be served a
+stale CM and tensor. Under the single-motor assumption (\cref{sec:model-rocketmodel}) this cannot
+arise, but the gate's soundness is coupled to that assumption, and no test covers two simultaneous
+burners.
+\end{keyinsight}
+
+One adjacent capability merits a single paragraph here. \code{getCompositeAero(refArea)} folds
+each part's Barrowman contribution additively over the resolved placement, re-expressing every
+$x_{cp}$ onto the sub-tree-root (tip) datum --- the same datum as \code{getCompositeCm}, so
+$cp - cg$ is directly the static margin (\src{model/parts/Part.cpp}{231}) --- with the reference
+area taken as the widest frontal disc, not a sum and not inflated by fins
+(\src{model/parts/Part.h}{166}). The machinery is implemented and well tested at the model layer,
+but its only callers are tests; the flight path does not consume it (\cref{sec:aero}).
+
+\subsection{The concrete part catalog}\label{sec:model-catalog}
+
+Five concrete types exist (\src{model/parts/Parts.h}{4}); \cref{tab:model-catalog} summarizes
+them. Construction is mediated by \code{PartFactory}: one type-agnostic optional-field struct
+\code{PartParams} is shared by the CLI parser, \code{makePart()}, and \code{params()} reflection
+so the field vocabulary cannot drift (\src{model/parts/PartFactory.h}{27}); \code{makePart}
+dispatches on the exact \code{typeName()} string and throws on missing fields or unknown types
+(\src{model/parts/PartFactory.cpp}{27}).
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l X X@{}}
+\toprule
+Part & Geometry and mass model & Distinctives and limits \\
+\midrule
+\code{BodyTube} &
+Uniform-density hollow cylinder, $m = \rho\,\pi(r_o^2 - r_i^2)L$
+(\src{model/parts/BodyTube.cpp}{28}); solid rod when $r_i = 0$
+(\src{model/parts/BodyTube.h}{55}). &
+Ctor validates $0 \le r_i < r_o$, $L > 0$, $\rho > 0$ (\src{model/parts/BodyTube.cpp}{22});
+drag contribution left 0, skin friction named ``its eventual contribution''
+(\src{model/parts/BodyTube.cpp}{38}). \\
+\addlinespace
+\code{ConicalNoseCone} &
+Solid cone or thin lateral shell (\src{model/parts/ConicalNoseCone.h}{21}); CM at $L/4$ (solid) or
+$L/3$ (shell) from the base (\src{model/parts/ConicalNoseCone.cpp}{49}). &
+``A straight right circular cone'' is the only profile (\src{model/parts/ConicalNoseCone.h}{22})
+--- no ogive, parabolic, elliptical, power-series, or Haack shapes. \\
+\addlinespace
+\code{FinSet} &
+$N \ge 3$ identical trapezoidal flat-plate fins as \emph{one} analytic leaf
+(\src{model/parts/FinSet.h}{22}); axial extent equals root chord
+(\src{model/parts/FinSet.h}{61}). &
+$N < 3$ warns and reuses the $N \ge 3$ approximation rather than throwing
+(\src{model/parts/FinSet.cpp}{36}); reference area is the body disc $\pi r_b^2$, not the fin
+extent (\src{model/parts/FinSet.h}{71}); only trapezoidal planforms. \\
+\addlinespace
+\code{HollowSphere} &
+Thick-walled shell centered at $z = -r_o$, spanning $[-2r_o, 0]$
+(\src{model/parts/HollowSphere.h}{51}). &
+Overrides \code{isSolid()} --- the bore vanishes at the poles
+(\src{model/parts/HollowSphere.h}{59}); doubles as the boot placeholder body
+(\src{model/RocketModel.cpp}{27}). \\
+\addlinespace
+\code{Motor} &
+Zero-length leaf wrapping a \code{MotorModel} by value; \code{getMass(t)} returns the burn-time
+mass (\src{model/parts/Motor.h}{40}); tensor is a constant solid cylinder, or zero when geometry
+is unknown (\src{model/parts/Motor.cpp}{25}). &
+The one override that makes the tree's mass, CG, and inertia time-aware
+(\src{model/parts/Motor.h}{18}). No geometric envelope, so motor fit is never checked by the
+sweep (\src{model/RocketModel.cpp}{118}); not factory-constructible
+(\src{model/parts/PartFactory.cpp}{73}). \\
+\bottomrule
+\end{tabularx}
+\caption{The concrete part catalog at commit \code{254cd41}.}\label{tab:model-catalog}
+\end{table}
+
+Measured against what a real rocket needs, the catalog is sparse. Missing outright are transitions
+and boattails, curved nose profiles, inner and motor-mount tubes, tube couplers as a first-class
+type (a coupler today is a nested \code{BodyTube}), centering rings, bulkheads, launch lugs and
+rail buttons, recovery devices (parachutes, streamers, shock cords), discrete mass objects, and
+pods or strap-on boosters (\src{model/parts/PartFactory.cpp}{75}). \fabsent{} One convention is
+worth flagging as convention rather than constraint: every committed \code{.qrd} fixture mounts
+its \code{FinSet} with \code{seat="OnSurface"} on a \code{BodyTube} (e.g.\
+\src{tests/data/designs/large38\_basic.qrd}{13}), but nothing enforces this --- a REPL-authored
+fin set gets an \code{Abut} link. The quantitative OpenRocket comparison is consolidated in
+\cref{sec:comparison}; the ranked gap list, in \cref{sec:roadmap}.
+
+\subsection{RocketModel: tree root and the Propagatable bridge}\label{sec:model-rocketmodel}
+
+\code{RocketModel} holds the tree root and implements \code{Propagatable}, the
+model$\leftrightarrow$sim bridge (\src{model/Propagatable.h}{23}, \src{model/RocketModel.h}{31}).
+On the mass side --- this section's half of the bridge --- it is a thin, honest delegation:
+\code{getMass(t)} returns \cppinline|topPart->getCompositeMass(t)| with the motor included as a
+child part, \code{setMass} writes only the top part's dry mass (\src{model/RocketModel.cpp}{36},
+\src{model/RocketModel.h}{87}), \code{getCompositeInertiaTensor} delegates to
+\code{getCompositeI} (\src{model/RocketModel.cpp}{43}), and \code{writeMassProperties} snapshots
+the mutually consistent gated mass/CG/inertia triple into \code{StateData} per recorded step
+(\src{model/RocketModel.cpp}{53}; called at \src{sim/Propagator.cpp}{132}).
+\code{terminateCondition} ends the flight when descending below the launch site, $z < 0$ and
+$v_z < 0$ (\src{model/RocketModel.cpp}{62}). The force side --- world-$z$ thrust ``assumed through
+the CM'' (\src{model/RocketModel.cpp}{70}), a flat $C_d A$ drag term, \code{getTorques} returning
+zero (\src{model/RocketModel.cpp}{94}) --- belongs to \cref{sec:aero}; the standing consequence
+here is that the composite $I(t)$ and $CG(t)$ the tree so carefully maintains have, today, exactly
+one consumer: the per-step state snapshot.
+
+The part-tree facade keeps a borrowed \cppinline|part::Motor*| handle consistent across edits:
+\code{setRoot}, \code{addPart}, and \code{removePart} all re-resolve it by a depth-first search
+for the \emph{first} \code{Motor} node --- an explicit single-motor assumption
+(\src{model/RocketModel.cpp}{13}); a second motor in the tree would be silently ignored by thrust.
+\code{setMotorModel} creates the \code{Motor} child on first call and swaps the wrapped model
+in place on later calls, so the borrowed pointer never dangles (\src{model/parts/Motor.cpp}{16});
+where that child seats --- at the airframe CM with a hard-coded zero offset, one motor, no stages
+--- is \cref{sec:motors}'s subject. Two smaller dormant seams
+round out the picture: \code{deriveReferenceAreaFromGeometry()} computes the Barrowman-convention
+reference area from the tree (\src{model/RocketModel.cpp}{48}) but has no production caller ---
+the drag model runs on a hard-coded 38\,mm-tube default (\src{model/RocketModel.h}{141};
+\cref{sec:aero}) --- and \code{Propagatable} still carries a default-constructed
+\code{sim::Aero aeroData} member that nothing reads (\src{model/Propagatable.h}{61},
+\src{sim/Aero.h}{63}). Both fit the layer's character: the seams toward 6-DOF and real
+aerodynamics are built and tested here first, and \cref{sec:roadmap} ranks what it will take to
+consume them.

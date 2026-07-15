@@ -1,0 +1,613 @@
+\section{The motor subsystem}\label{sec:motors}
+
+The motor subsystem is a translation layer: it turns catalog motor data --- a burn's worth
+of measured thrust samples plus manufacturer metadata --- into the two time functions the
+simulation core consumes during the powered ascent of \cref{sec:primer}: thrust $F(t)$ in
+newtons and motor mass $m(t)$ in kilograms. Thrust enters the force model as a body-$z$
+force through the center of mass \src{model/RocketModel.cpp}{71}; mass enters through the
+part tree, where a \code{part::Motor} leaf reports the burning motor's mass into the
+composite walk of \cref{sec:parts} \src{model/parts/Motor.h}{40}. Everything else here ---
+piecewise-linear curves, a derived mass table, a keyed store, three ingest paths ---
+exists to produce those two functions reliably from three interchange formats.
+\Cref{fig:motors-uml} maps the classes.
+
+\begin{physbox}[What a hobby motor ships as data]
+A commercial model-rocket motor is a sealed solid-propellant cartridge, certified with a
+measured thrust-versus-time curve, a total impulse $I_{tot}=\int F\,dt$ in newton-seconds
+($\mathrm{N\,s}$), a propellant mass, and a loaded mass. The catalog grammar is compact:
+a code like ``G80T'' reads as impulse class G, average thrust roughly $80\unit{N}$,
+propellant type letter T. Impulse classes are letters, each doubling the ceiling of the
+one before --- A is at most $2.5\ \mathrm{N\,s}$, B at most 5, up through M at
+$10240\ \mathrm{N\,s}$ --- with fractional classes 1/4A and 1/2A below A. Motors also
+list \emph{delay} options: seconds between burnout and the recovery-deploying ejection
+charge, with ``plugged'' (no charge) as a special case.
+\end{physbox}
+
+\tikzfig{uml-motor}{The motor subsystem. \code{MotorModelDatabase} is the single
+client-facing surface: a \code{std::map} of \code{MotorModel} values keyed by common name
+\srccap{model/MotorModelDatabase.h}{127}. Two local file loaders --- RockSim \code{.rse}
+and RASP \code{.eng} --- are constructed stack-locally inside the import methods
+\srccap{model/MotorModelDatabase.cpp}{66}, and the thrustcurve.org REST client sits
+behind the abstract \code{ThrustCurveAPI} seam \srccap{model/ThrustCurveClient.h}{68},
+injectable only through a private, friend-only constructor. Each \code{MotorModel} owns
+one \code{ThrustCurve} by value \srccap{model/MotorModel.h}{343} and derives a 128-point
+propellant mass curve from it.}{fig:motors-uml}
+
+\subsection{The runtime model: \code{MotorModel}}\label{sec:motors-model}
+
+\code{model::MotorModel} \src{model/MotorModel.h}{26} is a plain value type --- copyable,
+movable, owned by value everywhere: in the database's map, in the \code{part::Motor} tree
+leaf, in the loaders' output vectors. It composes three pieces of state: a public
+\code{MetaData} record of catalog fields \src{model/MotorModel.h}{285}
+(\cref{tab:motors-metadata}; public with a standing \code{TODO} to privatize
+\src{model/MotorModel.h}{282}), a \code{ThrustCurve} owned by value
+\src{model/MotorModel.h}{343}, and a derived \code{massCurve} --- a 128-point table of
+remaining propellant versus burn time \src{model/MotorModel.h}{345}, recomputed whenever
+metadata is set (\cref{sec:motors-mass}).
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}llX l@{}}
+\toprule
+Field & Units & Meaning & \\
+\midrule
+\code{commonName} & --- & the database key; e.g.\ ``A8'', ``G80T'' & \src{model/MotorModel.h}{301} \\
+\code{impulseClass} & --- & motor letter: ``1/4A'', ``1/2A'', ``A''\ldots``M'' & \src{model/MotorModel.h}{306} \\
+\code{diameter}, \code{length} & mm & casing geometry --- deliberately \emph{not} SI; hobby-catalog convention & \src{model/MotorModel.h}{305} \\
+\code{propWeight} & kg & propellant mass; ``loaders convert; consumed as kg'' & \src{model/MotorModel.h}{314} \\
+\code{totalWeight} & kg & loaded motor mass including casing & \src{model/MotorModel.h}{317} \\
+\code{totalImpulse} & $\mathrm{N\,s}$ & certified total impulse & \src{model/MotorModel.h}{316} \\
+\code{avgThrust}, \code{maxThrust} & N & catalog thrust summary values & \src{model/MotorModel.h}{298} \\
+\code{burnTime} & s & burn duration; gates the mass model & \src{model/MotorModel.h}{299} \\
+\code{delays} & s & ejection-delay options; \code{1000} is the plugged sentinel & \src{model/MotorModel.h}{303} \\
+\code{manufacturer}, \code{type}, \code{availability}, \code{certOrg} & --- & enum wrappers, each with a \code{str()}/\code{toEnum()} string round trip & \src{model/MotorModel.h}{309} \\
+\code{motorIdTC} & --- & 24-character hex thrustcurve.org identifier & \src{model/MotorModel.h}{312} \\
+\bottomrule
+\end{tabularx}
+\caption{Selected \code{MotorModel::MetaData} fields \srccap{model/MotorModel.h}{285}.
+The units column is the SI story in miniature: weights are kilograms by documented
+contract --- every ingest path normalizes to kg at the boundary --- while
+\code{diameter} and \code{length} stay in millimeters, converted to meters only where
+physics needs them \srccap{model/parts/Motor.cpp}{27}.}\label{tab:motors-metadata}
+\end{table}
+
+The unit discipline deserves one explicit sentence, because it is the one place
+QtRocket's SI-throughout convention (\cref{sec:overview}) admits a deliberate exception.
+Weights are kilograms \emph{at the \code{MotorModel} boundary} --- each ingest path
+normalizes from its source's native unit (\cref{tab:motors-ingest}) --- while
+\code{diameter} and \code{length} stay in millimeters because every source catalog
+quotes them that way; the one consumer that needs meters, the \code{part::Motor} inertia
+tensor, converts at the point of use \src{model/parts/Motor.cpp}{27}. A regression pins
+the kilogram contract: a 1/4A micro-rocket flown from an online-sourced database must
+lift off with an ignition mass under $0.05\unit{kg}$, which the gram-as-kilogram failure
+mode (a $6.1\unit{kg}$ ``motor'') cannot do \src{tests/DesignMatrixTests.cpp}{269}.
+
+\subsection{\code{ThrustCurve}: piecewise-linear thrust}\label{sec:motors-thrust}
+
+\code{ThrustCurve} \src{model/ThrustCurve.h}{12} --- the one motor type in the global
+namespace rather than \code{model::} --- stores the samples as a
+\cppinline|std::vector<std::pair<double, double>>| of (time s, thrust N) pairs
+\src{model/ThrustCurve.h}{38} plus \code{maxTime}, the largest sample time
+\src{model/ThrustCurve.cpp}{24}. A default-constructed curve is a single $(0,0)$ point,
+and an empty sample vector degenerates to the same, ``so \code{getThrust()} always has an
+interval to walk'' \src{model/ThrustCurve.cpp}{19}.
+
+\code{getThrust(t)} \src{model/ThrustCurve.cpp}{47} first shifts into motor-relative time
+(\cppinline|t -= ignitionTime;| \src{model/ThrustCurve.cpp}{50} --- always a zero shift
+in practice, \cref{sec:motors-ignition}), then clamps: outside $[0,\mathtt{maxTime}]$
+thrust is identically zero \src{model/ThrustCurve.cpp}{51}. No thrust before ignition,
+none after the last sample --- after burnout the rocket coasts until the termination
+condition of \cref{sec:simcore}. Inside the window, the code walks for the first sample
+strictly after $t$; an exact hit on a sample time returns that sample directly
+\src{model/ThrustCurve.cpp}{61}, and running off the end returns the last sample's
+thrust \src{model/ThrustCurve.cpp}{67}. The interior case is linear interpolation, in
+the code's own names:
+\begin{equation}
+\mathtt{slope} = \frac{\mathtt{thrustEnd}-\mathtt{thrustStart}}{\mathtt{tEnd}-\mathtt{tStart}},
+\qquad
+F(t) = \mathtt{thrustStart} + (t-\mathtt{tStart})\cdot\mathtt{slope}
+\label{eq:motors-lerp}
+\end{equation}
+\src{model/ThrustCurve.cpp}{85}. The subtlety is the interval's \emph{start}
+(\cref{lst:motors-ramp}): normally the previous sample --- but real catalog curves often
+begin at $t>0$ rather than at the origin, and then there is no previous sample to read.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   // Interval start is the previous sample -- unless t precedes the first sample (i == begin), where
+   // the curve has no (0,0) origin and we ramp from it. std::prev(begin()) here would read out of
+   // bounds.
+   double tStart = 0.0;
+   double thrustStart = 0.0;
+   if(i != thrustCurve.cbegin())
+   {
+      tStart = std::prev(i)->first;
+      thrustStart = std::prev(i)->second;
+   }
+   const double tEnd = i->first;
+   const double thrustEnd = i->second;
+   const double slope = (thrustEnd - thrustStart) / (tEnd - tStart);
+   return thrustStart + (t - tStart) * slope;
+\end{minted}
+\caption{The implicit-origin ramp \srccap{model/ThrustCurve.cpp}{73}. When the query time
+precedes the first measured sample, the curve interpolates from an implicit $(0,0)$
+origin instead of dereferencing \code{std::prev(begin())}.}\label{lst:motors-ramp}
+\end{listing}
+
+\begin{keyinsight}[Why the origin ramp exists]
+Curves whose first sample sits at $t>0$ used to send the interpolation walk through
+\cppinline|std::prev(begin())| --- an out-of-bounds heap read whose value depended on
+allocator state. The regression test preserves the symptom in its comment: ``an
+order-dependent, non-reproducible apogee'' \src{model/tests/ThrustCurveTests.cpp}{45},
+and pins the fix's exact ramp --- first sample at $t=0.05$, oracles $F(0)=0$,
+$F(0.025)=5$, $F(0.05)=10$ \src{model/tests/ThrustCurveTests.cpp}{46}. \ok
+\end{keyinsight}
+
+One level up, \code{MotorModel::getThrust(simTime)} adds the burnout latch: once
+\code{simTime} exceeds \cppinline|thrust.getMaxTime() + ignitionTime| the motor returns
+zero forever, logging ``motor burnout occurred'' exactly once through the
+\code{burnOutOccurred} flag \src{model/MotorModel.cpp}{72}. Otherwise it delegates the
+\emph{absolute} simulation time straight to the curve \src{model/MotorModel.cpp}{82} ---
+correct only because ignition always happens at $t=0$ (\cref{sec:motors-ignition}).
+
+\subsection{The mass model: constant-$I_{sp}$ depletion}\label{sec:motors-mass}
+
+\begin{physbox}[Why mass flow is proportional to thrust]
+A rocket motor produces thrust by expelling mass: $F = \dot{m}\,v_e$, where $v_e$ is the
+effective exhaust velocity. If $v_e$ is constant over the burn --- the standard
+hobby-simulator assumption, equivalent to constant specific impulse
+$I_{sp} = v_e/g_0$ --- the propellant depletion rate is proportional to instantaneous
+thrust: $\dot{m}_{prop}(t) = -F(t)/(g_0\,I_{sp})$. Substituting the definition
+$I_{sp} = I_{tot}/(g_0\,m_{prop,0})$, where $m_{prop,0}$ is the initial propellant mass,
+makes $I_{sp}$ cancel entirely:
+\begin{equation}
+\dot{m}_{prop}(t) = -F(t)\,\frac{m_{prop,0}}{I_{tot}}.
+\label{eq:motors-depletion-law}
+\end{equation}
+The proportionality constant is exactly the one that makes the propellant integrate to
+$m_{prop,0}$ when the thrust integrates to $I_{tot}$: hard-burning moments consume
+propellant fast, the tail-off slowly, and the books balance at burnout by construction.
+What constant $I_{sp}$ ignores --- chamber-pressure variation, mass expelled by delay and
+ejection charges --- this model ignores too.
+\end{physbox}
+
+QtRocket implements \cref{eq:motors-depletion-law} as a precomputed table.
+\code{computeMassCurve()} \src{model/MotorModel.cpp}{125} first splits the loaded motor
+into casing and propellant, $\mathtt{emptyMass} = \mathtt{totalWeight} -
+\mathtt{propWeight}$ \src{model/MotorModel.cpp}{127}, computes
+$\mathtt{isp} = \mathtt{totalImpulse}/(g_0\cdot\mathtt{propWeight})$ with
+$g_0 = 9.80665\unit{m/s^2}$ \src{model/MotorModel.cpp}{130}
+\src{utils/math/Constants.h}{10} --- a member that, as \cref{eq:motors-depletion-law}
+predicts, cancels out of the depletion arithmetic and is in fact never read anywhere
+(\cref{sec:incomplete}) --- then builds the 128-point table
+(\cref{lst:motors-masscurve}). With $\Delta t = \mathtt{burnTime}/127$
+\src{model/MotorModel.cpp}{135} and \code{propMass} seeded to \code{propWeight}
+\src{model/MotorModel.cpp}{137}, the loop is a left Riemann sum over
+\cref{eq:motors-depletion-law}:
+\begin{equation}
+\mathtt{propMass}_{i+1} \;=\; \mathtt{propMass}_i \;-\;
+F(t_i)\,\Delta t\,\frac{\mathtt{propWeight}}{\mathtt{totalImpulse}},
+\qquad t_i = i\,\Delta t
+\label{eq:motors-riemann}
+\end{equation}
+\src{model/MotorModel.cpp}{141}. The 128th point is then forced to exact depletion:
+\cppinline|massCurve.push_back(std::make_pair(data.burnTime, 0.0));|
+\src{model/MotorModel.cpp}{143}. Pinning the endpoint zeroes out whatever residue the
+Riemann sum accumulated, so the tabulated propellant mass is first-order-approximate
+between samples but \emph{exact} at ignition and burnout --- post-burn mass is exactly
+\code{emptyMass}, bit for bit, which is what lets the part tree's composite cache freeze
+stably after burnout (\cref{sec:parts}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   // Precompute the mass curve as a lookup table: keeps repeated getMass()/getThrust() calls within
+   // one time step consistent, and speeds up the sim. 128 sample points (RASP files cap at 32).
+   massCurve.reserve(128);
+   double timeStep = data.burnTime / 127.0;
+   double t = 0.0;
+   double propMass{data.propWeight};
+   for(std::size_t i = 0; i < 127; ++i)
+   {
+      massCurve.push_back(std::make_pair(t + i*timeStep, propMass));
+      propMass -= thrust.getThrust(t + i*timeStep) * timeStep * data.propWeight / data.totalImpulse;
+   }
+   massCurve.push_back(std::make_pair(data.burnTime, 0.0));
+\end{minted}
+\caption{The 128-point depletion table \srccap{model/MotorModel.cpp}{132}: a left Riemann
+sum of the constant-$I_{sp}$ law with the final point pinned to exact depletion. Note
+what is absent --- the vector is reserved but never cleared.}\label{lst:motors-masscurve}
+\end{listing}
+
+\code{getMass(simTime)} serves three regimes --- ``empty mass + remaining propellant
+mass'' \src{model/MotorModel.cpp}{30}. Before ignition: \code{totalWeight}, the loaded
+motor \src{model/MotorModel.cpp}{32}. During the burn
+($\mathtt{simTime}-\mathtt{ignitionTime}\le\mathtt{burnTime}$
+\src{model/MotorModel.cpp}{36}): walk the table --- an entry matching within 4 units in
+the last place (\code{utils::math::floatingPointEqual}
+\src{utils/math/UtilityMathFunctions.h}{21}) returns directly
+\src{model/MotorModel.cpp}{43}, otherwise the bracketing interval interpolates exactly as
+the thrust curve does \src{model/MotorModel.cpp}{52}. After: \code{emptyMass}
+\src{model/MotorModel.cpp}{65}. The walk carries no end-iterator guard
+\src{model/MotorModel.cpp}{41}; it is safe because the branch guard caps
+\code{thrustTime} at \code{burnTime} and the table's last entry is the literal pair
+$(\mathtt{burnTime}, 0.0)$, so at the boundary the exact-hit test fires on the final
+element before the iterator can run off the end.
+
+One asymmetry deserves plain statement: \code{getMass} gates the burn on the metadata's
+\code{burnTime} while \code{getThrust} gates on the curve's own \code{maxTime}
+\src{model/MotorModel.cpp}{36} \src{model/MotorModel.cpp}{72} --- two clocks that agree
+only if the metadata is honest. RASP guarantees agreement by construction, deriving
+\code{burnTime} from the last sample time \src{model/RASPLoader.cpp}{210}; RockSim reads
+\code{burn-time} as an independent file attribute \src{model/RSEDatabaseLoader.cpp}{54},
+so a malformed file could make thrust and mass disagree about when the burn ends.
+
+\begin{designrule}[Curve before metadata]
+\code{setMetaData()}/\code{moveMetaData()} trigger \code{computeMassCurve()}
+\src{model/MotorModel.cpp}{85}, and the mass curve integrates the thrust curve --- so the
+curve must be attached first, or the mass table silently integrates the default $(0,0)$
+curve and the motor holds its full propellant mass until the pinned burnout point. The
+rule is obeyed at every construction
+site --- both file loaders \src{model/RSEDatabaseLoader.cpp}{96}
+\src{model/RASPLoader.cpp}{242}, the REST client \src{model/ThrustCurveClient.cpp}{328},
+and the XML database loader: ``Order matters: setMetaData() triggers computeMassCurve(),
+which integrates the thrust curve, so the curve must be in place first''
+\src{model/MotorModelDatabase.cpp}{303}. It is enforced by convention and comment, not
+by the type system.
+\end{designrule}
+
+
+\begin{keyinsight}[A latent trap: \code{massCurve} is never cleared]
+\code{computeMassCurve()} calls \cppinline|massCurve.reserve(128)| and appends
+\src{model/MotorModel.cpp}{134}; it never clears. Calling \code{setMetaData()} twice on
+the same instance would leave the stale 128 points in front of the new ones, and
+\code{getMass()}'s front-to-back walk would read the stale curve. No current call path
+does this --- every loader builds a fresh instance, and \code{part::Motor::setMotorModel}
+replaces the whole owned object \src{model/parts/Motor.cpp}{18} --- but a future
+metadata-editing feature that mutates a live \code{MotorModel} in place would trip it.
+\end{keyinsight}
+
+\subsection{Ignition}\label{sec:motors-ignition}
+
+Ignition is a boolean latch, set exactly once per flight. The only production call site
+of \code{startMotor} is \code{RocketModel::launch()}:
+\cppinline|motorPart->getMotorModel().startMotor(0.0);| \src{model/RocketModel.cpp}{108},
+invoked by \code{QtRocket::launchRocket()} immediately before the propagation loop
+\src{QtRocket.cpp}{54}. \code{startMotor} sets \code{ignitionOccurred} and records
+\code{ignitionTime} \src{model/MotorModel.h}{328}; the member's declaration warns that
+\code{ignitionTime} is read by the burnout test even before ignition, so garbage there
+would make ``the flight depend on stack/heap layout'' \src{model/MotorModel.h}{341} ---
+it is zero-initialized in the class definition. From ignition onward, thrust flows to
+\code{RocketModel::getForces} \src{model/RocketModel.cpp}{71} and mass flows through the
+\code{part::Motor} leaf into the composite walk \src{model/RocketModel.cpp}{36}
+(\cref{sec:parts}; \cref{sec:simcore} covers the loop that queries both).
+
+\begin{hardfail}[The ignition-time seam is half-wired]
+\code{startMotor(startTime)} accepts any ignition time, and both the mass lookup and the
+burnout latch honor it \src{model/MotorModel.cpp}{36} \src{model/MotorModel.cpp}{72}. But
+\code{MotorModel} never forwards the ignition time to its curve:
+\code{ThrustCurve::setIgnitionTime} has zero call sites in the entire tree
+\src{model/ThrustCurve.h}{31}, its body carries a commented-out
+\cppinline|//maxTime += ignitionTime;| \src{model/ThrustCurve.cpp}{44}, and
+\code{getThrust} passes \emph{absolute} simulation time to the curve
+\src{model/MotorModel.cpp}{82}, whose own \code{ignitionTime} is permanently zero.
+Consequence: a hypothetical \cppinline|startMotor(t0)| with $t_0 \neq 0$ --- an air-start
+or staged ignition --- would shift the mass curve and the burnout window by $t_0$ while
+thrust samples were still looked up at absolute time. Thrust and mass would disagree for
+the whole burn. The hazard is latent solely because the single production caller passes
+$0.0$ \src{model/RocketModel.cpp}{108}; a naive future consumer of the dormant plumbing
+inherits it intact. \fail
+\end{hardfail}
+
+Two neighboring fields share this dormant status, stated once here and inventoried in
+\cref{sec:incomplete}. The \code{delays} vector is parsed by both file ingest paths and
+persisted through the XML round trip, but nothing in \srcf{sim/}, \srcf{cli/}, or
+\srcf{gui/} consumes it --- there is no ejection-charge or recovery-deployment model, so
+the plugged sentinel \code{1000} \src{model/MotorModel.h}{303} guards behavior that does
+not yet exist. And \code{isp} is computed on every metadata set
+\src{model/MotorModel.cpp}{130} and read by nothing; the depletion formula embeds it
+implicitly (\cref{eq:motors-depletion-law}).
+
+\subsection{\code{MotorModelDatabase}: one keyed surface}\label{sec:motors-database}
+
+\code{model::MotorModelDatabase} \src{model/MotorModelDatabase.h}{68} is the subsystem's
+single client-facing surface: a non-copyable, non-movable
+\src{model/MotorModelDatabase.h}{75} store owned as a \code{shared\_ptr} by the
+\code{QtRocket} controller \src{QtRocket.cpp}{51}. Its heart is disarmingly small ---
+\cppinline|std::map<std::string, MotorModel>| keyed by common name, the in-tree comment
+admitting ``The `database' is really just a map. :)''
+\src{model/MotorModelDatabase.h}{127}.
+
+\begin{designrule}[Clients reach motors only through the database]
+The loaders are constructed stack-locally inside
+\code{importRSEFile}/\code{importRASPFile} --- ``owned here, never seen by GUI/CLI''
+\src{model/MotorModelDatabase.cpp}{63} --- and the REST client hides behind the private
+\code{ThrustCurveAPI} injection constructor \src{model/MotorModelDatabase.h}{114}. Every
+motor, whatever its source, funnels into the same keyed map with the same query model,
+and the front ends prove the rule: all GUI and CLI motor traffic goes through database
+methods (\src{gui/CannonballTab.cpp}{137}, \src{gui/ThrustCurveMotorSelector.cpp}{52},
+\src{cli/Repl.cpp}{315}), and a saved design references its motor by common name alone,
+re-resolved against whatever database the user has loaded
+\src{model/DesignSerializer.cpp}{271} (\cref{sec:persistence}). One practical payoff: the
+loaders' miss semantics --- a default-constructed, zero-thrust, zero-mass
+\code{MotorModel} \src{model/RSEDatabaseLoader.cpp}{44} --- never reach application code,
+which sees the database's \code{std::optional} instead
+\src{model/MotorModelDatabase.cpp}{84}.
+\end{designrule}
+
+\paragraph{Keying and collisions.} \code{addMotorModel} keys on \code{data.commonName}
+and assigns unconditionally: \cppinline|motorModelMap[name] = m;|
+\src{model/MotorModelDatabase.cpp}{50} --- last write wins, replace-versus-add
+distinguished only in the logs \src{model/MotorModelDatabase.cpp}{44}. The import methods
+report \emph{net new} entries --- the map's size delta --- so ``same-name motors collapse
+onto one entry, and a re-import correctly reports 0''
+\src{model/MotorModelDatabase.cpp}{68}. The bundled \srcf{data/Aerotech.rse} makes it
+concrete: 252 \code{<engine>} elements, but three codes (G77R, G79W, I65W) appear twice
+each, so a first import reports 249 and a second reports 0 --- the idempotent re-import
+pinned by test \src{tests/MotorDatabasePersistenceTests.cpp}{348}.
+
+\paragraph{Queries.} \code{listMotors} takes a \code{MotorQuery} whose fields are all
+\code{std::optional} --- unset does not constrain, so a default query matches everything
+\src{model/MotorModelDatabase.h}{33}. The filters: exact match on manufacturer and
+impulse class \src{model/MotorModelDatabase.cpp}{102}, case-sensitive substring on the
+common name \src{model/MotorModelDatabase.cpp}{110}, and a diameter tolerance of
+$\pm 0.5\unit{mm}$ --- motor diameters are nominal integer millimeters at least 1\,mm
+apart, so the tolerance distinguishes sizes while forgiving doubles round-tripped
+through XML \src{model/MotorModelDatabase.cpp}{106}; the boundary is pinned at 29.49
+matching a 29\,mm motor and 29.51 not \src{tests/MotorDatabasePersistenceTests.cpp}{445}.
+Results are \code{MotorSummary} rows --- a deliberately thin type that lets a UI populate
+a list without holding full, possibly not-yet-downloaded thrust curves; callers fetch the
+full model on selection \src{model/MotorModelDatabase.h}{41}. Sorting comes free:
+\code{std::map} iterates in key order \src{model/MotorModelDatabase.cpp}{116}.
+
+\paragraph{Persistence: the \code{.qmd} format.} \code{saveMotorDatabase} writes a Boost
+property-tree XML document rooted at \code{QtRocketMotorDatabase} with
+\code{version="0.1"} \src{model/MotorModelDatabase.cpp}{184}: one \code{<motor>} element
+per map entry with twenty-two child fields --- enums serialized through their \code{str()}
+wrappers \src{model/MotorModelDatabase.cpp}{190}, delays as a CSV string whose writing
+loop is index-guarded because ``the old size()-1 form underflowed'' on the empty delay
+vectors online-sourced motors carry \src{model/MotorModelDatabase.cpp}{211}, and the
+thrust curve as \code{<thrust time=".." force=".."/>} children
+\src{model/MotorModelDatabase.cpp}{222}. Numerics round-trip exactly because
+property\_tree writes \code{max\_digits10}
+\src{tests/MotorDatabasePersistenceTests.cpp}{315}. \code{loadMotorDatabase} mirrors it:
+skip any node that is not \code{motor} \src{model/MotorModelDatabase.cpp}{251}, default
+every missing field \src{model/MotorModelDatabase.cpp}{255}, re-parse delays skipping
+empty tokens (so \code{"4,,7,"} yields $\{4,7\}$
+\src{model/MotorModelDatabase.cpp}{281}), rebuild curve-first
+\src{model/MotorModelDatabase.cpp}{302}, and merge through \code{addMotorModel}
+\src{model/MotorModelDatabase.cpp}{307} --- a load is an import, with the same
+last-write-wins semantics. The full round trip is pinned end to end: import the real
+249-motor Aerotech file, save, reload, compare field by field
+\src{tests/MotorDatabasePersistenceTests.cpp}{297}. \Cref{lst:motors-qmd} shows the
+format on a committed fixture.
+
+\begin{listing}[htbp]
+\begin{minted}{xml}
+<QtRocketMotorDatabase version="0.1">
+  <MotorModels>
+    <motor name="1/2A3">
+      <availability>regular</availability>
+      <avgThrust>3.0299999999999998</avgThrust>
+      <burnTime>0.35999999999999999</burnTime>
+      <certOrg>Uncertified</certOrg>
+      <commonName>1/2A3</commonName>
+      <designation>1/2A3</designation>
+      <diameter>13</diameter>
+      <impulseClass>A</impulseClass>
+\end{minted}
+\caption{Opening of the committed \code{.qmd} fixture
+\srccap{tests/data/motors/estes\_small.qmd}{2}. Enums travel as their \code{str()}
+strings, numerics at \code{max\_digits10}. Note the 1/2A3 motor carrying
+\code{<impulseClass>A</impulseClass>} --- the server-verbatim class discussed in
+\cref{sec:motors-class}.}\label{lst:motors-qmd}
+\end{listing}
+
+\begin{keyinsight}[The typos are load-bearing]
+\code{CertOrg::str()} emits ``Austrialian Model Rocket Society Inc.''
+\src{model/MotorModel.h}{128} and ``Unkown'' \src{model/MotorModel.h}{138} --- misspelled,
+and deliberately preserved. The \code{.qmd} format's losslessness rests on every enum
+wrapper's \code{str()}$\to$\code{toEnum()} round trip, so \code{toEnum} explicitly
+accepts the typo'd full names alongside the short codes: ``The `Austrialian'/`Unkown'
+spellings match str()'s typo'd output'' \src{model/MotorModel.h}{144}. Correcting the
+spelling without a migration would orphan the AMRS values in every existing saved
+database; the round-trip test --- every wrapper, every enum value --- would catch the
+break \src{tests/MotorDatabasePersistenceTests.cpp}{245}. Format-compatibility strings
+are part of the interface, typos included.
+\end{keyinsight}
+
+\subsection{Three ingest paths}\label{sec:motors-ingest}
+
+Three paths feed the map, each translating one interchange format to the \code{MetaData}
+contract of \cref{tab:motors-metadata}. They differ sharply in error posture ---
+\cref{tab:motors-ingest} contrasts them --- but converge on the same assembly ritual:
+build the thrust curve, attach it, then move the metadata in.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+ & RockSim \code{.rse} & RASP \code{.eng} & thrustcurve.org REST \\
+\midrule
+Parser & \code{RSEDatabaseLoader}, Boost property\_tree XML \src{model/RSEDatabaseLoader.cpp}{24} & \code{RASPLoader}, hand-rolled line parser \src{model/RASPLoader.cpp}{253} & \code{ThrustCurveClient}, jsoncpp over \code{utils::CurlConnection} \src{model/ThrustCurveClient.h}{99} \\
+\addlinespace
+Error posture & lenient: nearly every attribute defaults \src{model/RSEDatabaseLoader.cpp}{53}; \code{Type} is the one non-defaulted metadata read & strict: typed, line-numbered \code{std::runtime\_error} on any violation \src{model/RASPLoader.cpp}{65} & tolerant: malformed JSON $\to$ \code{nullopt} + log; server \code{error} field $\to$ empty-but-valid \src{model/ThrustCurveClient.cpp}{37} \\
+\addlinespace
+Weights in source & grams, $\div 1000$ \src{model/RSEDatabaseLoader.cpp}{81} & kilograms, as-is \src{model/RASPLoader.cpp}{237} & grams, $\div 1000$ \src{model/ThrustCurveClient.cpp}{208} \\
+\addlinespace
+Impulse class & derived from the motor code \src{model/RSEDatabaseLoader.cpp}{73} & derived from the motor code \src{model/RASPLoader.cpp}{233} & server field, verbatim \src{model/ThrustCurveClient.cpp}{201} \\
+\addlinespace
+\code{burnTime} & file attribute \src{model/RSEDatabaseLoader.cpp}{54} & last sample time \src{model/RASPLoader.cpp}{210} & server field \src{model/ThrustCurveClient.cpp}{196} \\
+\addlinespace
+Data discarded & per-sample mass/CG, comments \src{model/RSEDatabaseLoader.cpp}{91} & --- & all simfiles beyond the chosen one \src{model/ThrustCurveClient.cpp}{67} \\
+\bottomrule
+\end{tabularx}
+\caption{The three ingest paths behind the database facade. All converge on kilogram
+weights, millimeter dimensions, and the curve-before-metadata assembly order; they
+diverge in how much they trust their input.}\label{tab:motors-ingest}
+\end{table}
+
+\subsubsection{RockSim \code{.rse}: lenient XML}\label{sec:motors-ingest-rse}
+
+The \code{.rse} format is the XML engine-list format of the commercial RockSim simulator;
+QtRocket's only bundled motor data, \srcf{data/Aerotech.rse}, uses it. The loader parses
+eagerly in its constructor via \cppinline|boost::property_tree::read_xml|
+\src{model/RSEDatabaseLoader.cpp}{24} and iterates every child of
+\code{engine-database.engine-list} without a key filter
+\src{model/RSEDatabaseLoader.cpp}{27}; the format is assumed well-formed, and parse
+failures propagate as exceptions \src{model/MotorModelDatabase.h}{84}. Metadata comes
+from XML attributes with defaults: \code{code} becomes the common name
+\src{model/RSEDatabaseLoader.cpp}{56}, \code{initWt}/\code{propWt} divide by 1000
+\src{model/RSEDatabaseLoader.cpp}{81}, delays parse from a CSV string defaulting to the
+plugged sentinel \code{"1000"} \src{model/RSEDatabaseLoader.cpp}{59}. One exception
+to leniency is accidental: \code{Type} is read with no default, so a file lacking that
+attribute throws from inside property\_tree \src{model/RSEDatabaseLoader.cpp}{85}.
+
+What the loader \emph{discards} matters as much as what it keeps. Each
+\code{<eng-data>} sample in an \code{.rse} file carries four attributes --- time, force,
+and measured remaining mass and center-of-gravity (\code{m=}, \code{cg=}) --- but only
+\code{t} and \code{f} are read \src{model/RSEDatabaseLoader.cpp}{91}. QtRocket
+deliberately reconstructs motor mass from thrust via the constant-$I_{sp}$ model of
+\cref{sec:motors-mass} rather than consuming the file's measured mass samples, and it
+models the motor's own center of mass as fixed (the \code{part::Motor} leaf's offset is
+\code{Vector3::Zero()} \src{model/parts/Motor.cpp}{12}): propellant burn moves the
+\emph{composite} center of mass only through motor mass loss, not through intra-motor CG
+travel. A modeling simplification, chosen with the data's existence in plain view.
+
+\subsubsection{RASP \code{.eng}: strict text}\label{sec:motors-ingest-rasp}
+
+RASP \code{.eng} is the line-oriented text format of the hobby's oldest simulator
+lineage, and the loader treats it with the opposite posture: every violation is a typed,
+located error --- lines are numbered from 1 as read \src{model/RASPLoader.cpp}{262}, and
+every failure throws
+\cppinline|std::runtime_error("RASP parse error on line N: message")|
+\src{model/RASPLoader.cpp}{65}. The header must contain exactly seven
+whitespace-separated fields --- code, diameter (mm), length (mm), delays, propellant
+weight (kg), total weight (kg), manufacturer \src{model/RASPLoader.cpp}{145} --- with
+positivity and $\mathtt{totalWeight}\ge\mathtt{propWeight}$ enforced
+\src{model/RASPLoader.cpp}{157}. Delays are dash-separated (\code{4-7}); each token must
+be a non-negative integer or the case-insensitive \code{P}/\code{NONE}, which map to the
+plugged sentinel 1000 \src{model/RASPLoader.cpp}{98}. Sample lines must hold exactly two
+finite numbers \src{model/RASPLoader.cpp}{171}, times strictly increasing, thrust
+non-negative \src{model/RASPLoader.cpp}{303}. A zero-thrust sample marks the end of a
+motor --- a sample after it is the error ``zero-thrust sample must be the final data
+point'' \src{model/RASPLoader.cpp}{292}, a motor that never reaches zero is ``motor
+thrust data must end with a zero-thrust sample'' \src{model/RASPLoader.cpp}{315} --- and
+a non-sample line after the final zero starts the next motor in a multi-motor file
+\src{model/RASPLoader.cpp}{289}.
+
+Because a RASP file carries no summary metadata beyond the header, the loader derives
+what the other formats read. After prepending the implicit origin if the first sample
+sits at $t>0$ \src{model/RASPLoader.cpp}{207} --- the parse-time counterpart of
+\cref{lst:motors-ramp}'s runtime ramp:
+\begin{equation}
+\mathtt{burnTime} = t_{last},\qquad
+\mathtt{totalImpulse} = \sum_{i\ge 1}\tfrac{1}{2}\,(F_{i-1}+F_i)\,(t_i - t_{i-1}),\qquad
+\mathtt{avgThrust} = \frac{\mathtt{totalImpulse}}{\mathtt{burnTime}}
+\end{equation}
+--- trapezoid integration of the samples \src{model/RASPLoader.cpp}{189}, with
+\code{maxThrust} the sample maximum \src{model/RASPLoader.cpp}{217} and both derived
+quantities checked positive \src{model/RASPLoader.cpp}{212}. A spec-style Estes D12 test
+pins the pipeline end to end \src{model/tests/RASPLoaderTests.cpp}{45}. No \code{.eng}
+file ships in \srcf{data/}; RASP coverage runs entirely on inline fixtures.
+
+\subsubsection{thrustcurve.org: REST behind a seam}\label{sec:motors-ingest-online}
+
+The third path is the community motor-data service thrustcurve.org, reached over its
+REST (representational state transfer) API from base URL
+\code{https://www.thrustcurve.org/} \src{model/ThrustCurveClient.cpp}{235} via the
+libcurl wrapper \code{utils::CurlConnection}, whose \code{get()} returns the body on
+success and an empty string on any failure --- transport error, timeout, or non-2xx
+status \srcf{utils/CurlConnection.h}.
+Three endpoints are consumed. \code{GET api/v1/metadata.json}
+\src{model/ThrustCurveClient.cpp}{268} yields the filterable vocabulary.
+\code{GET api/v1/search.json} \src{model/ThrustCurveClient.cpp}{284} turns each criteria
+pair into a query parameter and, absent a caller-supplied limit, appends
+\code{maxResults=100}: the server default is 20, and the comment explains the ceiling ---
+each result costs one \code{download.json} round trip, performed synchronously on the
+caller's (often GUI) thread \src{model/ThrustCurveClient.cpp}{292}. The search parser
+maps each result into a \code{MetaData}: gram fields divided by 1000
+\src{model/ThrustCurveClient.cpp}{208}, the server's \code{motorId} kept as
+\code{motorIdTC} \src{model/ThrustCurveClient.cpp}{206}, the \code{impulseClass} field
+taken verbatim \src{model/ThrustCurveClient.cpp}{201}, and \code{certOrg} and
+\code{delays} left at defaults under explicit \code{TODO}s
+\src{model/ThrustCurveClient.cpp}{197} --- the empty delay vectors those TODOs produce
+are what the \code{.qmd} CSV underflow guard exists for.
+
+Finally, \code{GET api/v1/download.json?motorId=<id>\&data=samples}
+\src{model/ThrustCurveClient.cpp}{248} fetches the curve itself. A motor typically has
+several ``simfiles'' --- alternative measured descriptions of the same burn, in arbitrary
+order --- and the parser selects exactly one: the first RASP-format entry with samples
+wins immediately, else the first non-empty entry of any format is the fallback
+\src{model/ThrustCurveClient.cpp}{84}. The in-code rationale is blunt: ``their sample
+sets are alternative descriptions of the same burn, so we must pick exactly one\ldots
+Concatenating them would interleave time series'' \src{model/ThrustCurveClient.cpp}{67}.
+A motor whose download produced no usable samples is still added --- it keeps the default
+$(0,0)$ curve \src{model/ThrustCurveClient.cpp}{324}. \code{searchMotors} assembles each
+full \code{MotorModel} curve-first \src{model/ThrustCurveClient.cpp}{328} and warns when
+the server's \code{matches} count exceeds the returned set --- the truncation signal
+\src{model/ThrustCurveClient.cpp}{312}.
+
+The database wraps this behind two methods. \code{getOnlineSearchFacets()} maps the
+metadata to filter values, keeping only manufacturer \emph{codes} because the search API
+keys on the code \src{model/MotorModelDatabase.cpp}{151}. \code{searchOnline(q)}
+translates the source-agnostic \code{MotorQuery} into raw \code{SearchCriteria}
+\src{model/MotorModelDatabase.cpp}{159} --- diameter formatted with
+\cppinline|std::format| so $29.0$ travels as \code{"29"}
+\src{tests/MotorDatabasePersistenceTests.cpp}{559}, and \code{nameContains} deliberately
+omitted, documented as ignored for online search \src{model/MotorModelDatabase.h}{104}
+--- then merges every returned motor into the map via \code{addMotorModel} so subsequent
+\emph{local} queries see it \src{model/MotorModelDatabase.cpp}{171}. An online search is
+an import.
+
+The seam that makes this testable is \code{ThrustCurveAPI}
+\src{model/ThrustCurveClient.h}{68}: a two-method pure-virtual interface that exists, per
+its own header, so the online wrappers can be tested with a fake source --- ``the
+injection point is private/friend-only in MotorModelDatabase, so application code never
+uses this directly'' \src{model/ThrustCurveClient.h}{63}. The public default constructor
+delegates with a null API \src{model/MotorModelDatabase.cpp}{24}, the production
+\code{ThrustCurveClient} is constructed lazily on first online use
+\src{model/MotorModelDatabase.cpp}{137}, and the befriended
+\code{MotorModelDatabaseTestAccess} lets the integration tests inject a
+\code{FakeThrustCurveAPI} returning canned motors
+\src{tests/MotorDatabasePersistenceTests.cpp}{106}. The three JSON parsers are split out
+as free functions precisely so canned response bodies can exercise them with no HTTP at
+all \src{model/ThrustCurveClient.h}{88} --- \cref{sec:testing} returns to both layers of
+this arrangement.
+
+\subsection{Impulse-class derivation and its one seam}\label{sec:motors-class}
+
+The impulse-class string is search vocabulary --- \code{listMotors} filters on it exactly
+\src{model/MotorModelDatabase.cpp}{104} --- and neither local file format carries it
+explicitly, so QtRocket derives it from the motor code.
+\code{MetaData::deriveImpulseClass} \src{model/MotorModel.cpp}{97} skips leading
+whitespace, uppercases, checks the two fractional prefixes first ---
+\code{starts\_with("1/4A")} and \code{starts\_with("1/2A")}
+\src{model/MotorModel.cpp}{112} --- and otherwise returns the first alphabetic character
+(``G80T'' $\to$ ``G''), or the empty string if none exists
+\src{model/MotorModel.cpp}{117}. The RockSim and RASP paths share this one parser
+\src{model/RSEDatabaseLoader.cpp}{73} \src{model/RASPLoader.cpp}{233}, and tests pin the
+fractional cases through both \src{model/tests/RASPLoaderTests.cpp}{102}
+\src{model/tests/RASPLoaderTests.cpp}{174}.
+
+\begin{hardfail}[Fractional classes are source-dependent]
+The thrustcurve.org path does not derive; it stores the server's \code{impulseClass}
+field verbatim \src{model/ThrustCurveClient.cpp}{201} --- and the committed fixture,
+captured from the real API, shows a 1/2A3 motor carrying
+\code{<impulseClass>A</impulseClass>} \src{tests/data/motors/estes\_small.qmd}{12}
+(\cref{lst:motors-qmd}): the server reports the fractional-class motor under its parent
+letter. The same physical motor therefore lands in the database with class \code{"1/2A"}
+when imported from an \code{.rse} or \code{.eng} file and class \code{"A"} when fetched
+online, and a \code{listMotors} filter on \code{impulseClass = "1/2A"}
+\src{model/MotorModelDatabase.cpp}{104} matches the former and misses the latter. The
+discrepancy is data-visible today in any mixed-source database. \fail
+\end{hardfail}
+
+That seam aside, the subsystem delivers what the rest of the document consumes: a keyed
+catalog with one query model, and per-motor $F(t)$ and $m(t)$ functions whose books
+balance exactly at ignition and at burnout. \Cref{sec:parts} showed how the mass function
+enters the composite tree through the \code{part::Motor} leaf; \cref{sec:simcore} follows
+both functions into the propagation loop, where thrust is sampled every integrator stage
+and mass gates the composite-property cache; \cref{sec:persistence} covers the design
+file that names a motor and expects this database to resolve it; and the dormant
+inventory --- non-zero ignition, delays, \code{isp}, the unread cert-org and type facets
+--- is consolidated with everything else in \cref{sec:incomplete}.

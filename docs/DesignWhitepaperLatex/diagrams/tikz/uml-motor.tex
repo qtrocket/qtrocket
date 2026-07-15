@@ -1,0 +1,147 @@
+% UML class diagram: the motor subsystem. MotorModelDatabase is the single
+% client-facing surface; two local file loaders and the thrustcurve.org REST
+% client (behind the ThrustCurveAPI seam) feed it. Bare tikzpicture; the
+% whitepaper wraps it in a figure and \resizebox{\linewidth}.
+\begin{tikzpicture}[node distance=10mm and 9mm]
+
+  % ---- facade (center) ----
+  \node[umlclass,text width=47mm] (db) {%
+    \textbf{MotorModelDatabase}\\
+    {\scriptsize non-copyable facade; .qmd XML v0.1}
+    \nodepart{two}{\scriptsize\ttfamily
+      - motorModelMap :\\
+      \hspace*{2.5mm}map<string, MotorModel>\\
+      \hspace*{2.5mm}{\sffamily\color{qrGray}keyed by commonName; last write wins}\\
+      - tcApi :\\
+      \hspace*{2.5mm}unique\_ptr<ThrustCurveAPI>}
+    \nodepart{three}{\scriptsize\ttfamily
+      + importRSEFile(path) : size\_t\\
+      + importRASPFile(path) : size\_t\\
+      + getMotorModel(name)\\
+      \hspace*{2.5mm}: optional<MotorModel>\\
+      + listMotors(query)\\
+      \hspace*{2.5mm}: vector<MotorSummary>\\
+      + searchOnline(query)\\
+      \hspace*{2.5mm}: vector<MotorSummary>\\
+      + saveMotorDatabase(filename)\\
+      + loadMotorDatabase(filename)}};
+
+  % ---- runtime motor model (left column) ----
+  \node[umlclass,text width=44mm,left=9mm of db] (mm) {%
+    \textbf{MotorModel}
+    \nodepart{two}{\scriptsize\ttfamily
+      + data : MetaData\\
+      \hspace*{2.5mm}{\sffamily\color{qrGray}(commonName, propWeight, \dots)}\\
+      - thrust : ThrustCurve\\
+      - massCurve :\\
+      \hspace*{2.5mm}vector<pair<double,double>>}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getThrust(simTime) : double\\
+      + getMass(simTime) : double\\
+      + startMotor(startTime)\\
+      + addThrustCurve(tc)\\
+      + setMetaData(md)\\
+      - computeMassCurve()}};
+
+  \node[umlclass,text width=44mm,below=12mm of mm] (tc) {%
+    \textbf{ThrustCurve}
+    \nodepart{two}{\scriptsize\ttfamily
+      - thrustCurve :\\
+      \hspace*{2.5mm}vector<pair<double,double>>\\
+      \hspace*{2.5mm}{\sffamily\color{qrGray}(time s, thrust N) samples}\\
+      - maxTime : double\\
+      - ignitionTime : double}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getThrust(t) : double\\
+      + getMaxTime() : double\\
+      + getThrustCurveData()\\
+      + setIgnitionTime(t) {\sffamily\color{qrGray}(dormant)}}};
+
+  % ---- local file ingest (top) ----
+  \node[umlclass,text width=39mm,anchor=south east]
+      (rse) at ([xshift=-3mm,yshift=14mm]db.north) {%
+    \textbf{RSEDatabaseLoader}\\{\scriptsize RockSim .rse (XML)}
+    \nodepart{two}{\scriptsize\ttfamily
+      - motors : vector<MotorModel>\\
+      - tree : ptree}
+    \nodepart{three}{\scriptsize\ttfamily
+      + RSEDatabaseLoader(filename)\\
+      + getMotors()\\
+      + getMotorModelByName(name)}};
+
+  \node[umlclass,text width=39mm,anchor=south west]
+      (rasp) at ([xshift=3mm,yshift=14mm]db.north) {%
+    \textbf{RASPLoader}\\{\scriptsize RASP .eng (text)}
+    \nodepart{two}{\scriptsize\ttfamily
+      - motors : vector<MotorModel>}
+    \nodepart{three}{\scriptsize\ttfamily
+      + RASPLoader(filename)\\
+      + getMotors()\\
+      + getMotorModelByName(name)\\
+      {\sffamily\color{qrGray}line-numbered runtime\_error\\ on malformed input}}};
+
+  % ---- online ingest (right column) ----
+  \node[umliface,text width=44mm,right=9mm of db] (api) {%
+    {\scriptsize\guillemotleft interface\guillemotright}\\
+    \textit{\textbf{ThrustCurveAPI}}
+    \nodepart{two}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getMetadata()\\
+      \hspace*{2.5mm}: ThrustcurveMetadata\\
+      + searchMotors(criteria)\\
+      \hspace*{2.5mm}: vector<MotorModel>}};
+
+  \node[umlclass,text width=44mm,below=12mm of api] (client) {%
+    \textbf{ThrustCurveClient}
+    \nodepart{two}{\scriptsize\ttfamily
+      - hostname : string\\
+      - curlConnection :\\
+      \hspace*{2.5mm}utils::CurlConnection}
+    \nodepart{three}{\scriptsize\ttfamily
+      + getMetadata()\\
+      + searchMotors(criteria)\\
+      - getThrustCurve(id)\\
+      \hspace*{2.5mm}: optional<ThrustCurve>}};
+
+  \node[umlsimple,text width=40mm,below=9mm of client] (curl) {%
+    \texttt{utils::CurlConnection}\\
+    {\scriptsize libcurl HTTP GET wrapper}};
+
+  % ---- facade note ----
+  \node[umlnote,text width=42mm,below=12mm of db] (facade) {%
+    clients reach motors only through the database facade\\[2pt]
+    {\color{qrGray}GUI, CLI, and DesignSerializer call
+    MotorModelDatabase; the loaders and the REST client stay internal.}};
+
+  % ---- relationships ----
+  % database owns the motor map (values keyed by commonName)
+  \draw[compose] (db.west) -- (mm.east) node[mult,midway,above]{0..*};
+  % each MotorModel owns one ThrustCurve by value
+  \draw[compose] (mm.south) -- (tc.north)
+    node[umllbl,midway,right=1pt]{thrust} node[mult,pos=0.82,left=1pt]{1};
+  % database owns the remote seam (null until first online use)
+  \draw[compose] (db.east) -- (api.west)
+    node[umllbl,pos=0.4,below=1pt]{tcApi} node[mult,pos=0.72,above]{0..1};
+  % loaders feed the database (stack-local inside importRSE/RASPFile)
+  \draw[umldep] (rse.south) -- ([xshift=-12mm]db.north)
+    node[umllbl,midway,left=1pt]{imports into};
+  \draw[umldep] (rasp.south) -- ([xshift=12mm]db.north)
+    node[umllbl,midway,right=1pt]{imports into};
+  % production client realizes the seam; owns the HTTP transport
+  \draw[realize] (client.north) -- (api.south);
+  \draw[compose] (client.south) -- (curl.north)
+    node[umllbl,midway,right=1pt]{curlConnection};
+  % note anchor
+  \draw[qrGray,line width=0.4pt,dash pattern=on 2pt off 2pt]
+    (facade.north) -- (db.south);
+
+  % ---- ingest groupings ----
+  % headroom coordinates keep the group titles clear of the top boxes
+  \coordinate (rsepad) at ([yshift=3.5mm]rse.north);
+  \coordinate (apipad) at ([yshift=3.5mm]api.north);
+  \begin{pgfonlayer}{background}
+    \titledbox{(rse)(rasp)(rsepad)}{local file ingest}{qrAmber}
+    \titledbox{(api)(client)(curl)(apipad)}{online ingest}{qrTeal}
+  \end{pgfonlayer}
+
+\end{tikzpicture}

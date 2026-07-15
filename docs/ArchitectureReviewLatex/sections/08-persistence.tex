@@ -1,0 +1,241 @@
+\section{Persistence \& interoperability}\label{sec:persistence}
+
+QtRocket persists three kinds of artifact: rocket designs (\code{.qrd}), motor databases
+(\code{.qmd}), and flight trajectories (CSV). All design persistence flows through one model-layer
+class, \code{model::DesignSerializer} --- two static functions, \code{save} and \code{load}, over
+Boost.property\_tree XML, deliberately mirroring the motor database's serialization idiom
+(\src{model/DesignSerializer.h}{31}, \src{model/DesignSerializer.h}{16}). At this commit the
+serializer has exactly two consumers: the CLI's \code{savedesign}/\code{loaddesign} commands
+(\src{cli/Repl.cpp}{926}) and the standalone visualizer, which loads a \code{.qrd} passed on its
+command line (\src{visualizer/VisualizerWindow.cpp}{184}). The GUI does not call it at all --- a
+grep under \srcf{gui/} finds no use --- which repeats the pattern this review keeps meeting: the
+persistence seam is finished and heavily tested before its most obvious client exists
+(\cref{sec:interfaces}).
+
+\subsection{The .qrd design format}
+
+A \code{.qrd} file is versioned XML: a \code{QtRocketDesign} root stamped
+\code{version="0.2"} (\src{model/DesignSerializer.cpp}{220}) with a design name
+(\src{model/DesignSerializer.cpp}{221}), a recursive polymorphic part tree, an optional
+\code{<motor>} element, and a \code{<sim>} block. \Cref{lst:persistence-qrd} shows a complete
+committed fixture.
+
+\begin{listing}[htbp]
+\begin{minted}{xml}
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketDesign version="0.2">
+  <design name=""/>
+  <part type="NoseCone" name="Nose">
+    <params baseRadius="0.02" length="0.12" wallThickness="0" density="1400" solid="true"/>
+    <children>
+      <part type="BodyTube" name="Airframe">
+        <params innerRadius="0.019099999999999999" outerRadius="0.02" length="0.40000000000000002" density="1400"/>
+        <link seat="Abut" parentStation="0" childStation="1" gap="-0.029999999999999999"/>
+        <children>
+          <part type="FinSet" name="Fins">
+            <params density="1400" rootChord="0.070000000000000007" tipChord="0.029999999999999999" span="0.050000000000000003" sweep="0.040000000000000001" thickness="0.0030000000000000001" bodyRadius="0.02" finCount="3"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="-0.0086666666666666559"/>
+            <children/>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <sim dragCoefficient="1" referenceArea="0.001134" referenceAreaOverridden="false"/>
+</QtRocketDesign>
+\end{minted}
+\caption{A complete \code{.qrd} design file (\srcfcap{tests/data/designs/large38\_basic.qrd}).
+Doubles are written at full precision, and placement is stored as \code{<link>} intent, never as a
+resolved pose.}\label{lst:persistence-qrd}
+\end{listing}
+
+Each \code{<part>} carries its factory \code{type} and \code{name}; its \code{<params>} come from
+the factory reflector \cppinline|part::params(node)|, which reads geometry fields only
+(\src{model/DesignSerializer.cpp}{101}, \src{model/parts/PartFactory.cpp}{79}). Siblings survive
+because children are appended with \code{add\_child}, not \code{put}
+(\src{model/DesignSerializer.cpp}{115}) --- a property\_tree trap pinned by a dedicated round-trip
+test (\src{tests/DesignPersistenceTests.cpp}{57}). Placement is a \code{<link>} element carrying
+the \code{StationLink} fields --- seat kind (\code{Abut}, \code{NestInBore}, \code{OnSurface}),
+fractional parent and child stations in $[0,1]$, and a gap in metres --- with the seat enum
+round-tripped through one shared string table (\src{model/DesignSerializer.cpp}{73}). A
+default-equal link (the zero-config abut) is elided on write and recovered as the default on read
+(\src{model/DesignSerializer.cpp}{104}, \src{model/DesignSerializer.cpp}{86}); the reserved 6-DOF
+\code{childRot} quaternion is deliberately not persisted while it is identity by construction
+(\src{model/DesignSerializer.cpp}{85}). The \code{<sim>} block carries exactly the three
+RocketModel-owned aero scalars --- \code{dragCoefficient}, \code{referenceArea},
+\code{referenceAreaOverridden} (\src{model/DesignSerializer.cpp}{233}); launch and environment
+options (velocity, angle, atmosphere, gravity, integrator) are session state by declared policy and
+are never written (\src{model/DesignSerializer.cpp}{230}).
+
+\begin{designrule}[Intent in, geometry out]
+The file stores placement \emph{intent} (seat, stations, gap) and never a resolved pose; the
+single placement resolver re-derives absolute geometry on every load
+(\src{model/DesignSerializer.cpp}{93}). Serialization therefore cannot disagree with the simulator
+or the visualizer about where a part sits --- the divergence that killed the legacy 0.1 format
+(\cref{sec:model}) is unrepresentable in 0.2.
+\end{designrule}
+
+\subsection{Round-trip fidelity}
+
+What round-trips exactly, verified by fourteen serializer-level tests in
+\srcf{tests/DesignPersistenceTests.cpp} plus a fixture-wide sweep
+(\src{tests/DesignMatrixTests.cpp}{417}): geometry parameters and tree structure, non-default
+station links with all three seat kinds (\src{tests/DesignPersistenceTests.cpp}{380}), motor
+identity with its thrust and mass curves (\src{tests/DesignPersistenceTests.cpp}{138}), and the
+drag coefficient with the reference-area override flag
+(\src{tests/DesignPersistenceTests.cpp}{100}). What does not survive is more instructive:
+
+\begin{description}
+\item[Per-part mass overrides.] \code{setmass} writes the root part's own mass
+  (\src{model/RocketModel.h}{87}), but \code{<params>} reflect only the factory geometry fields ---
+  \code{PartParams} has no mass field --- so the override is silently absent from the written file
+  and a reload recomputes mass from geometry (\src{model/parts/PartFactory.cpp}{79},
+  \src{model/DesignSerializer.cpp}{31}).
+\item[Motor placement.] \code{writePart} skips the \code{Motor} node in the tree
+  (\src{model/DesignSerializer.cpp}{114}); only the common name is stored
+  (\src{model/DesignSerializer.cpp}{227}). On load, \code{setMotorModel} re-derives a CM-station
+  abut link with gap \cppinline|motorOffset.z()| (\src{model/RocketModel.cpp}{124}) --- lossless
+  today only because that offset is documented ``Zero today''
+  (\src{model/RocketModel.h}{130}). The moment motor placement becomes user-settable, it will not
+  round-trip.
+\item[Part identity.] Ids are process-unique and never serialized; a reload reassigns them, as the
+  CLI help itself warns (\src{cli/Repl.cpp}{294}).
+\item[Design name, from the CLI.] The serializer writes and restores
+  \code{design@name} (\src{model/DesignSerializer.cpp}{221}, \src{model/DesignSerializer.cpp}{259})
+  and \code{RocketModel} has the accessors (\src{model/RocketModel.h}{65}), but no REPL command sets
+  it, so every CLI-authored file carries \code{name=""} --- visible in
+  \cref{lst:persistence-qrd}.
+\item[Session configuration.] Deliberate, per the policy above: a \code{.qrd} describes a rocket,
+  not an experiment. Reproducing a specific flight requires re-staging integrator, atmosphere, and
+  launch settings by hand or script.
+\end{description}
+
+\begin{hardfail}[setmass survives the session, not the file]
+Verified live against the built binary: \code{setmass 5} followed by \code{savedesign} wrote
+\code{<params>} containing only \code{innerRadius}/\code{outerRadius}/\code{density} --- no mass
+attribute --- and the reloaded design reverted to its geometry-derived mass. No warning is emitted
+at save time. \fail
+\end{hardfail}
+
+\begin{keyinsight}[Motor faithfulness is database-relative]
+The motor is re-resolved by common name against whatever database the loading session supplies
+(\src{model/DesignSerializer.cpp}{271}). A miss logs a warning and loads the geometry without a
+motor --- never throws (\src{tests/DesignPersistenceTests.cpp}{167}). A \code{.qrd} therefore
+reproduces its author's rocket only when paired with an equivalent motor database; the file itself
+carries no curve data.
+\end{keyinsight}
+
+One persisted field deserves a flag: \code{referenceAreaOverridden} round-trips faithfully
+(\src{model/DesignSerializer.cpp}{235}), but the non-overridden case is supposed to fall back to a
+geometry-derived reference area, and that derivation is never invoked on any production path --- a
+loaded design without an override flies on the default $1.134\times10^{-3}\unit{m^2}$ scalar
+regardless of its geometry (\cref{sec:aero}). The format reserved the semantics before the
+consumer was wired.
+
+\subsection{Loader error handling and versioning}
+
+The reader is fail-safe in structure and fail-closed in vocabulary. The whole geometry tree is
+built detached and installed atomically with one \code{setRoot} call, so a malformed file, unknown
+part type, bad seat, or failed attach leaves the current rocket untouched
+(\src{model/DesignSerializer.cpp}{255}); because \code{addChildPart} is a silent no-op on
+rejection, attach success is verified by a child-count delta that converts silence into a throw
+(\src{model/DesignSerializer.cpp}{204}). An unknown seat kind is rejected outright
+(\src{model/DesignSerializer.cpp}{184}, pinned at \src{tests/DesignPersistenceTests.cpp}{355}), as
+is a \code{Motor} masquerading as a tree part (\src{model/DesignSerializer.cpp}{157}). Versioning
+is a major-version gate: any minor under major 0 is accepted, anything else throws before the
+rocket is touched (\src{model/DesignSerializer.cpp}{250},
+\src{tests/DesignPersistenceTests.cpp}{189}). There is no migration machinery at all: a legacy 0.1
+file --- recognizable by its CM-to-CM \code{<offset>} element --- is rejected with an explicit
+``must be re-created'' error rather than silently mis-placed
+(\src{model/DesignSerializer.cpp}{194}, \src{tests/DesignPersistenceTests.cpp}{333}). For a format
+this young, rejection is a defensible substitute for migration; it will not stay defensible once
+users accumulate files.
+
+\subsection{The placement-invariance baseline}
+
+The migration from CM-to-CM offsets to station links was made falsifiable by a frozen physics
+snapshot: \srcf{tests/data/placement-invariance-baseline.txt} declares itself ``IMMUTABLE GROUND
+TRUTH, generated from the LEGACY CM-to-CM reader BEFORE the placement refactor''
+(\src{tests/data/placement-invariance-baseline.txt}{3}). It is a \code{format 1} text file
+(\src{tests/data/placement-invariance-baseline.txt}{20}) recording, per design, composite mass, CM,
+the row-major inertia tensor about the CG, CP with a validity flag, and per-part DFS stations, all
+printed \code{\%.17g} for exact IEEE-754 round-trip
+(\src{tests/data/placement-invariance-baseline.txt}{18}), taken with an empty motor database so the
+snapshot is the pure airframe composite. The corpus is fixed at 24 \code{.qrd} fixtures spanning
+seven diameter classes from micro13 to xl75 (\src{tests/PlacementInvarianceTests.cpp}{64}; the
+25th committed fixture, \srcf{tests/data/designs/xl75\_multi\_pokethrough.qrd}, is deliberately
+excluded because it must fail the overlap gate). The consuming tests re-snapshot every fixture
+through the current reader and assert mass and inertia identical to $10^{-9}$ relative
+(\src{tests/PlacementInvarianceTests.cpp}{266}), CG and every part station identical after a single
+tip-datum shift (\src{tests/PlacementInvarianceTests.cpp}{286},
+\src{tests/PlacementInvarianceTests.cpp}{299}), a worst-drift diagnostic
+(\src{tests/PlacementInvarianceTests.cpp}{328}), and save$\rightarrow$reload idempotence through
+the 0.2 writer (\src{tests/PlacementInvarianceTests.cpp}{358}). CP is deliberately not compared:
+the legacy CP was CM-contaminated, and correcting it was the point. Two hand-pinned CM values at
+$10^{-12}$ guard sign and datum slips the aggregate gate could miss
+(\src{tests/PlacementInvarianceTests.cpp}{445}).
+
+One caveat: both the baseline header and the test file describe regeneration as ``gated behind the
+\code{QTROCKET\_REGEN\_PLACEMENT\_BASELINE} env var''
+(\src{tests/data/placement-invariance-baseline.txt}{6},
+\src{tests/PlacementInvarianceTests.cpp}{31}), but no code anywhere in the tree reads that
+variable --- the bootstrap writer was evidently deleted after use. The immutability contract is
+thereby enforced rather more literally than intended: regenerating the baseline today would mean
+re-writing the tool. \fpartial
+
+\subsection{Motor database files (.qmd)}
+
+The motor database persists to its own XML format, owned by \cref{sec:motors}; the interop-relevant
+facts are these. The writer stamps \code{QtRocketMotorDatabase version="0.1"}
+(\src{model/MotorModelDatabase.cpp}{184}) and emits one \code{<motor>} node per entry with every
+metadata field, delays as a CSV string, and the thrust curve as \code{<thrust time= force=/>}
+samples; the loader applies per-field defaults, skips foreign nodes, and recomputes the derived
+mass curve --- but never checks the version attribute it wrote
+(\src{model/MotorModelDatabase.cpp}{249}), so this format has no migration hook either. The round
+trip over the full bundled AeroTech import (252 \code{<engine>} entries collapsing to 249
+name-keyed motors) is exact (\src{tests/MotorDatabasePersistenceTests.cpp}{297}), and a committed
+fixture (\srcf{tests/data/motors/estes\_small.qmd}) uses \code{.qmd} to pin online-sourced motors
+offline for the unit-conversion regression tests.
+
+\subsection{Import and export surface}
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}lllX@{}}
+\toprule
+Format & Direction & Status & Notes \\
+\midrule
+\code{.qrd} 0.2 (native design) & read/write & \fpresent & CLI and visualizer; GUI not wired at this commit \\
+\code{.qrd} 0.1 (legacy design) & --- & \fabsent & rejected fail-closed, no migration (\src{model/DesignSerializer.cpp}{194}) \\
+\code{.qmd} (native motor DB) & read/write & \fpresent & version written, never checked (\src{model/MotorModelDatabase.cpp}{249}) \\
+RockSim \code{.rse} (motors) & import & \fpresent & per-sample mass/CG data dropped (\cref{sec:motors}) \\
+RASP \code{.eng} (motors) & import & \fpresent & strict validating parser; extension-dispatched (\src{cli/Repl.cpp}{314}) \\
+thrustcurve.org REST (motors) & online import & \fpresent & search facets + per-motor download (\cref{sec:motors}) \\
+Flight trajectory CSV & export & \fpresent & fixed 14-column schema (\src{cli/Repl.cpp}{104}) \\
+OpenRocket \code{.ork} (designs) & --- & \fabsent & no read or write \\
+RockSim \code{.rkt} (designs) & --- & \fabsent & motor import only, no design import \\
+CSV import (any) & --- & \fabsent & \\
+\bottomrule
+\end{tabularx}
+\caption{File-format interoperability at commit \code{254cd41}.}\label{tab:persistence-formats}
+\end{table}
+
+\Cref{tab:persistence-formats} summarizes the surface. The only export beyond the native formats
+is the flight CSV, one shared writer with the fixed header
+\code{t,x,y,z,vx,vy,vz,mass,cg\_x,cg\_y,cg\_z,Ixx,Iyy,Izz} at 9 significant digits
+(\src{cli/Repl.cpp}{104}) --- time, position, velocity, and the time-varying composite mass, CG,
+and inertia diagonal the propagator records. It is emitted three ways: unconditionally to a
+hardcoded \code{qtrocket\_run.csv} in the working directory on every launch
+(\src{cli/Repl.cpp}{716}), on demand to stdout with a stride (\src{cli/Repl.cpp}{754}), and to a
+caller-named file (\src{cli/Repl.cpp}{781}). There is no column or unit selection.
+
+On the import side the asymmetry is deliberate and worth stating plainly: QtRocket imports foreign
+\emph{motor} data through three independent paths --- matching OpenRocket's motor-database reach,
+including thrustcurve.org --- but imports no foreign \emph{design} format and exports to none.
+There is no \code{.ork} reader or writer, no RockSim \code{.rkt} design import, and no CSV
+ingestion of any kind; designs enter the ecosystem only by being authored in QtRocket, and its own
+0.1 files are locked out. Combined with the five-type part catalog (\cref{sec:model}), this makes
+\code{.qrd} a closed world at this commit; the gap against OpenRocket's zipped-XML \code{.ork} ---
+which carries $\sim$20+ component types, per-component overrides, flight configurations, and
+embedded simulations, with loaders back to version 1.0 --- is quantified in \cref{sec:comparison},
+and the consolidated remediation list lives in \cref{sec:roadmap}.

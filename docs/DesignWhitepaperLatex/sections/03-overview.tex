@@ -1,0 +1,387 @@
+\section{System overview \& layering}\label{sec:overview}
+
+QtRocket is organized as three executables over one Qt-free core. \code{qtrocket} is the
+Qt6 Widgets desktop application; \code{qtrocket-cli} is a headless, line-oriented
+read-eval-print loop (REPL) over the same simulation engine; \code{qtrocket-visualizer} is
+a standalone OpenGL viewer for saved designs. All three link a single static library,
+\code{qtrocket\_core}, which contains exactly one class --- the \code{QtRocket}
+application controller \src{CMakeLists.txt}{224} --- and pulls in the three layer
+libraries beneath it: \code{model}, \code{sim}, and \code{utils}
+\src{CMakeLists.txt}{229}. \Cref{fig:overview-layering} shows the arrangement at the
+pinned commit \code{254cd41}; this section walks it from the top down and closes with the
+build system that enforces it.
+
+\tikzfig{system-layering}{Three executables over one Qt-free core. Every link edge points
+strictly downward: the front ends link \code{qtrocket\_core} --- the static library
+holding the \code{QtRocket} controller \srccap{CMakeLists.txt}{224} --- the core links the
+\code{model}, \code{sim}, and \code{utils} layer libraries
+\srccap{CMakeLists.txt}{229}, and \code{utils} links only the vendored Eigen and libcurl
+\srccap{utils/CMakeLists.txt}{14}. Qt appears only in the two graphical executables;
+nothing at or below the controller can name a Qt type.}{fig:overview-layering}
+
+\subsection{Three executables, one core}\label{sec:overview-executables}
+
+\begin{description}
+\item[\code{qtrocket} (GUI).] The entry point sets the \code{Logger} to INFO
+  \src{main.cpp}{16}, obtains the controller singleton \src{main.cpp}{20}, and blocks in
+  \cppinline|gui::run(qtrocket, argc, argv)| \src{main.cpp}{25}. \code{gui::run} exists
+  precisely so the controller stays Qt-free: it owns \code{QApplication}, and everything
+  Qt-dependent in this executable lives under \srcf{gui/} \src{gui/GuiRunner.h}{13}. The executable links
+  \code{Qt6::Widgets}, \code{Qt6::PrintSupport}, and \code{qtrocket\_core}
+  \src{CMakeLists.txt}{286}.
+\item[\code{qtrocket-cli} (headless REPL).] The same engine with no display requirement.
+  Its entry point silences the logger to ERROR because stdout doubles as a
+  machine-readable \code{OK}/\code{ERR}/\code{CSV} protocol \src{cli/CliMain.cpp}{17},
+  then obtains the same singleton \src{cli/CliMain.cpp}{19}. The REPL is compiled into its
+  own \code{cli} static library so the test binaries drive exactly the object code users
+  type into \src{CMakeLists.txt}{234}; the executable links that library and nothing else
+  \src{CMakeLists.txt}{297}.
+\item[\code{qtrocket-visualizer} (OpenGL viewer).] A self-contained Qt application under
+  \srcf{visualizer/} with its own \cppinline|find_package(Qt6 ...)| for the OpenGL
+  components \src{visualizer/CMakeLists.txt}{9}; it links \code{qtrocket\_core} for the
+  shared design loader \src{CMakeLists.txt}{241} and renders saved \code{.qrd} designs
+  (\cref{sec:persistence}).
+\end{description}
+
+All three front ends are examined in depth in \cref{sec:interfaces}. The core they share
+is deliberately minimal: \code{qtrocket\_core} compiles \srcf{QtRocket.cpp} exactly once
+--- ``Application controller shared by the GUI, the CLI, and the integration tests''
+\src{CMakeLists.txt}{222} --- and every consumer links the archive rather than recompiling
+the translation unit (\cref{lst:overview-core}). The integration-test binary is the fourth
+consumer \src{tests/CMakeLists.txt}{19}, so the controller's singleton statics exist once
+per process no matter which front end, or which test, is running.
+
+\begin{listing}[htbp]
+\begin{minted}{cmake}
+# Application controller shared by the GUI, the CLI, and the
+# integration tests.
+add_library(qtrocket_core STATIC
+   QtRocket.cpp
+   QtRocket.h)
+qtrocket_enable_coverage(qtrocket_core)
+
+target_link_libraries(qtrocket_core PUBLIC
+   model
+   sim
+   utils)
+\end{minted}
+\caption{The keystone of the link graph \srccap{CMakeLists.txt}{222}. The controller
+compiles once into a static library; the three executables and the integration tests all
+link it, and its \code{PUBLIC} dependencies hand every consumer the layer libraries
+below.}\label{lst:overview-core}
+\end{listing}
+
+\subsection{The layering is the link graph}\label{sec:overview-layers}
+
+The layering is not a documentation convention; it is the link graph itself, declared
+target by target in CMake. \code{utils} sits at the bottom and links only the two vendored
+third-party libraries, \code{libcurl} and \code{eigen} \src{utils/CMakeLists.txt}{14} ---
+it supplies the math typedefs (\code{Vector3}, \code{Matrix3}, \code{Quaternion}), the
+\code{Logger}, and the HTTP transport everything above shares. \code{sim} links only
+\code{utils} \src{sim/CMakeLists.txt}{28}. \code{model} links \code{utils}, \code{sim},
+\code{Boost::property\_tree}, and \code{jsoncpp\_static} \src{model/CMakeLists.txt}{44};
+the build file states why the middle edge exists --- ``sim is a real dependency:
+Propagatable/RocketModel use sim::Aero and sim/StateData.h''
+\src{model/CMakeLists.txt}{41}. \code{model} and \code{sim} are therefore layered rather
+than peers: the model consumes the simulation layer's value types, and no \srcf{sim/} code
+consumes a model value type in return. The one upward reference is the bridge interface
+itself --- \srcf{sim/Propagator.h} includes \srcf{model/Propagatable.h}
+\src{sim/Propagator.h}{18} to hold the abstract rocket it integrates, an abstraction whose
+own includes point strictly downward \src{model/Propagatable.h}{12} --- so \code{sim}
+still links only \code{utils}, and the \code{model} archive supplies the concrete rocket
+when a final executable links both. Include resolution everywhere uses one global
+\cppinline|include_directories(${PROJECT_SOURCE_DIR})| \src{CMakeLists.txt}{147}, which is
+what makes the \code{model/...}, \code{sim/...}, and \code{utils/...} path prefixes
+resolve uniformly from any file in the tree.
+
+\begin{designrule}[The layering invariant, stated where it binds]
+``Bottom layer: utils must not depend on model/ or sim/'' \src{utils/CMakeLists.txt}{13}.
+The comment sits directly above the \cppinline|target_link_libraries| call it constrains,
+and it holds: every \code{\#include} under \srcf{utils/} resolves to the standard library,
+curl, Eigen, or another \srcf{utils/} header. This single rule keeps the dependency graph
+acyclic --- every layer above may share the bottom layer's typedefs and logging without
+ever creating a back-edge.
+\end{designrule}
+
+The invariant holds upward as well: nothing below the controller reaches back up to it.
+The simulation environment enters the model as an explicit parameter of the force query
+\src{model/Propagatable.h}{29}, passed by the propagator at the call site
+\src{sim/Propagator.cpp}{41}; there is no \cppinline|QtRocket::getInstance()| call
+anywhere in \srcf{model/} or \srcf{sim/}, so the layers below the controller are usable
+--- and are unit-tested --- without a controller existing at all.
+
+\subsection{The \code{QtRocket} controller}\label{sec:overview-controller}
+
+\code{QtRocket} is the composition root: a lazily created, mutex-guarded singleton that
+lives for the whole process and owns, through \cppinline|std::shared_ptr|, one
+\code{(RocketModel, Propagator)} pair \src{QtRocket.h}{79}, one \code{sim::Environment}
+\src{QtRocket.h}{82}, and one \code{model::MotorModelDatabase} \src{QtRocket.h}{83}. Its
+constructor wires the system in four moves \src{QtRocket.cpp}{39}: the environment, whose
+default constructor supplies working gravity and atmosphere models \src{QtRocket.cpp}{43}
+(the alternatives are the subject of \cref{sec:environment}); the rocket model, which
+boots with a placeholder body so the composite mass is real from the first query
+\src{model/RocketModel.cpp}{30}; the propagator, constructed around that model with the
+shared environment injected in a single statement \src{QtRocket.cpp}{48}; and the motor
+database \src{QtRocket.cpp}{51}. Because the propagator is constructed together with the
+model it integrates --- and the one API that would rebuild the pair, \code{addRocket}, has
+no callers anywhere in the tree \src{QtRocket.h}{41} --- the model and the loop can never
+drift apart, and the environment injection has exactly one site.
+
+The singleton machinery is small enough to state completely. Three statics ---
+\code{instance}, \code{mtx}, and a plain \code{bool initialized} \src{QtRocket.cpp}{14}
+--- implement double-checked initialization: \code{getInstance()} reads the flag with no
+lock \src{QtRocket.cpp}{21}; on false, \code{init()} acquires the mutex, re-checks under
+the lock so a racing second caller cannot construct twice \src{QtRocket.cpp}{31}, and only
+after allocating the controller publishes \cppinline|initialized = true|
+\src{QtRocket.cpp}{35}. The instance is never deleted; it lives until the process exits.
+
+\begin{keyinsight}[The non-atomic fast-path read]
+The first check reads \code{initialized} --- a plain \code{bool}, not
+\cppinline|std::atomic<bool>| --- outside the mutex \src{QtRocket.cpp}{21}, while
+\code{init()} writes it under the lock \src{QtRocket.cpp}{35}. Concurrent first calls from
+two threads would be a data race under the C++ memory model, and on weakly-ordered
+hardware a second thread could observe the flag before the construction it guards. The
+race is latent and benign today because every entry point that reaches the controller
+calls \code{getInstance()} on the main thread before any other thread exists \src{main.cpp}{20},
+\src{cli/CliMain.cpp}{19} --- safe by usage, not by construction. The fix idiom already
+exists one layer down: the \code{Logger} is a Meyers singleton, initialized exactly once
+by the language itself \src{utils/Logger.cpp}{19}.
+\end{keyinsight}
+
+The public surface is deliberately small, and almost all of it delegates:
+\code{setTimeStep} and \code{setIntegratorModel} forward to the propagator
+\src{QtRocket.h}{35}; \code{setInitialState} and \code{getStates} to the model
+\src{QtRocket.h}{68}, \src{QtRocket.h}{48}; \code{getTrajectoryStatistics}
+\src{QtRocket.h}{55} and the typed \code{getTerminationReason} \src{QtRocket.h}{62} return
+whole-flight results; plain accessors expose the environment, the rocket, and the motor
+database \src{QtRocket.h}{34}. The one method with a body worth reading is
+\code{launchRocket()} \src{QtRocket.h}{43}, reproduced verbatim in
+\cref{lst:overview-launch}: a flight is exactly four calls.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+void QtRocket::launchRocket()
+{
+   // initialize the propagator
+   rocket.first->clearStates();
+   rocket.second->setCurrentTime(0.0);
+
+   // start the rocket motor
+   rocket.first->launch();
+
+   // run the propagator until it terminates
+   rocket.second->runUntilTerminate();
+}
+\end{minted}
+\caption{The entire launch path in the controller \srccap{QtRocket.cpp}{54}: clear the
+recorded history, rewind simulation time, ignite the model, run the loop to termination.
+Everything else --- staging launch parameters, selecting models, exporting results ---
+lives in the front ends.}\label{lst:overview-launch}
+\end{listing}
+
+\Cref{fig:overview-launch} places those four calls in the full request flow. In order:
+
+\begin{enumerate}
+\item \textbf{Clear history.} \cppinline|clearStates()| empties the
+  $(t, \mathtt{StateData})$ vector stored on the model \src{model/Propagatable.h}{51}. Any
+  element reference still held from a previous \code{getStates()} is invalidated here, which is
+  why both front ends re-fetch the history after every launch
+  \src{gui/AnalysisWindow.cpp}{39}, \src{cli/Repl.cpp}{690}.
+\item \textbf{Rewind time.} \cppinline|setCurrentTime(0.0)| \src{sim/Propagator.h}{67}.
+  Every flight starts at $t = 0$, which is also the ignition convention --- the simulation
+  clock and the thrust-curve clock agree by construction.
+\item \textbf{Ignite.} \cppinline|launch()| copies the staged initial state into the live
+  state and arms the motor's thrust curve with \cppinline|startMotor(0.0)|
+  \src{model/RocketModel.cpp}{105}. With no motor this is a no-op; the propagator's
+  no-liftoff guard then ends the run with a typed verdict rather than a hang
+  (\cref{sec:simcore}).
+\item \textbf{Propagate.} \cppinline|runUntilTerminate()| integrates until the model's own
+  \code{terminateCondition()} or one of the loop's guards fires \src{sim/Propagator.cpp}{58},
+  resetting the whole-flight statistics at the top of the run \src{sim/Propagator.cpp}{65}.
+  At every integrator stage the loop evaluates
+  $\dot{\vec v} = \mathtt{getForces}(t, \vec x, \vec v, \mathtt{env}) /
+  \mathtt{getMass}(t)$ \src{sim/Propagator.cpp}{41}; per recorded step it snapshots mass
+  properties and appends to the history \src{sim/Propagator.cpp}{132}.
+\end{enumerate}
+
+The whole sequence is synchronous on the calling thread --- no worker thread, no lock
+around the history, and nothing reads it concurrently (the consequences for the GUI are
+taken up in \cref{sec:interfaces}). The canonical drive sequence ---
+\code{setInitialState} $\to$ \code{setIntegratorModel} $\to$ \code{setTimeStep} $\to$
+\code{launchRocket} $\to$ \code{getStates} --- appears verbatim in the integration
+harness \src{tests/PhysicsIntegrationTests.cpp}{90}; the REPL issues the same calls, the
+integrator and timestep staged by their own commands before its launch handler runs
+\src{cli/Repl.cpp}{687}.
+
+\tikzfig{seq-launch}{The launch sequence. A front end stages the flight through the
+controller's delegating setters, then calls \code{launchRocket()}, whose entire body is
+the four calls of \cref{lst:overview-launch} \srccap{QtRocket.cpp}{54}. Inside
+\code{runUntilTerminate()} \srccap{sim/Propagator.cpp}{58} the rocket is visible only
+through the \code{Propagatable} interface: force and mass at every integrator stage, a
+mass-property snapshot per recorded step, and the termination predicate once per step.
+Results flow back through const-reference accessors after the run
+completes.}{fig:overview-launch}
+
+\subsection{The \code{Propagatable} bridge}\label{sec:overview-bridge}
+
+The seam between the two halves of the core is the abstract class
+\code{model::Propagatable} \src{model/Propagatable.h}{23}: the only view of the rocket the
+simulation loop ever sees. \code{RocketModel} is its only production implementation; the
+\code{Propagator} holds it as \cppinline|std::shared_ptr<model::Propagatable>|
+\src{sim/Propagator.h}{105} and interrogates it through six pure virtuals, reproduced
+verbatim in \cref{lst:overview-propagatable}.
+
+\begin{physbox}[What a simulation loop needs from a rocket]
+A point-mass flight simulator integrates Newton's second law: given position and velocity,
+it needs the net force $\vec F(t, \vec x, \vec v)$ and the current mass $m(t)$ --- mass is
+a function of time because propellant burns away. A rigid-body simulator with all six
+degrees of freedom (6-DOF: three translational plus three rotational) additionally needs
+the net torque and the inertia tensor for the rotational equations. That is the entire
+shape of the interface below: two questions for the translational problem, two for the
+rotational one, plus a snapshot hook and an end-of-flight predicate.
+\end{physbox}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+   virtual Vector3 getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment) = 0;
+   virtual Vector3 getTorques(double t) = 0;
+
+   virtual double getMass(double t) = 0;
+   virtual Matrix3 getCompositeInertiaTensor(double t) = 0;
+
+   /// Fill st.mass/cg/inertia with the body's composite mass properties at @p t. Called by the
+   /// Propagator once per recorded step (before appendState).
+   virtual void writeMassProperties(double t, StateData& st) = 0;
+
+   virtual bool terminateCondition(double t) = 0;
+\end{minted}
+\caption{The model$\leftrightarrow$sim bridge, complete \srccap{model/Propagatable.h}{29}.
+The integrator needs forces, torques, and time-varying mass properties --- and nothing
+else about the rocket. \code{terminateCondition} lets the model, not the loop, decide when
+a flight is over.}\label{lst:overview-propagatable}
+\end{listing}
+
+The bridge is more than a pure interface: it is also the state store. The base class
+carries the current, initial, and recorded states, so the flight history lives on the
+model side of the seam --- the propagator commits each accepted step through
+\code{setCurrentState} \src{sim/Propagator.cpp}{124} and appends to the history exposed by
+\code{getStates()} \src{model/Propagatable.h}{47}, which is why the controller's
+\code{getStates()} delegates to the rocket rather than to the propagator
+\src{QtRocket.h}{48}. The minimal contract is pinned by the propagator test suite: a
+conforming mock implements only the six pure virtuals and inherits state storage, history,
+and statistics from the base class \src{tests/PropagatorTests.cpp}{32}.
+
+Of the six virtuals, four carry the current flight and two are dormant --- implemented,
+with zero production consumers. The propagator's ordinary-differential-equation
+(ODE) lambda consumes \code{getForces} and \code{getMass} at every integrator stage
+\src{sim/Propagator.cpp}{41}; \code{writeMassProperties} runs once per recorded step
+\src{sim/Propagator.cpp}{132}; \code{terminateCondition} is tested once per step after the
+state is committed \src{sim/Propagator.cpp}{137}. \code{getTorques} is implemented as
+constant zero \src{model/RocketModel.cpp}{94} and called by no simulation code --- the
+comment beside the propagator's commented-out orientation integrator names it as the
+future 6-DOF consumer \src{sim/Propagator.h}{102} --- and
+\code{getCompositeInertiaTensor} likewise has no production caller; the per-step snapshot
+reaches the part tree directly rather than through the virtual
+\src{model/RocketModel.cpp}{59}. Two protected members are dead outright: \code{aeroData}
+is default-constructed and never read \src{model/Propagatable.h}{61} --- the
+\code{sim::Aero} alias survives specifically so it keeps compiling \src{sim/Aero.h}{63}
+--- and \code{nextState} is never touched; the propagator uses its own local of the same
+name \src{model/Propagatable.h}{65}, \src{sim/Propagator.cpp}{90}. The loop that drives
+the live half is the subject of \cref{sec:simcore}; what the dormant halves are waiting
+for is taken up in \cref{sec:aero}; \cref{sec:incomplete} carries the consolidated
+inventory.
+
+\subsection{Build system in brief}\label{sec:overview-build}
+
+The build is one CMake project --- \cppinline|cmake_minimum_required(VERSION 3.25)|
+\src{CMakeLists.txt}{1}, project \code{VERSION 0.1} \src{CMakeLists.txt}{3} --- pinned to
+C++23 \src{CMakeLists.txt}{5} with \code{compile\_commands.json} exported for tooling
+\src{CMakeLists.txt}{7}. Generator, compiler, and build type are all pinned by
+\srcf{CMakePresets.json}: Ninja everywhere \src{CMakePresets.json}{7}, eight configure
+presets (\code{debug}/\code{release} for the default compiler, Clang, and GCC; a
+release-only MSVC preset \src{CMakePresets.json}{70}; and \code{coverage-clang}, which
+redirects to a separate \code{build-coverage/} tree \src{CMakePresets.json}{35}), each
+with matching build and test presets. The presets are the single sanctioned entry point
+--- the command line, the editor tasks, and continuous integration (CI) all configure
+through them --- a pinning adopted after a generator mismatch broke the build directory
+\src{TODO.md}{24}.
+
+Dependency policy is strict vendoring (\cref{tab:overview-deps}): every dependency except
+Qt6 is fetched by \code{FetchContent} at an exact git tag and compiled from source at
+first configure. A directory-scoped \cppinline|set(BUILD_SHARED_LIBS OFF)|
+\src{CMakeLists.txt}{46} makes every in-tree library a static archive as well, so
+\cref{fig:overview-layering} is a graph of static libraries resolved at link time, not a
+runtime loading scheme.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}ll>{\raggedright\arraybackslash}Xl@{}}
+\toprule
+Dependency & Pinned tag & Build shape and role & \\
+\midrule
+GoogleTest & \code{v1.17.0} & test framework for the six test binaries & \src{CMakeLists.txt}{17} \\
+jsoncpp & \code{1.9.7} & static-only, tests off; thrustcurve.org JSON (\cref{sec:motors}) & \src{CMakeLists.txt}{32} \\
+curl & \code{curl-8\_20\_0} & static, HTTP-only; the sole network transport, under \code{utils} & \src{CMakeLists.txt}{44} \\
+Eigen & \code{5.0.1} & vectors, matrices, quaternions beneath \code{utils} & \src{CMakeLists.txt}{72} \\
+Boost & \code{boost-1.91.0-1} & restricted to \code{property\_tree}; XML persistence (\cref{sec:persistence}) & \src{CMakeLists.txt}{79} \\
+Qt6 & system & Widgets/PrintSupport for the GUI; OpenGL modules for the visualizer & \src{CMakeLists.txt}{140} \\
+\bottomrule
+\end{tabularx}
+\caption{Dependency vendoring at the pinned commit. Everything except Qt6 is fetched at an
+exact tag via \code{FetchContent}, so the dependency closure is a function of the
+repository, not of the build host. The first configure downloads and compiles all of it
+--- slow once, hermetic thereafter.}\label{tab:overview-deps}
+\end{table}
+
+\begin{designrule}[Hermetic dependency closure]
+The curl block is the most deliberate piece of the vendoring. curl is built static and
+HTTP-only \src{CMakeLists.txt}{46}, and every optional third-party backend (libssh2,
+libssh, nghttp2, libidn2, brotli, zstd) is explicitly forced off, with the rationale recorded in
+the tree: several of those options default to ON/AUTO, so curl links whatever it
+auto-detects on the build host and the final link then fails on machines that lack those
+libraries --- ``Forcing them off keeps the build identical on every platform''
+\src{CMakeLists.txt}{56}. The payoff is stated where it pays: the FreeBSD CI job builds in
+a bare virtual machine: ``The hermetic curl config means OpenSSL + zlib (both in
+the FreeBSD base system) are the only external libs curl needs''
+\src{.github/workflows/cmake-multi-platform.yml}{99}.
+\end{designrule}
+
+Warning hygiene is tree-wide and strict: \code{-Wall -Wextra -Wpedantic -Werror} on GCC
+and Clang \src{CMakeLists.txt}{97}, \code{/W4 /WX} on MSVC \src{CMakeLists.txt}{88}. The
+placement of those flags is itself the policy: they are added after the five
+\code{FetchContent} blocks but before the project's own subdirectories, so vendored code
+compiles with its own flags while every project target must be warning-clean; the one
+vendored source inside a project target, \srcf{gui/qcustomplot.cpp}, is exempted
+per-source with \code{-w} \src{CMakeLists.txt}{154}. The rest of the infrastructure ---
+the six GoogleTest binaries and their dual ctest registration, the light/heavy test split,
+the four-entry CI matrix plus the FreeBSD virtual-machine job, and the llvm-cov
+coverage pipeline --- is the subject of \cref{sec:testing}.
+
+\paragraph{Logging and API documentation.} Diagnostics everywhere in the tree flow through
+the \code{utils::Logger} Meyers singleton \src{utils/Logger.cpp}{18}, which writes every
+message to two sinks --- stdout and a \code{log.txt} opened in the process working
+directory \src{utils/Logger.cpp}{25} --- at five cumulative levels up to \code{PERF\_}
+\src{utils/Logger.h}{28}. Emission is mutex-guarded \src{utils/Logger.cpp}{35}; the level
+setter is not \src{utils/Logger.cpp}{77}, which is safe under the current call pattern
+(each front end pins the level once at startup, \cref{sec:interfaces}). A root
+\srcf{Doxyfile} generates API documentation from the tree's \cppinline|///| comments.
+
+\paragraph{Getting a build.} For the reader who wants the executables before the theory:
+
+\begin{minted}{text}
+cmake --preset debug-clang                          # configure (Ninja, into build/)
+cmake --build --preset debug-clang                  # compile everything
+ctest --test-dir build -R 'qtrocket_*' -LE heavy    # the fast test loop
+\end{minted}
+
+\noindent The first configure downloads and compiles the vendored closure of
+\cref{tab:overview-deps}, so it is slow once and incremental thereafter. The executables
+land at \code{build/qtrocket} and \code{build/qtrocket-cli}, with the viewer under
+\code{build/visualizer/}; the test binaries and their ctest registration are mapped in
+\cref{sec:testing}.
+
+With the map established, the remaining sections descend into the boxes: the part tree
+(\cref{sec:parts}) and placement (\cref{sec:placement}), motors (\cref{sec:motors}), the
+simulation loop (\cref{sec:simcore}) and its environment models (\cref{sec:environment}),
+aerodynamics (\cref{sec:aero}), the front ends (\cref{sec:interfaces}), and persistence
+(\cref{sec:persistence}).

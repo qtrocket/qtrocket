@@ -1,0 +1,69 @@
+% Force-assembly path: the three consumed terms feeding RocketModel::getForces(),
+% the ODE that divides by m(t), and the dormant machinery (gray/dashed) that is
+% built and tested but consumed by nothing.
+% Sources: notes/aero.md sec. 4.1/8, notes/controller.md sec. 4.4/8
+% (RocketModel.cpp getForces/getTorques, sim/Propagator.cpp ODE lambda).
+\begin{tikzpicture}[node distance=6mm and 12mm]
+
+  % --- consumed force terms (left column) ---
+  \node[comp,text width=46mm] (thrust)
+    {\textbf{Thrust} \footnotesize(motor part)\\[1pt]
+     \footnotesize\texttt{MotorModel::getThrust(t)},\\
+     always along world $+z$, assumed\\ through the CM; no motor $\Rightarrow$ 0};
+  \node[comp,text width=46mm,below=of thrust] (gravity)
+    {\textbf{Gravity} \footnotesize(pluggable)\\[1pt]
+     \footnotesize\texttt{getAccel(position)} $\times$ \texttt{getMass(t)}:\\
+     constant $-g_0\hat{z}$ or spherical\\ $GM/r^2$, at the trial position};
+  \node[comp,text width=46mm,below=of gravity] (drag)
+    {\textbf{Drag} \footnotesize(scalar law)\\[1pt]
+     \footnotesize $-\frac{1}{2}\,\rho\,|\vec{v}|\,C_d\,A_{ref}\,\vec{v}$;
+     $\rho$ from the\\ atmosphere at the clamped\\ altitude $\max(z,0)$;
+     user-set\\ constant $C_d$ and $A_{ref}$};
+
+  % --- assembly and consumer ---
+  \node[resolver,text width=46mm,right=10mm of gravity] (forces)
+    {getForces(t, x, v, env)\\[1pt]
+     \normalfont\footnotesize the only force assembly:\\ thrust $+$ gravity $+$ drag\\
+     \texttt{model/RocketModel.cpp}};
+  \node[consumer,text width=40mm,right=8mm of forces] (ode)
+    {\textbf{3-DOF ODE}\\[1pt]
+     \footnotesize $\dot{x}=v,\ \ \dot{v}=F/m(t)$\\
+     RK4 / RKF45 stages\\ \texttt{sim/Propagator.cpp}};
+
+  % --- dormant machinery (gray/dashed row below) ---
+  \node[comp,draw=qrGray,dashed,fill=qrGray!8,text width=42mm,
+        below=16mm of drag.south west,anchor=north west] (refarea)
+    {\textbf{Geometry ref.\ area}\\[1pt]
+     \footnotesize\texttt{deriveReferenceArea-}\\\texttt{FromGeometry()} (max frontal\\
+     disc): no production caller ---\\ drag never sees geometry};
+  \node[comp,draw=qrGray,dashed,fill=qrGray!8,text width=46mm,
+        right=6mm of refarea] (barrowman)
+    {\textbf{Barrowman composition}\\[1pt]
+     \footnotesize per-part \texttt{getAero(refArea)} $\to$\\
+     \texttt{getCompositeAero} $\to$ $C_{N_\alpha}$, CP\\
+     on the tip datum --- tested,\\ zero production consumers};
+  \node[comp,draw=qrGray,dashed,fill=qrGray!8,text width=42mm,
+        right=6mm of barrowman] (torques)
+    {\textbf{getTorques(t)}\\[1pt]
+     \footnotesize returns $\vec{0}$; no caller ---\\ orientation integrator\\
+     commented out; attitude carried\\ in \texttt{StateData}, not integrated};
+
+  % --- live edges ---
+  \draw[uses] (thrust.east) -- ++(6mm,0) |- (forces.west);
+  \draw[uses] (gravity.east) -- (forces.west);
+  \draw[uses] (drag.east) -- ++(6mm,0) |- (forces.west);
+  \draw[uses] (forces.east) -- (ode.west) node[flowlbl,midway,above=2pt]{$\vec{F}$};
+
+  % --- dormant edges: where each branch would feed, and doesn't ---
+  \draw[dep] (refarea.north) -- (drag.south) node[flowlbl,pos=0.8]{uncalled};
+  \draw[dep] (barrowman.north) -- (forces.south) node[flowlbl,midway]{unconsumed};
+  \draw[dep] (torques.north) -- (ode.south) node[flowlbl,midway]{no caller};
+
+  % extra fit point lifts the box top so the title clears the node row
+  \coordinate (dormantpad) at ($(refarea.north west)+(0,7mm)$);
+
+  \begin{pgfonlayer}{background}
+    \titledbox{(dormantpad)(refarea)(barrowman)(torques)}{Dormant: built, tested, consumed by nothing}{qrGray}
+  \end{pgfonlayer}
+
+\end{tikzpicture}

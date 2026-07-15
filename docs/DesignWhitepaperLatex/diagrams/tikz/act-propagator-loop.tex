@@ -1,0 +1,79 @@
+% Activity diagram: Propagator::runUntilTerminate() -- one integrator step per pass,
+% four in-loop guards plus a loop-scope catch, five typed TerminationReason verdicts.
+% Verified against notes/sim.md (sim/Propagator.cpp:58-183; caller QtRocket.cpp:54-65).
+\begin{tikzpicture}[node distance=3.6mm and 9mm,
+  decision/.append style={aspect=2.6,text width=27mm,inner sep=0.5pt},
+  act/.append style={minimum height=7mm,inner sep=3.5pt},
+  failnode/.append style={text width=34mm},
+  oknode/.append style={text width=34mm}]
+
+  % caller context: history clear, time reset, and motor ignition precede the run
+  \node[io,text width=46mm] (entry)
+    {from \texttt{QtRocket::launchRocket()}:\\
+     \footnotesize\texttt{clearStates()} \textbullet\ \texttt{setCurrentTime(0.0)}\\
+     \texttt{launch()} ignites the motor at $t=0$};
+  \node[startstop,below=of entry] (start) {\texttt{runUntilTerminate()}};
+  \node[act,below=of start,text width=48mm] (init)
+    {init: re-assert \texttt{timeStep} into the solver;\\
+     reset \texttt{Nominal} verdict + trajectory statistics};
+  \node[act,below=of init,text width=48mm] (step)
+    {integrator step\\
+     \footnotesize\texttt{linearIntegrator->step(t, x, v)}\\
+     RK4 (fixed) or RKF45 (adaptive)\\
+     $\dot{x}=v,\quad \dot{v}=F(t,x,v)/m(t)$};
+  \node[decision,below=5mm of step] (finite)
+    {next state\\ \texttt{allFinite()}?};
+  \node[failnode,right=11mm of finite] (nonfinite)
+    {\texttt{NonFiniteState}\\ \footnotesize NaN/Inf rejected before it can poison the history};
+  \node[decision,below=5mm of finite] (pad)
+    {still on the pad?\\ \footnotesize$\lnot$\,liftedOff $\wedge\ z \le 0$};
+  \node[act,right=11mm of pad,text width=32mm] (clamp)
+    {pad-hold clamp:\\ $z = 0$, velocity $= 0$\\
+     \footnotesize the pad cancels the downward force until thrust first lifts $z>0$};
+  \node[act,below=5mm of pad,text width=52mm] (record)
+    {commit + record sample\\
+     \footnotesize\texttt{setCurrentState(nextState)};\\
+     \texttt{updateTrajectoryStatistics} --- every step;\\
+     if \texttt{saveStates}: \texttt{writeMassProperties}\\
+     (mass/CG/inertia) + \texttt{appendState}};
+  \node[decision,below=5mm of record] (term)
+    {descending \&\\ below site?};
+  \node[oknode,right=11mm of term] (nominal)
+    {\texttt{Nominal}\\ \footnotesize\texttt{terminateCondition()}:\\ $z<0 \,\wedge\, v_z<0$, normal end of flight};
+  \node[decision,below=5mm of term] (nolift)
+    {stuck on pad\\ past deadline?};
+  \node[failnode,right=11mm of nolift] (noliftfail)
+    {\texttt{NoLiftoff}\\ \footnotesize no climb past 1\,m within 3\,s --- thrust never beat weight};
+  \node[decision,below=5mm of nolift] (caps)
+    {time / iteration\\ ceiling hit?};
+  \node[failnode,right=11mm of caps] (maxtime)
+    {\texttt{MaxSimTimeExceeded}\\ \footnotesize $t>$ \texttt{maxSimTime} (7200\,s default) or $10^{8}$ iterations};
+  \node[act,below=5mm of caps,text width=46mm] (advance)
+    {advance the clock\\
+     \footnotesize\texttt{currentTime += result.stepSize}\\
+     the step actually taken: constant for RK4, adaptive for RKF45};
+
+  % loop-scope catch: the whole while(true) is try-wrapped
+  \node[failnode,left=11mm of step] (integerr)
+    {\texttt{IntegratorError}\\ \footnotesize any throw inside the loop (RKF45 $h<h_{\min}$ underflow) caught at loop scope};
+
+  \draw[flow] (entry) -- (start);
+  \draw[flow] (start) -- (init);
+  \draw[flow] (init) -- (step);
+  \draw[flow] (step) -- (finite);
+  \draw[flow] (finite) -- node[flowlbl]{no} (nonfinite);
+  \draw[flow] (finite) -- node[flowlbl]{yes} (pad);
+  \draw[flow] (pad) -- node[flowlbl]{yes} (clamp);
+  \draw[flow] (pad) -- node[flowlbl]{no} (record);
+  \draw[flow] (clamp.south) |- (record.east);
+  \draw[flow] (record) -- (term);
+  \draw[flow] (term) -- node[flowlbl]{yes} (nominal);
+  \draw[flow] (term) -- node[flowlbl]{no} (nolift);
+  \draw[flow] (nolift) -- node[flowlbl]{yes} (noliftfail);
+  \draw[flow] (nolift) -- node[flowlbl]{no} (caps);
+  \draw[flow] (caps) -- node[flowlbl]{yes} (maxtime);
+  \draw[flow] (caps) -- node[flowlbl]{no} (advance);
+  \draw[flow] (advance.east) -- ++(56mm,0) node[flowlbl,pos=0.5]{next iteration} |- (step.east);
+  \draw[flow,dashed,qrRed] (step.west) -- node[flowlbl,text=qrRed]{catch} (integerr);
+
+\end{tikzpicture}
