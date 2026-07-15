@@ -16,7 +16,7 @@ cmake --build --preset debug-clang     # build everything
 - Generator/compiler/build-type are pinned by `CMakePresets.json` (Ninja everywhere — CLI, VS Code CMake Tools, and the .vscode tasks all use the presets). Use the `debug` preset for the default system compiler. **Don't configure with ad-hoc `cmake -B build` invocations** — mixing generators in an existing `build/` breaks the FetchContent sub-builds.
 
 - All dependencies except Qt6 (system-installed) are pulled via FetchContent (GoogleTest, jsoncpp, curl, Eigen, Boost.property_tree), so the **first configure/build downloads and compiles them — it is slow**. Don't delete `build/` casually.
-- Executables: `build/gui/qtrocket` (GUI), `build/cli/qtrocket-cli` (headless REPL — useful for exercising the sim core without a display).
+- Executables: `build/gui/qtrocket` (GUI), `build/cli/qtrocket-cli` (headless REPL — useful for exercising the sim core without a display; takes a script-file arg or `-c "<command>"`, and exits 1 if any command reported ERR, so piped scripts are CI-consumable).
 - `compile_commands.json` is exported in `build/`.
 
 ## Tests

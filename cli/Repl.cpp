@@ -289,22 +289,39 @@ int Repl::run(std::istream& in, std::ostream& out)
         if(!keepGoing)
             break;
     }
-    return 0;
+    return errorCount == 0 ? 0 : 1;
 }
 
 bool Repl::execute(const std::string& line, std::ostream& out)
 {
+   // Buffer the command's output so failures can be counted at this one chokepoint: the "ERR "
+   // line prefix is the protocol's failure signal (58 emit sites), and errorCount drives run()'s
+   // exit code. The buffer is forwarded verbatim, so callers see byte-identical output.
+   std::ostringstream buf;
+   bool keepGoing = true;
    // One guard for every command: a throwing command (e.g. any composite read on a design whose
    // placement solve failed) reports ERR and keeps the session alive.
    try
    {
-      return executeImpl(line, out);
+      keepGoing = executeImpl(line, buf);
    }
    catch(const std::exception& e)
    {
-      out << "ERR " << trim(line).substr(0, trim(line).find(' ')) << ": " << e.what() << "\n";
-      return true;
+      buf << "ERR " << trim(line).substr(0, trim(line).find(' ')) << ": " << e.what() << "\n";
    }
+
+   const std::string text = buf.str();
+   for(std::size_t pos = 0; pos < text.size();)
+   {
+      if(text.compare(pos, 4, "ERR ") == 0)
+         ++errorCount;
+      pos = text.find('\n', pos);
+      if(pos == std::string::npos)
+         break;
+      ++pos;
+   }
+   out << text;
+   return keepGoing;
 }
 
 bool Repl::executeImpl(const std::string& line, std::ostream& out)

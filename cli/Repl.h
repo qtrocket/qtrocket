@@ -25,7 +25,8 @@ class Repl
 public:
     explicit Repl(QtRocket* qtRocket);
 
-    /// Read and execute commands until EOF or a quit/exit command. Returns a process exit code (0).
+    /// Read and execute commands until EOF or a quit/exit command. Returns a process exit code:
+    /// 0 if every command succeeded, 1 if any command reported ERR.
     int run(std::istream& in, std::ostream& out);
 
    /// Execute one command line. Returns false to exit the REPL, true to keep going. A command that
@@ -37,6 +38,9 @@ private:
    bool executeImpl(const std::string& line, std::ostream& out);
 
    QtRocket* qtRocket;
+
+   // Commands that reported ERR, across this Repl's lifetime; drives run()'s exit code.
+   int errorCount{0};
 
     // Staged configuration, applied at launch (mirrors the GUI's line edits).
     bool motorSet{false};

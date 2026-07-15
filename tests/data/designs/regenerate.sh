@@ -29,7 +29,7 @@ for script in scripts/*.cli; do
       cat "$script"
       echo "savedesign ${stem}.qrd"
       echo "quit"
-   } | "$CLI" >"$log" 2>&1
+   } | "$CLI" >"$log" 2>&1 || true   # CLI exits 1 on any ERR; the grep below reports the detail
 
    if grep -q '^ERR' "$log"; then
       echo "FAILED: ${stem}" >&2

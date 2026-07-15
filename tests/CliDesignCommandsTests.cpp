@@ -241,3 +241,24 @@ TEST(CliDesignCommands, LoadMotorsImportsRaspEngFiles)
     EXPECT_NE(loadOut.find("1 motors"), std::string::npos);
     EXPECT_TRUE(ok(run(repl, "setmotor 1/2A3")));
 }
+
+TEST(CliDesignCommands, RunExitCodeReflectsCommandFailures)
+{
+    // The exit-code contract that makes piped scripts honest for CI consumers: run() returns 0
+    // only if every command succeeded, 1 if any reported ERR -- even though the session itself
+    // recovers and keeps executing.
+    {
+        cli::Repl repl(QtRocket::getInstance());
+        std::istringstream in("# comment\nstatus\nquit\n");
+        std::ostringstream out;
+        EXPECT_EQ(repl.run(in, out), 0) << out.str();
+    }
+    {
+        cli::Repl repl(QtRocket::getInstance());
+        std::istringstream in("bogus\nstatus\nquit\n");
+        std::ostringstream out;
+        EXPECT_EQ(repl.run(in, out), 1) << out.str();
+        EXPECT_NE(out.str().find("ERR unknown command"), std::string::npos) << out.str();
+        EXPECT_NE(out.str().find("OK"), std::string::npos) << "session should continue after an ERR";
+    }
+}

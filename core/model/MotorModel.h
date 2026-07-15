@@ -125,7 +125,7 @@ public:
         std::string str() const
         {
             if(org == CERTORG::AMRS)
-                return std::string("Austrialian Model Rocket Society Inc.");
+                return std::string("Australian Model Rocket Society Inc.");
             else if(org == CERTORG::CAR)
                 return std::string("Canadian Association of Rocketry");
             else if(org == CERTORG::NAR)
@@ -135,14 +135,14 @@ public:
             else if(org == CERTORG::UNC)
                 return std::string("Uncertified");
             else // UNK - Unknown
-                return std::string("Unkown");
+                return std::string("Unknown");
         }
 
         static CERTORG toEnum(const std::string& name)
         {
-            // Accept both the short codes and the full names emitted by str(), so a str()->toEnum()
-            // round-trip is lossless. The "Austrialian"/"Unkown" spellings match str()'s typo'd output.
-            if(name == "AMRS" || name == "Austrialian Model Rocket Society Inc.")
+            // Accept the short codes and the full names emitted by str(), so a str()->toEnum()
+            // round-trip is lossless.
+            if(name == "AMRS" || name == "Australian Model Rocket Society Inc.")
                 return CERTORG::AMRS;
             else if(name == "CAR" || name == "Canadian Association of Rocketry")
                 return CERTORG::CAR;
@@ -152,7 +152,7 @@ public:
                 return CERTORG::TRA;
             else if(name == "UNC" || name == "Uncertified")
                 return CERTORG::UNC;
-            else // Unknown ("Unkown")
+            else // Unknown
                 return CERTORG::UNK;
 
         }

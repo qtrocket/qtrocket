@@ -26,18 +26,6 @@ public:
     StateData& operator=(const StateData&) = default;
     StateData& operator=(StateData&&) = default;
 
-/// TODO: Put these behind an interface
-    //Vector3 getPosition() const
-    //{
-    //   return position;
-    //}
-
-    //Vector3 getVelocity() const
-    //{
-    //   return velocity;
-    //}
-// private:
-
     // Intended to be used as world state data
     Vector3 position{0.0, 0.0, 0.0};
     Vector3 velocity{0.0, 0.0, 0.0};

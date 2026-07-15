@@ -10,5 +10,7 @@ target_link_libraries(cli PUBLIC qtrocket_core)
 add_executable(qtrocket-cli
     CliMain.cpp)
 qtrocket_enable_coverage(qtrocket-cli)
+target_compile_definitions(qtrocket-cli PRIVATE
+    QTROCKET_VERSION="${PROJECT_VERSION}")
 target_link_libraries(qtrocket-cli PRIVATE
     cli)
