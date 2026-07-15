@@ -159,6 +159,7 @@ TEST(CliDesignCommands, AddpartAuthorsSeatVocabularyAndRoundTrips)
    std::ifstream in(tmp);
    std::stringstream ss;
    ss << in.rdbuf();
+   in.close(); // windows can't delete a file with an open handle; remove(tmp) below needs it closed
    const std::string qrd = ss.str();
    EXPECT_NE(qrd.find("seat=\"OnSurface\""), std::string::npos) << qrd;
    EXPECT_NE(qrd.find("seat=\"NestInBore\""), std::string::npos) << qrd;
