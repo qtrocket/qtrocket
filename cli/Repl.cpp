@@ -163,10 +163,19 @@ std::optional<double>* doubleFieldFor(const std::string& key, model::part::PartP
    return nullptr;
 }
 
-// Parse "key=value" tokens into PartParams (geometry keys), the name, and the attach offset (x/y/z;
-// only z is used, the forward standoff of an abut seat). Returns an error string (empty on success);
-// a bad numeric value errors, an unknown key is warned and skipped.
-std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& p, Vector3& offset)
+// Placement intent parsed off an addpart line: the seat/station/gap vocabulary of a StationLink.
+struct LinkTokens
+{
+   std::optional<std::string> seat;
+   std::optional<double>      parentStation;
+   std::optional<double>      childStation;
+   std::optional<double>      gap;
+};
+
+// Parse "key=value" tokens into PartParams (geometry keys), the name, and the placement tokens
+// (seat/parentStation/childStation/gap). Returns an error string (empty on success); a bad numeric
+// value errors, an unknown key is warned and skipped.
+std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& p, LinkTokens& link)
 {
    std::string tok;
    while(iss >> tok)
@@ -179,6 +188,7 @@ std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& 
 
       if(key == "name")  { p.name = val; continue; }
       if(key == "solid") { p.solid = (val == "true" || val == "1"); continue; }
+      if(key == "seat")  { link.seat = val; continue; }
       if(key == "finCount")
       {
          unsigned int n = 0;
@@ -186,13 +196,13 @@ std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& 
          p.finCount = n;
          continue;
       }
-      if(key == "x" || key == "y" || key == "z")
+      if(key == "parentStation" || key == "childStation" || key == "gap")
       {
          double d = 0.0;
          if(!parseDoubleStr(val, d)) return "bad value for '" + key + "': '" + val + "'";
-         if(key == "x")      offset.x() = d;
-         else if(key == "y") offset.y() = d;
-         else                offset.z() = d;
+         if(key == "parentStation")     link.parentStation = d;
+         else if(key == "childStation") link.childStation = d;
+         else                           link.gap = d;
          continue;
       }
       if(std::optional<double>* field = doubleFieldFor(key, p))
@@ -206,6 +216,45 @@ std::string parseDesignTokens(std::istringstream& iss, model::part::PartParams& 
       utils::Logger::getInstance()->warn("ignoring unknown design key '" + key + "'");
    }
    return "";
+}
+
+// Build a StationLink from the parsed placement tokens. The seat vocabulary starts from its verb's
+// canonical station pair (abut: parent aft/child fore; nest: parent fore/child aft; surface: both
+// aft), then applies any explicit station/gap overrides. Returns an error string (empty on success).
+std::string linkFromTokens(const LinkTokens& t, model::part::StationLink& out)
+{
+   using model::part::SeatKind;
+   SeatKind seat = SeatKind::Abut;
+   if(t.seat)
+   {
+      const std::optional<SeatKind> k = model::part::seatKindFromString(*t.seat);
+      if(!k) return "unknown seat '" + *t.seat + "' (Abut, NestInBore, OnSurface)";
+      seat = *k;
+   }
+   switch(seat)
+   {
+      case SeatKind::Abut:       out = model::part::abut(0.0); break;
+      case SeatKind::NestInBore: out = model::part::nestInBore(0.0); break;
+      case SeatKind::OnSurface:  out = model::part::seatOnWall(0.0); break;
+   }
+   if(t.parentStation) out.parentStation01 = *t.parentStation;
+   if(t.childStation)  out.childStation01 = *t.childStation;
+   if(t.gap)           out.gap = *t.gap;
+   if(seat == SeatKind::NestInBore && out.gap < 0.0)
+      return "NestInBore gap is an insertion depth and must be >= 0";
+   return "";
+}
+
+// First part matching @p name in DFS attachment order, or nullptr. Names need not be unique; the
+// first match wins, so scripts should use unique names (ids are session-specific and unscriptable).
+model::part::Part* findByName(model::part::Part& node, const std::string& name)
+{
+   if(node.getName() == name)
+      return &node;
+   for(const auto& [child, link] : node.getChildParts())
+      if(model::part::Part* hit = findByName(*child, name))
+         return hit;
+   return nullptr;
 }
 
 // Print one part per line, indented by depth: id / type / name / own-mass at t=0.
@@ -243,6 +292,21 @@ int Repl::run(std::istream& in, std::ostream& out)
 }
 
 bool Repl::execute(const std::string& line, std::ostream& out)
+{
+   // One guard for every command: a throwing command (e.g. any composite read on a design whose
+   // placement solve failed) reports ERR and keeps the session alive.
+   try
+   {
+      return executeImpl(line, out);
+   }
+   catch(const std::exception& e)
+   {
+      out << "ERR " << trim(line).substr(0, trim(line).find(' ')) << ": " << e.what() << "\n";
+      return true;
+   }
+}
+
+bool Repl::executeImpl(const std::string& line, std::ostream& out)
 {
    std::istringstream iss(line);
    std::string cmd;
@@ -285,7 +349,10 @@ bool Repl::execute(const std::string& line, std::ostream& out)
           << "#   save <path.csv>         write the last run's full series to a file\n"
           << "#   -- design --\n"
           << "#   newdesign <type> [k=v...]            start a design with a root part\n"
-          << "#   addpart <parentId|root> <type> [k=v...] [z=<m>]   attach a part\n"
+          << "#   addpart <parentId|name|root> <type> [k=v...] [link k=v...]   attach a part\n"
+          << "#   link keys: seat=Abut|NestInBore|OnSurface, parentStation=<0..1>,\n"
+          << "#   childStation=<0..1>, gap=<m> (default: child fore abuts parent aft, gap 0)\n"
+          << "#   checkdesign             physical-sense check: overlaps + air gaps\n"
           << "#   listparts               show the part tree + composite mass/CG\n"
           << "#   removepart <id>         remove a part (and its sub-tree)\n"
           << "#   cleardesign             reset to the default placeholder body\n"
@@ -790,8 +857,8 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
       model::part::PartParams params;
-      Vector3 offset = Vector3::Zero(); // a root has no parent offset; parsed uniformly, then ignored
-      const std::string err = parseDesignTokens(iss, params, offset);
+      LinkTokens linkToks; // a root has no parent link; parsed uniformly, then ignored
+      const std::string err = parseDesignTokens(iss, params, linkToks);
       if(!err.empty())
       {
          out << "ERR newdesign: " << err << "\n";
@@ -827,36 +894,50 @@ bool Repl::execute(const std::string& line, std::ostream& out)
       std::string parentTok, type;
       if(!(iss >> parentTok) || !(iss >> type))
       {
-         out << "ERR usage: addpart <parentId|root> <type> [name=..] [geom key=value...] [z=<m>]\n";
+         out << "ERR usage: addpart <parentId|name|root> <type> [name=..] [geom key=value...]"
+                " [seat=.. parentStation=.. childStation=.. gap=..]\n";
          return true;
       }
       auto rocket = qtRocket->getRocket();
+      if(!rocket->getTopPart())
+      {
+         out << "ERR addpart: no design (use newdesign first)\n";
+         return true;
+      }
+      // The parent is named by id, by part name, or as the literal root. Ids are session-specific
+      // (reassigned on reload), so scripts address parents by name.
       model::part::Part::Id parentId = 0;
+      unsigned long long pid = 0;
       if(parentTok == "root")
       {
-         if(!rocket->getTopPart())
-         {
-            out << "ERR addpart: no design (use newdesign first)\n";
-            return true;
-         }
          parentId = rocket->getTopPart()->getId();
+      }
+      else if(parseULLStr(parentTok, pid))
+      {
+         parentId = static_cast<model::part::Part::Id>(pid);
+      }
+      else if(model::part::Part* byName = findByName(*rocket->getTopPart(), parentTok))
+      {
+         parentId = byName->getId();
       }
       else
       {
-         unsigned long long pid = 0;
-         if(!parseULLStr(parentTok, pid))
-         {
-            out << "ERR addpart: bad parent id '" << parentTok << "' (use an id or 'root')\n";
-            return true;
-         }
-         parentId = static_cast<model::part::Part::Id>(pid);
+         out << "ERR addpart: no part named '" << parentTok << "' (use an id, a name, or 'root')\n";
+         return true;
       }
       model::part::PartParams params;
-      Vector3 offset = Vector3::Zero();
-      const std::string err = parseDesignTokens(iss, params, offset);
+      LinkTokens linkToks;
+      const std::string err = parseDesignTokens(iss, params, linkToks);
       if(!err.empty())
       {
          out << "ERR addpart: " << err << "\n";
+         return true;
+      }
+      model::part::StationLink link;
+      const std::string linkErr = linkFromTokens(linkToks, link);
+      if(!linkErr.empty())
+      {
+         out << "ERR addpart: " << linkErr << "\n";
          return true;
       }
       std::shared_ptr<model::part::Part> child;
@@ -867,14 +948,65 @@ bool Repl::execute(const std::string& line, std::ostream& out)
          return true;
       }
       const auto childId = child->getId();
-      // The child abuts its parent's aft plane with a forward standoff of the parsed z (x/y are coaxial
-      // in 3-DOF and ignored).
-      if(!rocket->addPart(parentId, std::move(child), model::part::abut(offset.z())))
+      if(!rocket->addPart(parentId, std::move(child), link))
       {
          out << "ERR addpart: no part with id " << parentId << " (or the attach was rejected)\n";
          return true;
       }
       out << "OK addpart: " << type << " id=" << childId << " under " << parentId << "\n";
+      return true;
+   }
+   else if(cmd == "checkdesign")
+   {
+      auto top = qtRocket->getRocket()->getTopPart();
+      if(!top)
+      {
+         out << "ERR checkdesign: no design\n";
+         return true;
+      }
+      // Physical-sense verdict in two layers: the cached envelope sweep (overlaps / poke-through),
+      // plus an axial-coverage scan for air gaps -- intent the sweep can't see (a positive standoff is
+      // legal in a StationLink but leaves parts floating apart).
+      const model::part::SolveResult& diag = top->placementDiagnostics();
+      const std::vector<model::part::Placed> placed =
+         model::part::resolvePlacements(*top, model::part::Pose{});
+
+      struct Span { double aft; double fore; };
+      std::vector<Span> spans;
+      for(const model::part::Placed& pl : placed)
+      {
+         const double fore = pl.pose.origin.z();
+         const double len  = pl.part->axialLength();
+         if(len > 0.0)
+            spans.push_back({fore - len, fore}); // zero-span parts (a Motor) can't bound coverage
+      }
+      std::sort(spans.begin(), spans.end(), [](const Span& a, const Span& b) { return a.aft < b.aft; });
+
+      constexpr double tol = 1e-9;
+      std::vector<std::pair<double, double>> gaps;
+      for(std::size_t i = 1; i < spans.size(); ++i)
+      {
+         const double covered = spans[i - 1].fore;
+         if(spans[i].aft > covered + tol)
+            gaps.emplace_back(covered, spans[i].aft);
+         spans[i].fore = std::max(spans[i].fore, covered);
+      }
+
+      if(diag.ok && gaps.empty())
+      {
+         out << "OK checkdesign: " << placed.size() << " parts, contiguous, no overlaps\n";
+         return true;
+      }
+      out << "ERR checkdesign:";
+      if(!diag.ok)
+         out << " " << diag.diagnostics.size() << " overlap(s)";
+      if(!gaps.empty())
+         out << (diag.ok ? " " : ", ") << gaps.size() << " air gap(s)";
+      out << "\n";
+      for(const auto& d : diag.diagnostics)
+         out << "  overlap: " << d.message << "\n";
+      for(const auto& [lo, hi] : gaps)
+         out << "  gap: nothing spans z in [" << lo << ", " << hi << "] (" << (hi - lo) << " m)\n";
       return true;
    }
    else if(cmd == "listparts")

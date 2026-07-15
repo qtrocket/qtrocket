@@ -1,0 +1,8 @@
+# large38_nested.qrd -- 4-level nest: nose -> airframe -> flush coupler -> through-running inner tube
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=Nose baseRadius=0.02 length=0.12 density=1400
+addpart Nose BodyTube name=Airframe innerRadius=0.0191 outerRadius=0.02 length=0.4 density=1400
+addpart Airframe BodyTube name=Coupler innerRadius=0.018 outerRadius=0.019 length=0.05 density=1400 seat=NestInBore gap=0.05
+addpart Coupler BodyTube name=InnerTube innerRadius=0.017 outerRadius=0.018 length=0.08 density=1400 seat=NestInBore gap=0.08
+checkdesign

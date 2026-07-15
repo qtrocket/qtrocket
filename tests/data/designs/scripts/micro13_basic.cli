@@ -1,0 +1,7 @@
+# micro13_basic.qrd -- reference micro airframe: solid nose + body + 3 swept fins
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=nose baseRadius=0.0072 length=0.05 density=400
+addpart nose BodyTube name=body innerRadius=0.0066 outerRadius=0.0072 length=0.18 density=400
+addpart body FinSet name=fins finCount=3 rootChord=0.025 tipChord=0.012 span=0.02 sweep=0.012 thickness=0.0015 bodyRadius=0.0072 density=400 seat=OnSurface parentStation=0 childStation=0
+checkdesign

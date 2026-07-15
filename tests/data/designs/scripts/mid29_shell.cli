@@ -1,0 +1,7 @@
+# mid29_shell.qrd -- thin-shell nose + longer body + 4 fins
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=ShellNose baseRadius=0.0155 length=0.22 density=2500 solid=false wallThickness=0.002
+addpart ShellNose BodyTube name=Airframe innerRadius=0.0149 outerRadius=0.0155 length=0.5 density=2500
+addpart Airframe FinSet name=Fins finCount=4 rootChord=0.09 tipChord=0.045 span=0.07 sweep=0.04 thickness=0.003 bodyRadius=0.0155 density=2500 seat=OnSurface parentStation=0 childStation=0
+checkdesign

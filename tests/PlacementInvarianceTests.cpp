@@ -1,40 +1,25 @@
-// Phase 0 of the Part-Placement migration: the INVARIANCE GATE, written first (implementation plan
-// Part II Step 2; whitepaper Section 8.1 / Figure 9).
+// Placement regression pin for the design corpus: every committed fixture's integrator-facing
+// quantities -- composite mass, CG, inertia, aero CP, and each part's resolved CM station -- are
+// snapshotted at t = 0 and compared against the committed baseline
+// (tests/data/placement-invariance-baseline.txt). A diff here means the resolver, the composite
+// aggregation, or the corpus geometry changed; only a deliberate change to either may regenerate the
+// baseline (never regenerate to silence an unexplained diff):
 //
-// The whole migration rests on one claim: the geometry-driven placement model is physics-invariant on
-// every existing design. This gate makes that claim falsifiable. It loads the 24 committed `.qrd`
-// fixtures through the CURRENT (legacy CM-to-CM) reader and snapshots, per design, the quantities the
-// integrator consumes -- composite mass, composite CG, composite inertia, the aero CP, and every
-// part's resolved axial station -- then compares them against an immutable committed baseline
-// (tests/data/placement-invariance-baseline.txt).
+//   QTROCKET_REGEN_PLACEMENT_BASELINE=1 integration_tests \
+//      --gtest_filter='PlacementInvariance.RegenerateBaseline'
 //
-//   * Now (Step 2): the reader IS the legacy reader, so the snapshot equals its own baseline by
-//     definition -- `Phase0SnapshotIsSelfConsistent` passes, establishing the ground truth.
-//   * Later (Steps 8-9, 12): the SAME snapshot machinery is re-run against the MIGRATED reader and
-//     compared to this baseline (mass/inertia bit-identical; CG and stations after one known
-//     tip-datum shift). Those comparison tests are added in Step 8 and reuse `snapshotFixture` /
-//     `parseBaseline` below. NOTE: the static margin cp()-cg() is deliberately NOT compared -- the
-//     migration CORRECTS a CM-contaminated legacy cp (see the StaticMargin note further down and
-//     NoseConeTest.CompositeCpIsCmIndependentSolidVsShell), so the baseline cp is not reproduced.
-//
-// Two deliberate choices, both documented in the baseline header:
-//   1. Each fixture is loaded with an EMPTY motor DB. A fixture stores its motor as `<motor
-//      commonName=...>`, NOT as a `<part>`; on load the motor is re-attached programmatically at a
-//      ZERO offset (RocketModel::setMotorModel), entirely independent of the `.qrd` part-placement
-//      the migration changes. Dropping it yields the pure AIRFRAME geometry composite -- deterministic,
-//      independent of motor-DB contents, and exactly the 4-geometry-type tree the resolver handles.
-//   2. A part's "resolved axial station in the existing convention" is its cumulative CM-to-CM offset
-//      from the root (the sum of stored offsets down the DFS path; root = 0) -- precisely what the
-//      legacy aero walk threads (Part::accumulateAeroAt, `axialStation + pos.z()`).
-//
-// The baseline is IMMUTABLE ground truth and must never be regenerated to make a failing migration
-// pass. Regeneration is gated behind the QTROCKET_REGEN_PLACEMENT_BASELINE env var solely to bootstrap
-// the file once.
+// Each fixture is loaded with an EMPTY motor DB: a fixture stores its motor as <motor commonName=..>,
+// not as a <part>, and the motor is re-attached programmatically -- so the snapshot is the pure
+// airframe geometry composite, deterministic and independent of motor-DB contents. All values are in
+// the tip datum (z = 0 at the root's fore plane, +z forward). The corpus is the 24 script-built
+// fixtures; the deliberately self-intersecting xl75_multi_pokethrough.qrd is a separate design (see
+// PokeThroughRegressionTests) and is not part of it.
 
 /// \cond
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -61,11 +46,10 @@ const std::string kTestDataDir  = QTROCKET_TEST_DATA_DIR;
 const std::string kDesignsDir   = kTestDataDir + "/designs";
 const std::string kBaselinePath = kTestDataDir + "/placement-invariance-baseline.txt";
 
-// The Phase-0 corpus is fixed at 24 fixtures (micro13 -> xl75). The Step-12 poke-through regression
-// fixture (xl75_multi_pokethrough.qrd) is a SEPARATE design, not part of the invariance corpus.
+/// The corpus is fixed at 24 fixtures (micro13 -> xl75); pokethrough is a separate design.
 constexpr std::size_t kCorpusSize = 24;
 
-/// One part's identity plus its resolved axial station (cumulative CM-to-CM offset from the root).
+/// One part's identity plus its resolved CM station in the tip datum.
 struct PartStation
 {
    std::string type;
@@ -73,13 +57,13 @@ struct PartStation
    Vector3     station{Vector3::Zero()};
 };
 
-/// The invariance quantities for one design, all evaluated at t = 0 on the airframe-only tree.
+/// The pinned quantities for one design, all evaluated at t = 0 on the airframe-only tree.
 struct DesignSnapshot
 {
    double                   mass{0.0};                 ///< composite mass (kg, datum-independent)
-   Vector3                  cm{Vector3::Zero()};       ///< composite CG (m, legacy root-own-CM datum)
+   Vector3                  cm{Vector3::Zero()};       ///< composite CG (m, tip datum)
    Matrix3                  inertia{Matrix3::Zero()};  ///< composite inertia (kg m^2, about the CG)
-   double                   cp{0.0};                   ///< composite CP (m, legacy root-own-CM datum)
+   double                   cp{0.0};                   ///< composite CP (m, tip datum)
    bool                     cpValid{false};            ///< false when CNalpha == 0 (CP undefined)
    std::vector<PartStation> parts;                     ///< DFS pre-order
 };
@@ -92,8 +76,8 @@ std::string f17(double x)
    return std::string(buf);
 }
 
-/// Snapshot a fully built airframe tree (the migrated reader's output) -- the invariance quantities at
-/// t = 0. Shared by the fixture loader and the cutover-reload check (CorpusStableAfterCutover) below.
+/// Snapshot a fully built airframe tree: the pinned quantities at t = 0. Shared by the corpus
+/// comparison, the resave-stability check, and the gated baseline regeneration below.
 DesignSnapshot snapshotRoot(model::part::Part& root)  // non-const: getComposite* lazily recompute
 {
    DesignSnapshot s;
@@ -108,8 +92,7 @@ DesignSnapshot snapshotRoot(model::part::Part& root)  // non-const: getComposite
    s.cpValid = aero.cpValid;
 
    // Per-part CM station in the tip datum: pose.origin + the uniform local CM (-L/2 +
-   // getCenterMassOffset().z()) -- the same expression the migrated composite pass uses. DFS order,
-   // matching the baseline's DFS order. parts[0] is the root: its station IS cmLocalZ_root.
+   // getCenterMassOffset().z()) -- the same expression the composite pass uses. DFS order.
    for(const model::part::Placed& pl : model::part::resolvePlacements(root, model::part::Pose{}))
    {
       const Vector3 off = pl.part->getCenterMassOffset();
@@ -120,14 +103,11 @@ DesignSnapshot snapshotRoot(model::part::Part& root)  // non-const: getComposite
    return s;
 }
 
-/// Load one fixture (EMPTY motor DB -> airframe-only) and snapshot the MIGRATED reader's output.
-/// CG / CP / per-part stations come back in the new tip datum (relative to the nose tip); the
-/// comparison (below) re-expresses the legacy root-own-CM-datum baseline into it by the single fixed
-/// offset cmLocalZ_root (= the root's own CM station = parts[0].station.z()).
+/// Load one fixture (EMPTY motor DB -> airframe-only) and snapshot it.
 DesignSnapshot snapshotFixture(const std::string& stem)
 {
    model::RocketModel        rocket;
-   model::MotorModelDatabase motors;  // intentionally empty -- see the file/baseline header
+   model::MotorModelDatabase motors;  // intentionally empty -- see the file header
    model::DesignSerializer::load(rocket, motors, kDesignsDir + "/" + stem + ".qrd");
    return snapshotRoot(*rocket.getTopPart());
 }
@@ -144,11 +124,21 @@ DesignSnapshot snapshotFixture(const std::string& stem)
                                         << " (rel " << f17(std::fabs(live - base) / scale) << ")";
 }
 
-// The migration is a re-expression of the same arithmetic through the resolver, so the per-part CM
-// derivation re-associates the floating-point ops: the result is mathematically identical but drifts
-// from the legacy bits by a few ULPs. This tolerance admits that ULP drift and nothing larger -- any
-// real placement bug moves a value by orders of magnitude more.
+// Admits only ULP-level drift from re-associated floating-point arithmetic; any real placement bug
+// moves a value by orders of magnitude more.
 constexpr double kTol = 1e-9;
+
+/// The corpus stems (sorted; the pokethrough fixture excluded).
+std::vector<std::string> corpusStems()
+{
+   std::vector<std::string> out;
+   for(const auto& e : std::filesystem::directory_iterator(kDesignsDir))
+      if(e.is_regular_file() && e.path().extension() == ".qrd"
+         && e.path().filename().string().find("pokethrough") == std::string::npos)
+         out.push_back(e.path().stem().string());
+   std::sort(out.begin(), out.end());
+   return out;
+}
 
 /// Parse the committed baseline into per-fixture snapshots (keyed by fixture stem).
 std::map<std::string, DesignSnapshot> parseBaseline()
@@ -180,7 +170,7 @@ std::map<std::string, DesignSnapshot> parseBaseline()
       {
          int v = 0;
          iss >> v;
-         EXPECT_EQ(v, 1) << "unexpected baseline format version";
+         EXPECT_EQ(v, 2) << "unexpected baseline format version";
       }
       else if(kw == "design")
       {
@@ -232,18 +222,13 @@ std::map<std::string, DesignSnapshot> parseBaseline()
    }
    return out;
 }
-}  // namespace
 
-namespace
-{
-// Common fixture: load + migrated-snapshot every corpus design, paired with its frozen legacy
-// baseline. cmLocalZ_root (the single tip-datum shift) is the root's own CM station = parts[0].z.
+// Common fixture: every corpus design's live snapshot paired with its committed baseline.
 struct Paired
 {
    std::string    stem;
-   DesignSnapshot base;  // legacy, root-own-CM datum (the committed ground truth)
-   DesignSnapshot live;  // migrated, tip datum
-   double         cmLocalZRoot{0.0};
+   DesignSnapshot base;
+   DesignSnapshot live;
 };
 
 std::vector<Paired> loadCorpus()
@@ -253,20 +238,72 @@ std::vector<Paired> loadCorpus()
    std::vector<Paired> out;
    for(const auto& [stem, base] : baseline)
    {
-      DesignSnapshot live = snapshotFixture(stem);
-      const double   root = live.parts.empty() ? 0.0 : live.parts.front().station.z();
-      out.push_back(Paired{stem, base, std::move(live), root});
+      out.push_back(Paired{stem, base, snapshotFixture(stem)});
    }
    return out;
 }
 }  // namespace
 
-// The migrated composite mass and inertia-about-CM are datum-INDEPENDENT, so they must reproduce the
-// frozen Phase-0 snapshot (to within the ULP drift of the re-expressed arithmetic).
-TEST(PlacementInvariance, MassAndInertiaBitIdentical)
+// Gated regeneration -- the only writer of the baseline file. Run it after a deliberate corpus or
+// geometry change (see tests/data/designs/regenerate.sh); skipped otherwise.
+TEST(PlacementInvariance, RegenerateBaseline)
+{
+   if(std::getenv("QTROCKET_REGEN_PLACEMENT_BASELINE") == nullptr)
+   {
+      GTEST_SKIP() << "set QTROCKET_REGEN_PLACEMENT_BASELINE=1 to rewrite the baseline";
+   }
+   utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
+
+   const std::vector<std::string> stems = corpusStems();
+   ASSERT_EQ(stems.size(), kCorpusSize);
+
+   std::ofstream out(kBaselinePath);
+   ASSERT_TRUE(out.is_open()) << kBaselinePath;
+   out << "# QtRocket design-corpus placement baseline: the frozen t = 0 snapshot of every committed\n"
+          "# fixture's integrator-facing quantities, loaded airframe-only (EMPTY motor DB; the <motor>\n"
+          "# element re-attaches programmatically and never perturbs placement).\n"
+          "#\n"
+          "# A diff means the resolver, the composite aggregation, or the corpus geometry changed.\n"
+          "# Regenerate ONLY for a deliberate change (PlacementInvariance.RegenerateBaseline, gated\n"
+          "# behind QTROCKET_REGEN_PLACEMENT_BASELINE=1), never to silence an unexplained diff.\n"
+          "#\n"
+          "# All stations are in the tip datum (z = 0 at the root fore plane, +z forward):\n"
+          "#   mass     topPart->getCompositeMass(0)                  [kg]\n"
+          "#   cm       topPart->getCompositeCm(0)      (x y z)       [m]\n"
+          "#   inertia  topPart->getCompositeI(0)       (row-major)   [kg m^2, about the composite CG]\n"
+          "#   cp       topPart->getCompositeAero(1).cp()  (valid cp) [m]\n"
+          "#   part     '<index> <type> <x> <y> <z> <name>': each part's resolved CM station,\n"
+          "#            DFS pre-order.\n"
+          "# Doubles are %.17g (exact IEEE-754 double round-trip).\n"
+          "#\n"
+          "format 2\n";
+   for(const std::string& stem : stems)
+   {
+      const DesignSnapshot s = snapshotFixture(stem);
+      out << "design " << stem << "\n";
+      out << "mass " << f17(s.mass) << "\n";
+      out << "cm " << f17(s.cm.x()) << " " << f17(s.cm.y()) << " " << f17(s.cm.z()) << "\n";
+      out << "inertia";
+      for(int r = 0; r < 3; ++r)
+         for(int c = 0; c < 3; ++c)
+            out << " " << f17(s.inertia(r, c));
+      out << "\n";
+      out << "cp " << (s.cpValid ? 1 : 0) << " " << f17(s.cp) << "\n";
+      out << "parts " << s.parts.size() << "\n";
+      for(std::size_t i = 0; i < s.parts.size(); ++i)
+      {
+         const PartStation& p = s.parts[i];
+         out << "part " << i << " " << p.type << " " << f17(p.station.x()) << " "
+             << f17(p.station.y()) << " " << f17(p.station.z()) << " " << p.name << "\n";
+      }
+   }
+   std::cout << "[ REGEN ] wrote " << stems.size() << " designs to " << kBaselinePath << "\n";
+}
+
+TEST(PlacementInvariance, MassAndInertiaMatchBaseline)
 {
    const std::vector<Paired> corpus = loadCorpus();
-   ASSERT_EQ(corpus.size(), kCorpusSize) << "the Phase-0 corpus is fixed at 24 fixtures";
+   ASSERT_EQ(corpus.size(), kCorpusSize) << "the corpus is fixed at 24 fixtures";
    for(const Paired& p : corpus)
    {
       EXPECT_TRUE(approxEq(p.live.mass, p.base.mass, kTol, p.stem + " mass"));
@@ -281,22 +318,31 @@ TEST(PlacementInvariance, MassAndInertiaBitIdentical)
    }
 }
 
-// The migrated composite CG equals the legacy CG re-expressed into the tip datum by the single fixed
-// offset cmLocalZ_root (the root's own CM station). x/y are coaxial (zero) in both.
-TEST(PlacementInvariance, CgMatchesUnderTipDatumShift)
+TEST(PlacementInvariance, CgMatchesBaseline)
 {
    const std::vector<Paired> corpus = loadCorpus();
    for(const Paired& p : corpus)
    {
       EXPECT_TRUE(approxEq(p.live.cm.x(), p.base.cm.x(), kTol, p.stem + " cg.x"));
       EXPECT_TRUE(approxEq(p.live.cm.y(), p.base.cm.y(), kTol, p.stem + " cg.y"));
-      EXPECT_TRUE(approxEq(p.live.cm.z(), p.base.cm.z() + p.cmLocalZRoot, kTol, p.stem + " cg.z"));
+      EXPECT_TRUE(approxEq(p.live.cm.z(), p.base.cm.z(), kTol, p.stem + " cg.z"));
    }
 }
 
-// Every part's resolved station matches the legacy station under the same single tip-datum shift:
-// migrated CM-in-tip minus cmLocalZ_root == legacy CM-relative-to-root-CM.
-TEST(PlacementInvariance, ResolvedStationsMatch)
+TEST(PlacementInvariance, CpMatchesBaseline)
+{
+   const std::vector<Paired> corpus = loadCorpus();
+   for(const Paired& p : corpus)
+   {
+      EXPECT_EQ(p.live.cpValid, p.base.cpValid) << p.stem;
+      if(p.live.cpValid && p.base.cpValid)
+      {
+         EXPECT_TRUE(approxEq(p.live.cp, p.base.cp, kTol, p.stem + " cp"));
+      }
+   }
+}
+
+TEST(PlacementInvariance, ResolvedStationsMatchBaseline)
 {
    const std::vector<Paired> corpus = loadCorpus();
    for(const Paired& p : corpus)
@@ -309,19 +355,10 @@ TEST(PlacementInvariance, ResolvedStationsMatch)
          EXPECT_EQ(p.live.parts[i].name, p.base.parts[i].name) << tag << " name";
          EXPECT_TRUE(approxEq(p.live.parts[i].station.x(), p.base.parts[i].station.x(), kTol, tag + " x"));
          EXPECT_TRUE(approxEq(p.live.parts[i].station.y(), p.base.parts[i].station.y(), kTol, tag + " y"));
-         EXPECT_TRUE(approxEq(p.live.parts[i].station.z() - p.cmLocalZRoot, p.base.parts[i].station.z(),
-                              kTol, tag + " z"));
+         EXPECT_TRUE(approxEq(p.live.parts[i].station.z(), p.base.parts[i].station.z(), kTol, tag + " z"));
       }
    }
 }
-
-// NOTE: the static margin cp - cg is deliberately NOT asserted invariant against the legacy baseline.
-// The migration CORRECTED a latent bug: the legacy aero walk leaked each part's own CM into the CP
-// (cnAlphaXcp/cnAlpha), so the legacy cp -- and hence the baseline static margin -- was wrong by ~0.1-2%
-// on every fixture. The migrated CP is CM-independent (a CP depends on external shape only), which is the
-// physically correct behavior; it is pinned by NoseConeTest.CompositeCpIsCmIndependentSolidVsShell. The
-// migrated mass / inertia / CG / resolved stations stay bit-invariant (the tests above), and 3-DOF flight
-// is unaffected (cp is unused until 6-DOF). See the plan's Part III as-built note (T6).
 
 // Diagnostic: report the worst observed relative drift across the corpus, so the chosen tolerance can
 // be judged against reality (and a regression that widens it is visible in the log).
@@ -339,29 +376,26 @@ TEST(PlacementInvariance, ReportWorstDrift)
    {
       track(p.live.mass, p.base.mass, p.stem + " mass");
       for(int r = 0; r < 3; ++r) { for(int c = 0; c < 3; ++c) { track(p.live.inertia(r, c), p.base.inertia(r, c), p.stem + " I"); } }
-      track(p.live.cm.z(), p.base.cm.z() + p.cmLocalZRoot, p.stem + " cg");
+      track(p.live.cm.z(), p.base.cm.z(), p.stem + " cg");
       for(std::size_t i = 0; i < p.base.parts.size(); ++i)
       {
-         track(p.live.parts[i].station.z() - p.cmLocalZRoot, p.base.parts[i].station.z(), p.stem + " station");
+         track(p.live.parts[i].station.z(), p.base.parts[i].station.z(), p.stem + " station");
       }
    }
    std::cout << "[ INVARIANCE ] worst relative drift = " << f17(worst) << " at " << where << "\n";
    EXPECT_LT(worst, kTol) << "drift exceeds the tolerance at " << where;
 }
 
-// Step-12 cutover stability: the fresh 0.2 corpus must be reload-stable. Loading a fixture, saving it
-// back through the MIGRATED 0.2 writer, and reloading must reproduce the same composite mass / CG /
-// inertia and the same resolved part stations (an idempotent round trip). This re-runs the invariance
-// quantities on the corpus AS WRITTEN by the new serializer -- proving the cutover designs do not drift
-// on reload, independent of the frozen legacy baseline. (Empty motor DB both ways -> airframe-only, so
-// the motor's absence is consistent and never perturbs the comparison.)
-TEST(PlacementInvariance, CorpusStableAfterCutover)
+// Reload stability: loading a fixture, saving it back through the writer, and reloading must
+// reproduce the same composite mass / CG / inertia and the same resolved part stations (an idempotent
+// round trip), independent of the committed baseline.
+TEST(PlacementInvariance, CorpusStableOnResave)
 {
    utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);  // quiet motor-absent warnings
-   const std::map<std::string, DesignSnapshot> baseline = parseBaseline();
-   ASSERT_EQ(baseline.size(), kCorpusSize) << "the Phase-0 corpus is fixed at 24 fixtures";
+   const std::vector<std::string> stems = corpusStems();
+   ASSERT_EQ(stems.size(), kCorpusSize) << "the corpus is fixed at 24 fixtures";
 
-   for(const auto& [stem, ignored] : baseline)
+   for(const std::string& stem : stems)
    {
       // Snapshot the fixture as loaded ...
       model::RocketModel        r1;
@@ -369,9 +403,9 @@ TEST(PlacementInvariance, CorpusStableAfterCutover)
       model::DesignSerializer::load(r1, m1, kDesignsDir + "/" + stem + ".qrd");
       const DesignSnapshot a = snapshotRoot(*r1.getTopPart());
 
-      // ... save it back through the 0.2 writer and reload it.
+      // ... save it back and reload it.
       const std::string tmp =
-         (std::filesystem::temp_directory_path() / ("qtrocket_cutover_" + stem + ".qrd")).string();
+         (std::filesystem::temp_directory_path() / ("qtrocket_resave_" + stem + ".qrd")).string();
       model::DesignSerializer::save(r1, tmp);
       model::RocketModel        r2;
       model::MotorModelDatabase m2;
@@ -399,13 +433,11 @@ TEST(PlacementInvariance, CorpusStableAfterCutover)
 }
 
 // ---------------------------------------------------------------------------------------------------
-// Hand-pinned CM sub-tests (implementation plan Step 9). A symmetric part has its CM at mid-length
-// (cmLocalZ = -L/2), so a sign slip cannot hide there. The cone and fin set are the only current parts
-// whose CM is off-center AND whose helper formerly carried a wrong reference (the cone's reversed-frame
-// sign, the fin's end- vs mid-chord reference), so they are the parts where a stale-sign mistake could
-// survive the aggregate gate above yet still be wrong. These two tests pin each off-center part's local
-// CM to a value HAND-COMPUTED from raw geometry -- independent of both readers -- at a tight 1e-12 (the
-// plan permits a tolerance for these hand-computed scalars).
+// Hand-pinned CM sub-tests. A symmetric part has its CM at mid-length (cmLocalZ = -L/2), so a sign
+// slip cannot hide there; the cone and fin set are the only parts whose CM is off-center, so they are
+// where a stale-sign or wrong-reference mistake could survive the aggregate pins above yet still be
+// wrong. Each is pinned to a value hand-computed from raw geometry -- independent of the reader -- at
+// a tight 1e-12.
 
 namespace
 {
@@ -441,7 +473,7 @@ const model::part::Part* findByType(const model::part::Part& root, const std::st
 
 // xl75_multi's solid nose cone (L = 0.30 m): the centroid of a solid cone sits hbar = L/4 forward of
 // the base, so its CM in the tip datum is hbar - L = L/4 - L = -3L/4 = -0.225 m (i.e. 3L/4 aft of the
-// tip). The reversed-frame defect would instead report +0.075 m, so this hand-pin isolates that risk.
+// tip). A reversed-frame defect would instead report +0.075 m, so this hand-pin isolates that risk.
 TEST(PlacementInvariance, ConeNoseCmHandPinnedMinus0p225)
 {
    const std::shared_ptr<model::part::Part> root = loadAirframe("xl75_multi");
@@ -453,8 +485,8 @@ TEST(PlacementInvariance, ConeNoseCmHandPinnedMinus0p225)
 
 // xl75_multi's fin set: the axial MASS centroid x_c is measured from the root leading edge, so in the
 // tip datum the CM is x_c - L (L = rootChord). x_c is hand-computed here from the fixture's trapezoid
-// geometry (cr = 0.10, ct = 0.04, sweep = 0.04), NOT read back through the part, so an end- vs mid-chord
-// reference slip (the latent fin defect, worth cr/2 = 0.05 m) would be caught.
+// geometry (cr = 0.10, ct = 0.04, sweep = 0.04), NOT read back through the part, so an end- vs
+// mid-chord reference slip (worth cr/2 = 0.05 m) would be caught.
 TEST(PlacementInvariance, FinSetCmHandPinned)
 {
    const std::shared_ptr<model::part::Part> root = loadAirframe("xl75_multi");

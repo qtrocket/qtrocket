@@ -1,0 +1,9 @@
+# large38_multi.qrd -- multi-child tree + baked-in motor: 6 fins + a co-radial aft extension tube
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=Nose baseRadius=0.02 length=0.12 density=1400
+addpart Nose BodyTube name=Airframe innerRadius=0.0191 outerRadius=0.02 length=0.4 density=1400
+addpart Airframe FinSet name=SixFins finCount=6 rootChord=0.05 tipChord=0.02 span=0.04 sweep=0.03 thickness=0.0025 bodyRadius=0.02 density=1400 seat=OnSurface parentStation=0 childStation=0
+addpart Airframe BodyTube name=Coupler innerRadius=0.0191 outerRadius=0.02 length=0.05 density=1400
+setmotor I280DM
+checkdesign

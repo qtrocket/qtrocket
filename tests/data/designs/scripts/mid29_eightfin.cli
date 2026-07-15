@@ -1,0 +1,7 @@
+# mid29_eightfin.qrd -- 8-fin set
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=Nose baseRadius=0.0155 length=0.15 density=2500
+addpart Nose BodyTube name=Airframe innerRadius=0.0146 outerRadius=0.0155 length=0.4 density=2500
+addpart Airframe FinSet name=Fins finCount=8 rootChord=0.06 tipChord=0.03 span=0.04 sweep=0.02 thickness=0.0025 bodyRadius=0.0155 density=2500 seat=OnSurface parentStation=0 childStation=0
+checkdesign

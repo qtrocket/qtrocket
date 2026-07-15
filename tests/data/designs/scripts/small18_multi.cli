@@ -1,0 +1,9 @@
+# small18_multi.qrd -- multi-child tree + baked-in motor: 6 fins + a flush bore coupler
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=MultiNose baseRadius=0.0098 length=0.1 density=700
+addpart MultiNose BodyTube name=MultiBody innerRadius=0.0091 outerRadius=0.0098 length=0.25 density=700
+addpart MultiBody FinSet name=MultiFins finCount=6 rootChord=0.03 tipChord=0.015 span=0.025 sweep=0.015 thickness=0.0025 bodyRadius=0.0098 density=700 seat=OnSurface parentStation=0 childStation=0
+addpart MultiBody BodyTube name=MultiCoupler innerRadius=0.0085 outerRadius=0.0091 length=0.03 density=700 seat=NestInBore gap=0.03
+setmotor B6
+checkdesign

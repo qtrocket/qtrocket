@@ -6,11 +6,10 @@
     <children>
       <part type="BodyTube" name="BasicBody">
         <params innerRadius="0.027099999999999999" outerRadius="0.028500000000000001" length="0.59999999999999998" density="1600"/>
-        <link seat="Abut" parentStation="0" childStation="1" gap="-0.0625"/>
         <children>
           <part type="FinSet" name="BasicFins">
             <params density="1600" rootChord="0.12" tipChord="0.059999999999999998" span="0.059999999999999998" sweep="0.040000000000000001" thickness="0.0040000000000000001" bodyRadius="0.028500000000000001" finCount="3"/>
-            <link seat="OnSurface" parentStation="0" childStation="0" gap="-0.004444444444444362"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="0"/>
             <children/>
           </part>
         </children>

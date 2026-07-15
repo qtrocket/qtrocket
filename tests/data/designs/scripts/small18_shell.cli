@@ -1,0 +1,7 @@
+# small18_shell.qrd -- thin-shell nose + longer body + 4 fins
+# Replayed by DesignRebuildTests and regenerate.sh; keep it runnable through
+# `qtrocket-cli` with the motor fixtures preloaded (see regenerate.sh).
+newdesign NoseCone name=ShellNose baseRadius=0.0098 length=0.13 density=700 solid=false wallThickness=0.0015
+addpart ShellNose BodyTube name=ShellBody innerRadius=0.0093 outerRadius=0.0098 length=0.3 density=700
+addpart ShellBody FinSet name=ShellFins finCount=4 rootChord=0.05 tipChord=0.025 span=0.04 sweep=0.025 thickness=0.003 bodyRadius=0.0098 density=700 seat=OnSurface parentStation=0 childStation=0
+checkdesign

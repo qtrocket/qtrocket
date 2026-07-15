@@ -6,16 +6,15 @@
     <children>
       <part type="BodyTube" name="MultiBody">
         <params innerRadius="0.027099999999999999" outerRadius="0.028500000000000001" length="0.59999999999999998" density="1600"/>
-        <link seat="Abut" parentStation="0" childStation="1" gap="-0.0625"/>
         <children>
           <part type="FinSet" name="MultiFins">
             <params density="1600" rootChord="0.089999999999999997" tipChord="0.040000000000000001" span="0.044999999999999998" sweep="0.029999999999999999" thickness="0.0040000000000000001" bodyRadius="0.028500000000000001" finCount="6"/>
-            <link seat="OnSurface" parentStation="0" childStation="0" gap="0.0028205128205127661"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="0"/>
             <children/>
           </part>
           <part type="BodyTube" name="MultiCoupler">
             <params innerRadius="0.025000000000000001" outerRadius="0.027099999999999999" length="0.080000000000000002" density="1600"/>
-            <link seat="NestInBore" parentStation="1" childStation="0" gap="0.68000000000000005"/>
+            <link seat="NestInBore" parentStation="1" childStation="0" gap="0.080000000000000002"/>
             <children/>
           </part>
         </children>
@@ -23,5 +22,5 @@
     </children>
   </part>
   <motor commonName="K550W"/>
-  <sim dragCoefficient="0" referenceArea="0.001134" referenceAreaOverridden="false"/>
+  <sim dragCoefficient="1" referenceArea="0.001134" referenceAreaOverridden="false"/>
 </QtRocketDesign>
