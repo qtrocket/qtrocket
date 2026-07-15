@@ -9,27 +9,28 @@ GUI, a scriptable headless REPL, and a standalone OpenGL design viewer.
 
 ## What it does today
 
-QtRocket simulates 3-DOF point-mass flights of single-stage hobby rockets, built honestly on
-real numerics:
+QtRocket simulates 3-DOF point-mass flights of single-stage hobby rockets, with real numerics.
+Object-oriented architecture allows for easy implementation and selection of various simulation
+parameters at runtime:
 
-- **Integration** — fixed-step RK4 or adaptive Runge–Kutta–Fehlberg 4(5) with embedded error
-  control, selectable at runtime behind one `DESolver` interface.
+- **Integrator** — Fixed-step RK4 or adaptive Runge–Kutta–Fehlberg 4(5) with embedded error
+  control, selectable at runtime.
 - **Atmosphere** — the full seven-layer US Standard Atmosphere 1976 (density, pressure,
   temperature, speed of sound, viscosity; the NOAA source document is in `docs/`), plus
-  constant and vacuum models.
+  constant and vacuum models, selectable at runtime.
 - **Gravity** — constant g₀ or Newtonian inverse-square over a spherical geoid.
-- **Mass properties** — a composite part tree (nose cones, body tubes, fin sets) with
+- **Mass properties** — a composite parts tree (nose cones, body tubes, fin sets) with
   closed-form inertia tensors, parallel-axis composition, and time-varying mass/CG/inertia
-  during the motor burn, recomputed from the thrust curve each step.
+  during the motor burn, recomputed from the thrust curve at each step.
 - **Motors** — three ingest paths behind one database: RockSim `.rse` files, RASP `.eng`
   files, and a live [thrustcurve.org](https://www.thrustcurve.org) REST client.
 - **Designs** — versioned `.qrd` XML persistence with placement expressed as physical intent
   (seat/station links), resolved by a geometry solver that hard-fails self-intersecting
-  designs.
+  or gapped designs.
 
-The current scope is deliberate: **3-DOF today, with the 6-DOF seams already in place** —
-quaternion state carried in `StateData`, a `DESolver<Quaternion>` slot in the propagator, a
-torque interface on the model, and full composite inertia tensors recorded every step.
+**3-DOF today, with seams for 6-DOF already in place** —
+quaternion state carried in `StateData`, a `DESolver<Quaternion>` slot in the propagator for future orientation integration, a
+torque interface on the model, and full-stack inertia tensors recorded every step.
 Barrowman stability math (per-part CN<sub>α</sub> and center-of-pressure composition) is
 implemented and test-verified; surfacing it in the CLI and GUI is the next milestone. The
 [roadmap](TODO.md) tracks what's real versus planned.
@@ -37,7 +38,7 @@ implemented and test-verified; surfacing it in the CLI and GUI is the next miles
 ## Sixty seconds in the REPL
 
 `qtrocket-cli` drives the whole engine headlessly — interactively, from a pipe, from a script
-file, or via `-c "<command>"`. Exit status is honest: 0 only if every command succeeded.
+file, or via `-c "<command>"`. Exit status is 0 only if every command succeeded.
 
 ```console
 $ qtrocket-cli demo.cli
@@ -57,7 +58,7 @@ CSV <working-dir>/qtrocket_run.csv
 OK bye
 ```
 
-The GUI covers the same engine — open/save `.qrd` designs with a live part tree, import or
+The GUI interfaces the same engine — open/save `.qrd` designs with a live part tree, import or
 search motors online, run flights, and inspect altitude/velocity plots — and
 `qtrocket-visualizer` renders any `.qrd` in 3D using the same placement solver the simulator
 flies, highlighting overlap offenders in red.
@@ -76,7 +77,7 @@ graph TD
 ```
 
 Each layer depends only on those below it, and the seams are interfaces on purpose:
-`Propagatable` bridges model and sim, `DESolver<T>` makes integrators interchangeable,
+`Propagatable` bridges model and sim, an abstract `DESolver<T>` makes integrators interchangeable,
 `AtmosphericModel`/`GravityModel` are pluggable physics, and the thrustcurve.org client sits
 behind an interface so motor search is testable without a network. A 58-page architecture
 review of exactly what is implemented, what is dormant, and why lives in
@@ -100,8 +101,8 @@ review of exactly what is implemented, what is dormant, and why lives in
 
 ## Building
 
-Qt6 is the only system dependency — everything else (GoogleTest, Eigen, Boost.property_tree,
-jsoncpp, curl) is fetched and pinned by CMake. First configure compiles them, so it is slow
+Only one system dependency (other than a C++23 capable compiler): Qt6. Everything else (GoogleTest, Eigen, Boost.property_tree,
+jsoncpp, curl) is fetched and pinned by CMake using FetchContent. First configure compiles them, so it is slow
 once.
 
 ```bash
@@ -131,13 +132,28 @@ Three LaTeX whitepapers (source and PDF committed) document the design at depth:
 
 Since June 2026, QtRocket has been developed with AI assistance. Prior to that, 
 QtRocket began in February 2023 and was designed and built entirely by hand for its first
-three years: the layered architecture and its interface seams, the simulation core, the Qt
+four years: the layered component architecture and its interface seams, the simulation core, the Qt
 GUI, the motor database and ingest pipeline, and the multi-platform CI all predate any AI
-involvement. Since mid-2026 I have used AI
-assistance to accelerate work on top of that foundation, mostly in the headless REPL,
-the OpenGL visualizer, and automated the generation of LaTeX design documentation. All AI work
-is spec-first (the
-build-ready specs live in `docs/`) and held to the same gates as everything else in the
+involvement.
+
+Since mid-2026 I began using AI assistance within qtrocket to:
+ - Learn and become comfortable with AI-assisted development practices and workflows. This is becoming more
+   and more common, and whether we as software engineers like it or not, we should know how to use
+   it effectively. I'm learning to let go of all the details and focus more on high-level architecture and vision.
+ - (Potentially) accelerate work on parts of the application that bogged me down (GUI, CLI/REPL, some documentation, unit tests)
+
+The OpenGL visualizer and CLI/REPL are almost entirely AI-coded since I am unfamiliar with graphics programming and OpenGL, but since it
+can use the same Parts tree code in the qtrocket_core library as the rest of the application suite, it seemed like a 
+straightforward thing for AI to generate based on existing established architecture. And I can study it to learn more
+OpenGL if I like. The REPL was an idea to aid in the testing of the application since it's easily scriptable, and would allow
+AI agents to run full-scale integration tests from a commandline rather than a GUI.
+
+A design decision I made in the very beginning of the project -- to separate the UI from the core physics engine -- was originally
+done because I couldn't decide on what GUI toolkit to use! I wanted to try wxWidgets and Qt, and didn't want to tie the whole
+program to one toolkit. It turned out that, 4 years later, I could use the same architecture to create a CLI/REPL, and make automated
+testing much easier! That was not the original idea, but it was a little bit of serendepity.
+
+Importantly, any/all AI development is always specification-first and held to the same gates as everything else in the
 tree. All builds must be warning-clean `-Werror`, the full test suite, sanitizers, and clang-tidy,
 and the architecture documents are verified against the source citation-by-citation rather
 than taken on faith. The design decisions are still human.
