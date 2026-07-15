@@ -5,8 +5,7 @@
 // aggregation, or the corpus geometry changed; only a deliberate change to either may regenerate the
 // baseline (never regenerate to silence an unexplained diff):
 //
-//   QTROCKET_REGEN_PLACEMENT_BASELINE=1 integration_tests \
-//      --gtest_filter='PlacementInvariance.RegenerateBaseline'
+//   QTROCKET_REGEN_PLACEMENT_BASELINE=1 integration_tests --gtest_filter='PlacementInvariance.RegenerateBaseline'
 //
 // Each fixture is loaded with an EMPTY motor DB: a fixture stores its motor as <motor commonName=..>,
 // not as a <part>, and the motor is re-attached programmatically -- so the snapshot is the pure

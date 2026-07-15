@@ -81,7 +81,7 @@ void expectSameParams(const model::part::PartParams& a, const model::part::PartP
    const auto eq = [&](const std::optional<double>& x, const std::optional<double>& y, const char* k)
    {
       EXPECT_EQ(x.has_value(), y.has_value()) << where << " " << k;
-      if(x && y) EXPECT_EQ(*x, *y) << where << " " << k;
+      if(x && y) { EXPECT_EQ(*x, *y) << where << " " << k; }
    };
    EXPECT_EQ(a.name, b.name) << where;
    eq(a.innerRadius, b.innerRadius, "innerRadius");

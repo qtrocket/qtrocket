@@ -26,6 +26,10 @@ public:
     explicit CannonballTab(QtRocket* qtRocket, QWidget* parent = nullptr);
     ~CannonballTab();
 
+    /// Re-sync the write-back inputs (mass, Cd, reference area) and the motor-gated "Calculate
+    /// Trajectory" button from the rocket, e.g. after a design is loaded elsewhere.
+    void refreshFromModel();
+
 private slots:
 
     void onButton_calculateTrajectory_clicked();

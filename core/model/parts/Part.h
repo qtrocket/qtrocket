@@ -207,6 +207,10 @@ public:
     /// rebuilds even when the removed sub-tree's mass was zero. The root has no parent and is never removed here.
     std::shared_ptr<Part> removeChildById(Id targetId);
 
+    /// Borrowed pointer to this part's parent, or nullptr for the tree root. Lets display widgets
+    /// (e.g. a QTreeView model) walk back up the tree.
+    Part* getParent() const { return parent; }
+
 protected:
     /// Shallow node copy for clone()/cloneShallow() only: copies this part's own mass properties (not
     /// children) and assigns a fresh id, with no parent. Protected so external code can't copy or slice.

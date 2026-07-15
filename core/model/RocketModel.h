@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <utility> // std::move
+#include <functional>
 
 // 3rd party headers
 /// \endcond
@@ -114,7 +115,23 @@ public:
     /// Locate a part by id anywhere in the tree, or nullptr. Borrowed pointer; do not store it.
     part::Part* findPart(part::Part::Id id) { return topPart ? topPart->findById(id) : nullptr; }
 
+    /// Register a callback fired after any change to the part tree's structure or composition
+    /// (setRoot/clearDesign, addPart, removePart, setMotorModel). A GUI tree view uses it to refresh.
+    /// std::function keeps the model layer Qt-free; only the latest callback is kept. Pass {} to clear.
+    void setStructureChangedCallback(std::function<void()> cb) { structureChangedCallback = std::move(cb); }
+
 private:
+
+    void notifyStructureChanged()
+    {
+        if(structureChangedCallback)
+        {
+            structureChangedCallback();
+        }
+    }
+
+    /// Fired on every structural/compositional edit; null until the GUI registers one. @see setStructureChangedCallback.
+    std::function<void()> structureChangedCallback;
 
     /// Re-point motorPart at the (single) Motor node in the current tree, or nullptr. Called after any
     /// tree replacement / removal so the raw handle never dangles.
