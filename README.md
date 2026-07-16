@@ -121,6 +121,8 @@ Executables land in `build/gui/qtrocket`, `build/cli/qtrocket-cli`, and
 
 Three LaTeX whitepapers (source and PDF committed) document the design at depth:
 
+- [User Guide](docs/qtrocket_userguide/UserGuide.pdf) - QtRocket User Guide and Tutorials
+
 - [Architecture Review](docs/ArchitectureReviewLatex/ArchitectureReview.pdf) — a whole-system
   capability and gap review, including a 16-area feature comparison against OpenRocket and a
   ranked deficiency inventory.

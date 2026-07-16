@@ -1,0 +1,30 @@
+# Tutorial 2 -- the motor lab: two databases, one airframe, four motors
+loaddb estes_small.qmd
+loadmotors Aerotech.rse
+listmotors D1
+listmotors E30
+# phase 2: one airframe
+newdesign NoseCone name=nose baseRadius=0.013 length=0.09 density=900
+addpart nose BodyTube name=body innerRadius=0.0121 outerRadius=0.013 length=0.30 density=1000
+addpart body FinSet name=fins finCount=3 rootChord=0.05 tipChord=0.025 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.013 density=900 seat=OnSurface parentStation=0 childStation=0
+checkdesign
+listparts
+# phase 3: four motors
+setdrag 0.75
+setarea 0.000531
+setmotor C11
+launch
+save flight_C11.csv
+setmotor D12
+launch
+save flight_D12.csv
+setmotor E30T
+launch
+save flight_E30T.csv
+setmotor F32T
+launch
+save flight_F32T.csv
+# phase 4: keep the collection
+savedb my_flight_box.qmd
+savedesign motor_lab.qrd
+quit

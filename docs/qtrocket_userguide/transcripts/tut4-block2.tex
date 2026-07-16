@@ -1,0 +1,25 @@
+\begin{console}
+\uin{settimestep 0.01}
+\ok settimestep: 0.01 s
+\uin{status}
+\ok status:
+  motor      = D12
+  dry_mass   = 1 kg
+  drag_coeff = 0.75
+  ref_area   = 0.000531 m^2
+  velocity   = 0 m/s
+  angle      = 0 deg (from vertical)
+  atmosphere = Constant Atmosphere
+  gravity    = Constant Gravity
+  integrator = Runge-Kutta 4th Order
+  database   = 13 motors
+\uin{launch}
+\ok launch: 2037 steps, t_final=20.360s
+  apogee    = 447.674 m @ t=8.140s
+  max_speed = 145.186 m/s @ t=1.590s
+  downrange = 0.000 m
+  landing   = t=20.360s, pos=(0.000, 0.000, -0.350)
+CSV /tmp/flight1/qtrocket_run.csv
+\uin{save baseline_constant.csv}
+\ok save: /tmp/flight1/baseline_constant.csv
+\end{console}

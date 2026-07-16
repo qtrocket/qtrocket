@@ -1,0 +1,100 @@
+You will build the classic first rocket --- a nose cone, a body tube, and three
+fins --- verify it, fly it on a B6, and read every line of the flight report.
+
+\begin{note}[Setup]
+Work in an empty directory containing a copy of the small Estes-class motor
+database that ships with QtRocket:
+\begin{minted}{text}
+mkdir flight1 && cd flight1
+cp <qtrocket>/tests/data/motors/estes_small.qmd .
+qtrocket-cli
+\end{minted}
+The complete session below is also included as
+\srcf{scripts/tutorial1.cli}, runnable with
+\code{qtrocket-cli tutorial1.cli}.
+\end{note}
+
+\subsection*{Load motors, find one}
+
+\input{transcripts/tut1-block1}
+
+Two commands, two habits. \repl{loaddb} fills the session motor database from a
+\code{.qmd} file and answers with how many motors arrived --- every command
+answers \ok{} or \err{}, and that is the entire protocol. \repl{listmotors}
+takes an optional substring filter (case-sensitive); \code{B} narrows the
+thirteen bundled motors to the B-class. The two numbers per row --- average
+thrust and total impulse --- are the two numbers that matter when choosing a
+motor.
+
+\subsection*{Build the airframe}
+
+\input{transcripts/tut1-block2}
+
+Read the \repl{addpart} lines closely; they carry the whole design grammar:
+
+\begin{itemize}
+\item \repl{newdesign} starts the tree with a root part --- here a solid
+      conical nose, $0.0098\m$ base radius, $0.10\m$ long, at
+      $700$~kg/m$^3$ (a plausible balsa-and-paper blend).
+\item The body tube names its parent: \code{addpart \textbf{nose} BodyTube
+      ...}. Parents are addressed by the \code{name=} you gave them --- names,
+      not ids, are the scriptable handle. No placement keys are needed: the
+      default seat (\seat{Abut}) hangs the tube's fore rim flush under the
+      nose's aft plane.
+\item The fins use \code{seat=OnSurface} with
+      \code{parentStation=0 childStation=0}: sit on the body's outer wall,
+      aft edges aligned --- fins flush with the bottom of the tube.
+\end{itemize}
+
+\repl{checkdesign} then renders the verdict that matters:
+\code{3 parts, contiguous, no overlaps}. \repl{listparts} shows the tree with
+each part's computed mass and the composite mass and center of gravity ---
+derived from geometry and density, not typed in.
+
+\subsection*{Fly it}
+
+\input{transcripts/tut1-block3}
+
+\repl{setmotor} attaches the B6 by its common name. \repl{setdrag} and
+\repl{setarea} set the drag coefficient and aerodynamic reference area ---
+$0.75$ and the body tube's frontal disc ($\pi r^2 \approx 3.02\times10^{-4}$~m$^2$)
+are honest starting values for a small sport model. \repl{status} plays back
+the full session configuration before committing to flight. One row deserves a
+squint: \code{dry\_mass = 1 kg} is only the mirror of the last \repl{setmass}
+--- an initial placeholder here, never applied, since this session hasn't
+called \repl{setmass} at all. Your rocket flies on the part tree's computed
+$\approx 20$\,g composite plus the motor, as \repl{listparts} showed. (On a
+design, \repl{setmass} immediately overwrites the \emph{root part's} own mass
+--- rarely what you want on a multi-part rocket; trust the tree.)
+
+The \repl{launch} report is the payoff, one line per question you would ask at
+the field: how high (\code{apogee}), how fast (\code{max\_speed}, reached just
+after burnout), how far downwind (\code{downrange} --- zero, this was a
+straight-up flight), and where and when it came down. The \code{CSV} line
+names the full trajectory file --- every timestep, every state --- written for
+plotting or analysis (\cref{sec:tut5} uses it).
+
+\subsection*{Keep it}
+
+\input{transcripts/tut1-block4}
+
+\repl{savedesign} writes the rocket --- tree, placement, drag config, and the
+motor by name --- to a \code{.qrd} file. Open it in the visualizer to see what
+you built (\cref{fig:first-rocket}):
+
+\begin{minted}{text}
+qtrocket-visualizer first_rocket.qrd
+\end{minted}
+
+\screenshot{ug-first-rocket.png}{Your first rocket in
+\code{qtrocket-visualizer}: conical nose, 18\,mm-class body, three swept fins
+flush with the aft rim. Orbit with the left mouse button, zoom with the
+wheel.}{fig:first-rocket}{0.82}
+
+\begin{tip}[What you learned]
+\repl{loaddb} $\rightarrow$ \repl{listmotors} $\rightarrow$ \repl{newdesign}
+$\rightarrow$ \repl{addpart} (names as handles, seats as intent) $\rightarrow$
+\repl{checkdesign} $\rightarrow$ \repl{setmotor} $\rightarrow$ \repl{launch}
+$\rightarrow$ \repl{savedesign}. That eight-step spine is every QtRocket
+session; the rest of this guide is variations.
+\end{tip}

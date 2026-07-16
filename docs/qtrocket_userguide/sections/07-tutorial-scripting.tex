@@ -1,0 +1,70 @@
+The capstone is short because you already know all the commands --- this
+tutorial is about turning them into automation: script files, one-liners, exit
+codes a shell can branch on, the save/load round trip, and the trajectory CSV.
+
+\subsection*{Build once, save, prove the round trip}
+
+\input{transcripts/tut5-block1}
+
+\input{transcripts/tut5-block2}
+
+\repl{cleardesign} wipes the session; \repl{loaddesign} restores everything
+from the \code{.qrd} --- tree, placement, drag configuration, and the motor
+re-resolved \emph{by name} from the loaded database. The reloaded rocket
+passes the same \repl{checkdesign} and flies the same flight. That is the
+round-trip contract, and it is what makes design files trustworthy carriers of
+work between sessions (and between the CLI, the GUI, and the visualizer).
+
+\subsection*{Sampling the trajectory}
+
+\input{transcripts/tut5-block3}
+
+\repl{states} prints every $n$-th state sample to the terminal --- the same
+full CSV rows \repl{save} writes, all fourteen columns --- for a quick look
+without leaving the session; \repl{save} writes the complete series to a
+file. The columns are self-describing:
+
+\begin{minted}{text}
+t,x,y,z,vx,vy,vz,mass,cg_x,cg_y,cg_z,Ixx,Iyy,Izz
+\end{minted}
+
+--- time, position, velocity, plus the composite mass properties at every
+step (mass falls during the burn; the inertia columns are what a future 6-DOF
+mode will consume). Every plot in this guide is drawn from these files.
+
+\subsection*{One-liners and exit codes}
+
+Real captures, dollar-prompts and all:
+
+\begin{minted}{text}
+$ qtrocket-cli -c "loaddb estes_small.qmd" ; echo $?
+# QtRocket CLI - type 'help' for commands, 'quit' to exit.
+OK loaddb: 13 new motors from estes_small.qmd (13 total)
+0
+$ qtrocket-cli -c "launch" ; echo $?
+# QtRocket CLI - type 'help' for commands, 'quit' to exit.
+ERR launch: no motor set (use loadmotors + setmotor first)
+1
+$ qtrocket-cli tutorial5-missing.cli ; echo $?
+error: cannot open script file 'tutorial5-missing.cli'
+2
+\end{minted}
+
+The middle example is the process-isolation warning from
+\cref{sec:invocation} made concrete: each \code{-c} is a fresh session, so the
+launch never saw a motor. The exit-code contract --- 0 all-OK, 1 any
+\code{ERR}, 2 bad invocation --- makes the CLI an honest citizen of shell
+scripts and CI pipelines:
+
+\begin{minted}{text}
+qtrocket-cli nightly_designs.cli || echo "a design regressed"
+\end{minted}
+
+\begin{tip}[What you learned --- and where to go next]
+Scripts are just sessions in a file; \code{.qrd} files carry designs across
+sessions and tools; the CSV carries flights into your plotting tool of
+choice; and the exit code turns any script into a regression guard ---
+Tutorial~3's deliberate failures exited 1 for exactly this reason. From here:
+the command reference (\cref{sec:reference}) is the complete vocabulary, and
+the design whitepapers under \srcf{docs/} go as deep as you care to dig.
+\end{tip}

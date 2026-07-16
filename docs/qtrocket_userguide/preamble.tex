@@ -1,0 +1,250 @@
+% =============================================================================
+%  preamble.tex  --  shared style contract for the QtRocket User Guide
+%  (style inherited from docs/PartPlacementDesignLatex/preamble.tex and
+%   docs/ArchitectureReviewLatex/preamble.tex -- one document series)
+%  Engine: pdflatex  (latexmk -pdf -shell-escape, minted needs shell-escape)
+% =============================================================================
+
+% ---- Page geometry ----------------------------------------------------------
+\usepackage[letterpaper,margin=1in,headheight=14pt]{geometry}
+
+% ---- Fonts: XCharter text + matching newtx math + Inconsolata mono ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{XCharter}
+\usepackage[charter]{newtxmath}
+\usepackage[scaled=0.96,varqu,varl]{inconsolata}  % straight quotes for code
+\usepackage[final]{microtype}
+% Typographic relief: let TeX stretch spacing as a last resort instead of
+% pushing the occasional long identifier/citation into the margin.
+\tolerance=1500
+\emergencystretch=3em
+\hbadness=2000
+
+% ---- Colour palette ---------------------------------------------------------
+\usepackage{xcolor}
+\definecolor{qrInk}{HTML}{1A2733}      % near-black body ink
+\definecolor{qrBlue}{HTML}{1F5C99}     % primary accent (links, rules)
+\definecolor{qrDeep}{HTML}{123A63}     % darker accent (headings)
+\definecolor{qrTeal}{HTML}{0E7C7B}     % secondary accent
+\definecolor{qrAmber}{HTML}{B5651D}    % warnings
+\definecolor{qrRed}{HTML}{A4232B}      % errors / hard failures
+\definecolor{qrGreen}{HTML}{2E7D32}    % ok / accepted
+\definecolor{qrGray}{HTML}{5B6770}     % secondary text
+\definecolor{qrRule}{HTML}{C7D0D8}     % hairlines
+\definecolor{qrCodeBg}{HTML}{F6F8FA}   % code background
+\definecolor{qrBoxBg}{HTML}{F4F8FB}    % callout background
+
+% ---- Math / tables / lists --------------------------------------------------
+\usepackage{amsmath,mathtools}  % amssymb intentionally omitted: newtxmath supplies AMS symbols
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{longtable}          % the command reference runs over page breaks
+\usepackage{enumitem}
+\setlist{itemsep=2pt,topsep=3pt,parsep=0pt}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{font=small,labelfont={bf,color=qrDeep},labelsep=period}
+\usepackage{pdflscape}
+
+% ---- Graphics: screenshots --------------------------------------------------
+\usepackage{graphicx}
+\graphicspath{{images/}}
+
+% ---- TikZ (title-page banner only; no diagram styles in this document) ------
+\usepackage{tikz}
+\usetikzlibrary{calc}
+
+% ---- Plots: pgfplots over the committed flight data in data/*.dat -----------
+% Each .dat is a downsampled qtrocket-cli `save` CSV (space-separated, headered),
+% so the figures rebuild from committed data without rerunning the simulations.
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\pgfplotscreateplotcyclelist{qtcycle}{
+  {qrBlue,line width=1pt},{qrTeal,line width=1pt},
+  {qrAmber,line width=1pt},{qrRed,line width=1pt},
+  {qrDeep,line width=1pt},{qrGreen,line width=1pt}}
+\pgfplotsset{qtplot/.style={
+  width=0.82\linewidth, height=0.5\linewidth,
+  axis lines=left, grid=major,
+  grid style={qrRule!60}, tick label style={font=\small},
+  label style={font=\small\sffamily},
+  legend style={font=\small\sffamily, draw=qrRule, fill=white},
+  legend cell align=left,
+  cycle list name=qtcycle}}
+
+% ---- Code listings via minted (C++ snippets, XML designs, scripts) ----------
+\usepackage[newfloat]{minted}
+\usepackage{fvextra}
+\setminted{
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true,
+  tabsize=2,
+  numbersep=6pt,
+  frame=leftline,
+  framesep=8pt,
+  rulecolor=qrRule,
+  bgcolor=qrCodeBg,
+  style=friendly,
+}
+\setminted[cpp]{linenos=false}
+\setminted[xml]{linenos=false}
+% Inline code: \cppinline|...| and the \code{} shorthand
+% bgcolor is cleared for inline code: under minted 3.x the global bgcolor+breaklines
+% combination makes \mintinline render nothing, and inline code wants no box anyway.
+\newmintinline[cppinline]{cpp}{fontsize=\normalsize,bgcolor={}}
+\newcommand{\code}[1]{\texttt{\textcolor{qrDeep}{#1}}}
+
+% Make minted code floats use the figure-ish naming "Listing"
+\SetupFloatingEnvironment{listing}{name=Listing}
+
+% ---- REPL transcripts: the console environment ------------------------------
+% A verbatim block styled like the minted listings (no background: transcripts
+% read differently from code), for qtrocket-cli sessions. commandchars makes
+% \ { } active inside so the semantic line markers below can colorize the
+% transcript; literal backslashes/braces are vanishingly rare in REPL output --
+% if one appears, use \char`\\ / \char`\{ / \char`\}.
+%
+%   \begin{console}
+%   \uin{loadmotors data/motors/AeroTech.rse}
+%   \ok loadmotors: 154 motors from data/motors/AeroTech.rse
+%   \uin{setmotor Q9999}
+%   \err setmotor: 'Q9999' not found (use listmotors)
+%   \end{console}
+\DefineVerbatimEnvironment{console}{Verbatim}{
+  fontsize=\footnotesize,
+  breaklines=true,
+  breakanywhere=true,
+  commandchars=\\\{\},
+  frame=leftline,
+  framerule=0.4pt,
+  framesep=8pt,
+  rulecolor=\color{qrRule},
+  formatcom=\color{qrInk}
+}
+% What the user types at the REPL (the CLI itself prints no prompt).
+\newcommand{\uin}[1]{\textcolor{qrBlue}{\textbf{#1}}}
+% Reply prefixes, matching the CLI's line protocol.
+\newcommand{\ok}{\textcolor{qrGreen}{\textbf{OK}}}
+\newcommand{\err}{\textcolor{qrRed}{\textbf{ERR}}}
+% WARN lines and muted banner/comment lines inside transcripts.
+\newcommand{\warnline}[1]{\textcolor{qrAmber}{\textbf{#1}}}
+\newcommand{\muted}[1]{\textcolor{qrGray}{#1}}
+% For plain, unmarked terminal output (build logs, shell commands), use
+% \begin{minted}{text} ... \end{minted} instead -- no active characters there.
+
+% ---- Callout boxes via tcolorbox --------------------------------------------
+\usepackage[most]{tcolorbox}
+
+% Generic titled callout
+\newtcolorbox{qrcallout}[2][]{
+  enhanced, breakable, sharp corners, boxrule=0.4pt,
+  colframe=qrBlue, colback=qrBoxBg, coltitle=white,
+  colbacktitle=qrBlue, fonttitle=\bfseries\sffamily\small,
+  attach boxed title to top left={xshift=6pt,yshift=-2pt},
+  boxed title style={sharp corners,boxrule=0pt},
+  left=8pt,right=8pt,top=8pt,bottom=8pt,
+  title={#2}, #1}
+
+% Semantic callouts for a user guide: note / tip / warning
+\newtcolorbox{note}[1][Note]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrBlue},
+  colback=qrBoxBg,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrBlue] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+\newtcolorbox{tip}[1][Tip]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrTeal},
+  colback=qrTeal!7,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrTeal] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+\newtcolorbox{warning}[1][Warning]{
+  enhanced,breakable,sharp corners,boxrule=0pt,
+  borderline west={3pt}{0pt}{qrAmber},
+  colback=qrAmber!6,left=10pt,right=8pt,top=6pt,bottom=6pt,
+  overlay unbroken and first={\node[anchor=north west,font=\bfseries\sffamily\small,
+    text=qrAmber] at ([xshift=10pt,yshift=-4pt]frame.north west){#1};},
+  before upper={\vspace{1.1em}}}
+
+% ---- Section + part styling --------------------------------------------------
+\usepackage{titlesec}
+\titleformat{\part}[display]
+  {\centering\sffamily}
+  {\color{qrGray}\Large Part \thepart}
+  {0.8em}
+  {\color{qrDeep}\bfseries\fontsize{26}{30}\selectfont}
+\titlespacing*{\part}{0pt}{4em}{3em}
+\titleformat{\section}{\Large\bfseries\sffamily\color{qrDeep}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{qrDeep}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\sffamily\color{qrBlue}}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.6em}{0.7em}
+
+% ---- Headers / footers ------------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{qrRule}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\sffamily\small\color{qrGray}QtRocket User Guide}
+\fancyhead[R]{\sffamily\small\color{qrGray}\leftmark}
+\fancyfoot[C]{\sffamily\small\color{qrGray}\thepage}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\sffamily\small\color{qrGray}\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+% ---- Hyperlinks + smart cross-references ------------------------------------
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  colorlinks=true, linkcolor=qrBlue, citecolor=qrTeal, urlcolor=qrBlue,
+  pdftitle={QtRocket User Guide},
+  pdfauthor={QtRocket},
+  pdfsubject={User guide},
+  bookmarksnumbered=true}
+\usepackage[nameinlink,capitalise]{cleveref}
+\crefname{listing}{Listing}{Listings}
+\Crefname{listing}{Listing}{Listings}
+
+% =============================================================================
+%  Domain macros
+% =============================================================================
+\usepackage{xstring}  % for breakable code-path citations
+
+% Source citation:  \src{model/parts/Part.h}{326}  ->  model/parts/Part.h:326
+% Paths break at '/' so long citations near a line end do not run into the margin.
+\newcommand{\src}[2]{\textcolor{qrDeep}{\texttt{\small\StrSubstitute{#1}{/}{/\allowbreak}\textcolor{qrGray}{:}#2}}}
+% File/path citation without line:  \srcf{data/motors/AeroTech.rse}
+\newcommand{\srcf}[1]{\textcolor{qrDeep}{\texttt{\small\StrSubstitute{#1}{/}{/\allowbreak}}}}
+% Caption-safe, non-breaking variants (xstring's \StrSubstitute is fragile in moving args):
+\newcommand{\srccap}[2]{\textcolor{qrDeep}{\texttt{\small #1\textcolor{qrGray}{:}#2}}}
+\newcommand{\srcfcap}[1]{\textcolor{qrDeep}{\texttt{\small #1}}}
+
+% Fit content to \linewidth but never enlarge it beyond natural size.
+\newcommand{\fitwidth}[1]{\resizebox{\ifdim\width>\linewidth\linewidth\else\width\fi}{!}{#1}}
+
+% ---- Screenshot figures ------------------------------------------------------
+% GUI screenshots sit on white pages, so they get a hairline qrRule frame.
+%   \screenshot{file.png}{caption}{label}{widthfraction}
+\newcommand{\screenshotframe}[1]{%
+  {\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
+   \textcolor{qrRule}{\fbox{\normalcolor #1}}}}
+\newcommand{\screenshot}[4]{%
+  \begin{figure}[htbp]\centering
+    \screenshotframe{\includegraphics[width=#4\linewidth]{#1}}%
+    \caption{#2}\label{#3}
+  \end{figure}}
+
+% REPL command names in prose:  \repl{launch}, \repl{setmotor}
+\newcommand{\repl}[1]{\texttt{\textcolor{qrTeal}{#1}}}
+
+% Seat-kind name styling (matches the Part Placement whitepaper)
+\newcommand{\seat}[1]{\textsf{\textbf{#1}}}
+
+% Units
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+\newcommand{\m}{\unit{m}}

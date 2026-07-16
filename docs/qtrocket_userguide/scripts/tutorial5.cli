@@ -1,0 +1,20 @@
+# Tutorial 5 -- scripts, exit codes, and the CSV pipeline
+loaddb estes_small.qmd
+newdesign NoseCone name=nose baseRadius=0.0098 length=0.10 density=700
+addpart nose BodyTube name=body innerRadius=0.0091 outerRadius=0.0098 length=0.25 density=700
+addpart body FinSet name=fins finCount=3 rootChord=0.04 tipChord=0.02 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.0098 density=700 seat=OnSurface parentStation=0 childStation=0
+setmotor C6
+setdrag 0.75
+setarea 0.000302
+checkdesign
+savedesign workhorse.qrd
+# wipe the session design, then prove the file restores everything (motor included)
+cleardesign
+loaddesign workhorse.qrd
+checkdesign
+status
+launch
+# every 200th state row to the terminal; the full series goes to the csv
+states 200
+save workhorse_flight.csv
+quit

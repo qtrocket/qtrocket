@@ -1,0 +1,112 @@
+% =============================================================================
+%  QtRocket -- User Guide
+%
+%  Build:  make            (latexmk -pdf -shell-escape UserGuide.tex)
+%
+%  Every REPL transcript under transcripts/ is generated output of the real
+%  qtrocket-cli binary running the scripts under scripts/; the plot data under
+%  data/ is downsampled from the CSVs those runs saved. See Appendix A.
+% =============================================================================
+\documentclass[11pt,letterpaper]{article}
+\input{preamble}
+
+\begin{document}
+
+% ----------------------------- Title page ------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[qrDeep] (current page.north west) rectangle ([yshift=-3.2cm]current page.north east);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large]
+    at ([xshift=1in,yshift=-1.05cm]current page.north west) {QtRocket};
+  \node[anchor=north west,text=qrRule,font=\sffamily\small]
+    at ([xshift=1in,yshift=-1.7cm]current page.north west)
+    {Open-source model-rocket simulator \textbullet\ user documentation series};
+  \fill[qrTeal] ([yshift=-3.2cm]current page.north west) rectangle ([yshift=-3.32cm]current page.north east);
+\end{tikzpicture}
+
+\vspace*{5.2cm}
+{\sffamily
+  {\color{qrGray}\large User Documentation}\\[0.3em]
+  {\color{qrDeep}\fontsize{30}{34}\selectfont\bfseries User Guide}\\[0.35em]
+  {\color{qrBlue}\LARGE\bfseries Designing, Simulating, and\\[0.15em] Flying Model Rockets}\\[1.1em]
+  {\color{qrInk}\large How to build rocket designs, manage motors, and run flight\\
+   simulations with \code{qtrocket-cli} --- from a first launch to scripted\\
+   design studies.}\par
+}
+
+\vfill
+\noindent\begin{tikzpicture}\draw[qrRule,line width=0.6pt] (0,0)--(\linewidth,0);\end{tikzpicture}
+
+\vspace{0.7em}
+\noindent{\sffamily\small\color{qrGray}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+  \textbf{Covers}   & Part~I: the command-line interface (\code{qtrocket-cli}). Part~II (the Qt6 GUI) is planned.\\
+  \textbf{Version}  & QtRocket v0.2 (\code{development} branch, July 2026)\\
+  \textbf{Units}    & SI throughout: meters, kilograms, seconds, Newtons; altitude is $z$, ground at $z=0$\\
+  \textbf{Audience} & Rocketeers and simulation users; no C++ knowledge required\\
+\end{tabularx}}
+\end{titlepage}
+
+% ----------------------------- Front matter ----------------------------------
+\pagenumbering{roman}
+\setcounter{page}{2}
+\section*{About this guide}
+\addcontentsline{toc}{section}{About this guide}
+\input{sections/00-about}
+
+\clearpage
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ============================ Part I: the CLI =================================
+\part{The Command-Line Interface}\label{part:cli}
+
+\input{sections/01-getting-started}
+\input{sections/02-concepts}
+
+\clearpage
+\section{Tutorial 1 --- First Flight: Three Fins and a Nose Cone}\label{sec:tut1}
+\input{sections/03-tutorial-first-flight}
+
+\clearpage
+\section{Tutorial 2 --- The Motor Lab: Two Databases, One Airframe, Four Motors}\label{sec:tut2}
+\input{sections/04-tutorial-motor-lab}
+
+\clearpage
+\section{Tutorial 3 --- Placement: Seats, Stations, and Reading the Red}\label{sec:tut3}
+\input{sections/05-tutorial-placement}
+
+\clearpage
+\section{Tutorial 4 --- The Physics Knobs: Atmospheres, Integrators, Timestep, Angle}\label{sec:tut4}
+\input{sections/06-tutorial-physics}
+
+\clearpage
+\section{Tutorial 5 --- One-Button Flights: Scripts, Exit Codes, and CSV}\label{sec:tut5}
+\input{sections/07-tutorial-scripting}
+
+\clearpage
+\input{sections/08-command-reference}
+
+% ============================ Part II: the GUI ================================
+\clearpage
+\part{The Graphical Interface (Planned)}\label{part:gui}
+
+\begin{note}[Part II is not yet written]
+The Qt6 GUI currently opens and saves \code{.qrd} designs, shows the part tree,
+imports and searches motors, and flies the same simulations --- but rocket
+\emph{authoring} (adding and editing parts) is CLI-only today. Part~II will be
+written when the GUI's design editor lands. Until then, every workflow in this
+guide is available through \code{qtrocket-cli}, and \code{.qrd} files saved from
+the CLI open directly in the GUI and the visualizer.
+\end{note}
+
+% ----------------------------- Appendices ------------------------------------
+\clearpage
+\appendix
+\section{Reproducing this guide}\label{app:repro}
+\input{sections/A1-reproducibility}
+
+\end{document}

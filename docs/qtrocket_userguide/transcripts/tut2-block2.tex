@@ -1,0 +1,16 @@
+\begin{console}
+\uin{newdesign NoseCone name=nose baseRadius=0.013 length=0.09 density=900}
+\ok newdesign: root NoseCone id=2
+\uin{addpart nose BodyTube name=body innerRadius=0.0121 outerRadius=0.013 length=0.30 density=1000}
+\ok addpart: BodyTube id=3 under 2
+\uin{addpart body FinSet name=fins finCount=3 rootChord=0.05 tipChord=0.025 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.013 density=900 seat=OnSurface parentStation=0 childStation=0}
+\ok addpart: FinSet id=4 under 3
+\uin{checkdesign}
+\ok checkdesign: 3 parts, contiguous, no overlaps
+\uin{listparts}
+\ok listparts:
+  [2] NoseCone "nose"  m=0.0143351 kg
+    [3] BodyTube "body"  m=0.0212906 kg
+      [4] FinSet "fins"  m=0.0091125 kg
+  -- composite: mass=0.0447382 kg, cg_z=-0.209509 m (t=0)
+\end{console}

@@ -1,0 +1,410 @@
+% AUTO-GENERATED from the verified command survey of cli/Repl.cpp;
+% regenerate rather than hand-edit if the CLI grammar changes.
+\section{Command reference}\label{sec:reference}
+
+Every command answers with a line beginning \ok{} or \err{}; detail lines
+usually follow it, with two exceptions: \repl{help}'s \code{\#}-prefixed
+listing precedes its terminating \code{OK help}, and comment or blank lines
+produce no output at all. The full protocol is described in
+\cref{sec:protocol}. Commands are grouped thematically below; the source of
+truth is \srcf{cli/Repl.cpp}.
+
+\subsection{Session and meta commands}
+\subsubsection*{{\ttfamily help}}
+\label{cmd:help}
+Prints the command list as '\#'-prefixed comment lines (one line per command with a short description, plus notes: link-key summary, 'part ids reset on reload; launch/atmosphere settings are session config and are NOT saved in the design file', and 'drag uses the active atmosphere's density; select the Vacuum atmosphere to reduce the model to thrust + gravity.').
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None. Extra tokens are ignored.
+\item[On success.] {\ttfamily A block of lines each beginning '\# ' (starting '\# commands:'), followed by the terminating line 'OK help'.}
+\item[Errors.] None.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily quit  (alias: exit)}}
+\label{cmd:quit-exit}
+Leaves the REPL. The only command whose handler returns false, ending Repl::run's read loop.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily OK bye}
+\item[Errors.] None.
+\item[Side effects.] Terminates the session; run() then returns exit code 0 or 1 based on accumulated ERR count.
+\end{description}
+
+\subsubsection*{{\ttfamily \# any text   |   (empty line)}}
+\label{cmd:comment-and-blank-lines}
+A blank/whitespace-only line is ignored silently. A line whose first token starts with '\#' (either '\# text' or '\#text') is a comment and ignored silently. Both keep the session going and produce no output at all (no OK line).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] N/A
+\item[On success.] {\ttfamily (nothing)}
+\item[Errors.] None.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily <anything not recognized>}}
+\label{cmd:unknown-command}
+Fallthrough when the lowercased command word matches nothing.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] N/A
+\item[On success.] {\ttfamily N/A}
+\item[Errors.] ERR unknown command '<cmd>' (try help)   — <cmd> is the lowercased command word.
+\item[Side effects.] Counts toward the ERR exit code.
+\end{description}
+
+\subsection{Motor database commands}
+\subsubsection*{{\ttfamily loadmotors <file.rse|file.eng>}}
+\label{cmd:loadmotors}
+Imports a local motor file into the in-memory motor database (merges with whatever is already loaded). Format is chosen by extension, lowercased: '.eng' goes to MotorModelDatabase::importRASPFile (RASP), any other extension goes to importRSEFile (RockSim XML). No network.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] path (required): rest of the line after the command word, trimmed — may contain spaces. Case preserved.
+\item[On success.] {\ttfamily OK loadmotors: <added> motors from <path>}
+\item[Errors.] Empty path: 'ERR usage: loadmotors <file.rse|file.eng>'. Any exception from the importer: 'ERR loadmotors: <what()>'.
+\item[Side effects.] Adds motors to the session MotorModelDatabase. Session-only until savedb.
+\end{description}
+
+\subsubsection*{{\ttfamily savedb <file.qmd>}}
+\label{cmd:savedb}
+Saves the entire in-memory motor database to QtRocket's own XML motor-database format (.qmd) via MotorModelDatabase::saveMotorDatabase (Boost property\_tree XML). No network.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] path (required): rest-of-line, trimmed, may contain spaces.
+\item[On success.] {\ttfamily OK savedb: <db-size> motors to <path>}
+\item[Errors.] Empty path: 'ERR usage: savedb <file.qmd>'. Exception while saving: 'ERR savedb: <what()>'.
+\item[Side effects.] Writes the file at <path> (as given; not made absolute).
+\end{description}
+
+\subsubsection*{{\ttfamily loaddb <file.qmd>}}
+\label{cmd:loaddb}
+Loads a previously saved .qmd motor database, merging it into (adding to) the current in-memory database. No network.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] path (required): rest-of-line, trimmed.
+\item[On success.] {\ttfamily OK loaddb: <new> new motors from <path> (<total> total)} --- <new> = db size after minus before; <total> = size after.
+\item[Errors.] Empty path: 'ERR usage: loaddb <file.qmd>'. Exception while loading: 'ERR loaddb: <what()>'.
+\item[Side effects.] Adds motors to the session database.
+\end{description}
+
+\subsubsection*{{\ttfamily tcfacets}}
+\label{cmd:tcfacets}
+Fetches the thrustcurve.org search facets (valid manufacturers, diameters, impulse classes) via the online REST client. Requires network.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily 'OK tcfacets:' then three labeled lines with space-separated values: '  manufacturers: <m> <m> ...', '  diameters: <d> <d> ...', '  impulseClasses: <c> <c> ...'.}
+\item[Errors.] Any exception (e.g. network failure): 'ERR tcfacets: <what()>'.
+\item[Side effects.] None (read-only query).
+\end{description}
+
+\subsubsection*{{\ttfamily tcsearch [manufacturer=<str>] [diameter=<mm>] [impulseClass=<str>]}}
+\label{cmd:tcsearch}
+Searches thrustcurve.org (requires network) and merges every result into the in-memory motor database so setmotor/listmotors can see them. Recognized keys: manufacturer, impulseClass (strings, case preserved), diameter (double). Tokens without '=' are silently skipped; unknown keys with '=' are silently ignored. Note: diameter uses plain std::stod, NOT the strict full-token parser — a value with a numeric prefix and trailing garbage (e.g. '18mm') is accepted as 18; only a fully non-numeric value errors.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] Zero or more key=value tokens; all optional (an unconstrained search is allowed). diameter: double via std::stod (lenient); manufacturer/impulseClass: raw strings.
+\item[On success.] {\ttfamily 'OK tcsearch: <n> motors' then one line per result: '<commonName>  avg=<avgThrust>N  Itot=<totalImpulse>Ns'.}
+\item[Errors.] Non-numeric diameter: 'ERR tcsearch: bad diameter '<val>''. Any exception from the online search: 'ERR tcsearch: <what()>'.
+\item[Side effects.] Found motors are added to the session motor database.
+\end{description}
+
+\subsubsection*{{\ttfamily listmotors [substr]}}
+\label{cmd:listmotors}
+Lists motor common names in the database, sorted by name (the map is keyed by commonName). The optional filter is the whole rest of the line (may contain spaces) used as a case-sensitive substring match against commonName (MotorQuery::nameContains, std::string::find).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] substr (optional): rest-of-line, trimmed, case-sensitive.
+\item[On success.] {\ttfamily 'OK listmotors: <n> shown' plus ' (filter="<substr>")' when a filter was given, then one line per motor: '<commonName>  avg=<avgThrust>N  Itot=<totalImpulse>Ns'.}
+\item[Errors.] Empty database (checked first): 'ERR listmotors: no motors loaded (use loadmotors)'.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily setmotor <code>}}
+\label{cmd:setmotor}
+Selects a motor by its exact common name (e.g. 'A8'); the name is the rest of the line so it may contain spaces, and lookup is an exact case-sensitive map find on commonName. Attaches the motor to the rocket via RocketModel::setMotorModel and stages motorSet/motorName for status and launch.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] code (required): rest-of-line, trimmed, case-sensitive exact common name.
+\item[On success.] {\ttfamily OK setmotor: <name>}
+\item[Errors.] Empty database (checked before usage): 'ERR setmotor: no motors loaded (use loadmotors)'. Empty name: 'ERR usage: setmotor <code>'. Unknown name: 'ERR setmotor: '<name>' not found (use listmotors)'.
+\item[Side effects.] Sets the model's motor; session state. The motor's common name IS persisted by savedesign (.qrd stores motor-by-name); newdesign and cleardesign drop the selection.
+\end{description}
+
+\subsection{Flight configuration commands}
+\subsubsection*{{\ttfamily setmass <kg>}}
+\label{cmd:setmass}
+Sets the structural (dry) mass in kilograms. Strict numeric parse: the whole token must be a valid double ('0.5abc' is rejected, not truncated).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] kg (required): double, strict full-token parse; must be > 0. Staged default 1.0 kg.
+\item[On success.] {\ttfamily OK setmass: <m> kg}
+\item[Errors.] Missing/non-numeric token: 'ERR usage: setmass <kg>'. m <= 0: 'ERR setmass: mass must be > 0'.
+\item[Side effects.] Calls RocketModel::setMass immediately and stages dryMass for status. Session-only; not saved in .qrd, and status's dry\_mass never re-syncs from a loaded design.
+\end{description}
+
+\subsubsection*{{\ttfamily setdrag <cd>}}
+\label{cmd:setdrag}
+Sets the (dimensionless) drag coefficient. No range validation — any double std::stod accepts is taken, including negative, inf, and nan.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] cd (required): double, strict full-token parse. Staged default 1.0.
+\item[On success.] {\ttfamily OK setdrag: <d>}
+\item[Errors.] Missing/non-numeric: 'ERR usage: setdrag <cd>'.
+\item[Side effects.] Calls RocketModel::setDragCoefficient immediately; stages dragCoeff. Persisted in .qrd by savedesign (aero options) and re-synced by loaddesign.
+\end{description}
+
+\subsubsection*{{\ttfamily setarea <m\^{}2>}}
+\label{cmd:setarea}
+Sets the aerodynamic reference area in square meters. Zero is allowed (disables drag area).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] m\^{}2 (required): double, strict full-token parse; must be >= 0. Staged default 1.134e-3 m\^{}2 (matches RocketModel's 38 mm tube default).
+\item[On success.] {\ttfamily OK setarea: <a> m\^{}2}
+\item[Errors.] Missing/non-numeric: 'ERR usage: setarea <m\^{}2>'. a < 0: 'ERR setarea: area must be >= 0'.
+\item[Side effects.] Calls RocketModel::setReferenceArea immediately; stages referenceArea. Persisted in .qrd and re-synced by loaddesign.
+\end{description}
+
+\subsubsection*{{\ttfamily setvelocity <m/s>}}
+\label{cmd:setvelocity}
+Sets the initial speed applied at launch (split into vx/vz by the launch angle). No range check. Useful as a launch-rail velocity to avoid the no-liftoff pad-hold abort on low-thrust motors.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] m/s (required): double, strict full-token parse. Staged default 0.
+\item[On success.] {\ttfamily OK setvelocity: <v> m/s}
+\item[Errors.] Missing/non-numeric: 'ERR usage: setvelocity <m/s>'.
+\item[Side effects.] Staged only; applied when launch builds the initial state. Session-only, never saved in .qrd.
+\end{description}
+
+\subsubsection*{{\ttfamily setangle <deg>}}
+\label{cmd:setangle}
+Sets the launch angle in degrees from vertical (0 = straight up, 90 = horizontal). No range check. At launch: vx = v*sin(angle), vz = v*cos(angle), with deg->rad via the constant DEG\_PER\_RAD = 57.2958.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] deg (required): double, strict full-token parse. Staged default 0.
+\item[On success.] {\ttfamily OK setangle: <a> deg}
+\item[Errors.] Missing/non-numeric: 'ERR usage: setangle <deg>'.
+\item[Side effects.] Staged only; applied at launch. Session-only.
+\end{description}
+
+\subsubsection*{{\ttfamily settimestep <s>}}
+\label{cmd:settimestep}
+Sets the integrator timestep in seconds (applied to the sim immediately via QtRocket::setTimeStep).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] s (required): double, strict full-token parse; must be > 0.
+\item[On success.] {\ttfamily OK settimestep: <dt> s}
+\item[Errors.] Missing/non-numeric: 'ERR usage: settimestep <seconds>'. dt <= 0: 'ERR settimestep: must be > 0'.
+\item[Side effects.] Changes the propagator timestep. Session-only; not shown in status, not saved in .qrd.
+\end{description}
+
+\subsection{Environment and numerics commands}
+\subsubsection*{{\ttfamily listatmospheres}}
+\label{cmd:listatmospheres}
+Lists the available atmosphere model names. The current set (Environment.h): 'Constant Atmosphere', 'US Standard 1976', 'Vacuum'.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily 'OK listatmospheres: <n> available' then one model name per line (unprefixed).}
+\item[Errors.] None.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily setatmosphere <name>}}
+\label{cmd:setatmosphere}
+Selects the atmosphere model. Name is the rest of the line (may contain spaces, e.g. 'US Standard 1976'), case-sensitive, validated by exact match against getAvailableAtmosphereModels(). Default 'Constant Atmosphere'. Selecting 'Vacuum' removes drag entirely (thrust + gravity only).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] name (required): rest-of-line, trimmed, case-sensitive; must be one of the listatmospheres names.
+\item[On success.] {\ttfamily OK setatmosphere: <name>}
+\item[Errors.] Empty: 'ERR usage: setatmosphere <name>  (see listatmospheres)' (two spaces before the parenthesis). Not in list: 'ERR setatmosphere: '<name>' not found (see listatmospheres)'.
+\item[Side effects.] Sets Environment's atmosphere model immediately; stages the name for status. Session-only, not saved in .qrd.
+\end{description}
+
+\subsubsection*{{\ttfamily listgravity}}
+\label{cmd:listgravity}
+Lists the available gravity model names. Current set (Environment.h): 'Constant Gravity', 'Spherical Gravity'.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily 'OK listgravity: <n> available' then one model name per line.}
+\item[Errors.] None.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily setgravity <name>}}
+\label{cmd:setgravity}
+Selects the gravity model; rest-of-line name, case-sensitive, validated against getAvailableGravityModels(). Default 'Constant Gravity'.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] name (required): rest-of-line, trimmed, case-sensitive.
+\item[On success.] {\ttfamily OK setgravity: <name>}
+\item[Errors.] Empty: 'ERR usage: setgravity <name>  (see listgravity)'. Not in list: 'ERR setgravity: '<name>' not found (see listgravity)'.
+\item[Side effects.] Sets Environment's gravity model immediately; stages for status. Session-only.
+\end{description}
+
+\subsubsection*{{\ttfamily listintegrators}}
+\label{cmd:listintegrators}
+Lists the available integrator names (from a temporary sim::Integrator). Current set (Integrator.h): 'Runge-Kutta 4th Order' (fixed step), 'Runge-Kutta-Fehlberg' (adaptive RK45).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily 'OK listintegrators: <n> available' then one name per line.}
+\item[Errors.] None.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily setintegrator <name>}}
+\label{cmd:setintegrator}
+Selects the integrator; rest-of-line name, case-sensitive, validated against getAvailableIntegratorModels(). Default 'Runge-Kutta 4th Order'.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] name (required): rest-of-line, trimmed, case-sensitive.
+\item[On success.] {\ttfamily OK setintegrator: <name>}
+\item[Errors.] Empty: 'ERR usage: setintegrator <name>  (see listintegrators)'. Not in list: 'ERR setintegrator: '<name>' not found (see listintegrators)'.
+\item[Side effects.] Calls QtRocket::setIntegratorModel; stages for status. Session-only.
+\end{description}
+
+\subsection{Design commands}
+\subsubsection*{{\ttfamily newdesign <type> [name=..] [geom key=value...]}}
+\label{cmd:newdesign}
+Starts a new design with a root part built by the part factory (types: NoseCone, BodyTube, FinSet, HollowSphere — case-sensitive; see addpart grammar). The remaining tokens use exactly the same key=value grammar as addpart; link tokens (seat/parentStation/childStation/gap) are parsed uniformly but ignored, since a root has no parent link. Replaces the entire existing design via setRoot.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] type (required, positional, case-sensitive factory key); then zero or more key=value tokens per the addpart grammar.
+\item[On success.] {\ttfamily OK newdesign: root <type> id=<id>}
+\item[Errors.] Missing type: 'ERR usage: newdesign <type> [name=..] [geom key=value...]'. Token/value parse error: 'ERR newdesign: <parse error>' (e.g. "expected key=value, got '<tok>'", "bad value for '<key>': '<val>'"). Factory throw (missing required field / unknown type / non-physical geometry from the part ctor): 'ERR newdesign: <what()>' e.g. "makePart: BodyTube requires 'outerRadius'".
+\item[Side effects.] setRoot replaces the whole part tree AND drops any previously-set motor: staged motorSet is cleared and motorName emptied, so setmotor must be re-run before launch.
+\end{description}
+
+\subsubsection*{{\ttfamily cleardesign}}
+\label{cmd:cleardesign}
+Resets the rocket to the default placeholder body (RocketModel::clearDesign).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily OK cleardesign: restored the placeholder body}
+\item[Errors.] None.
+\item[Side effects.] Discards the part tree; clears the staged motor (motorSet=false, motorName emptied).
+\end{description}
+
+\subsubsection*{{\ttfamily addpart <parentId|name|root> <type> [name=..] [geom key=value...] [seat=.. parentStation=.. childStation=.. gap=..]}}
+\label{cmd:addpart}
+Attaches a factory-built part under an existing parent. Parent addressing, tried in order: the literal token 'root' (exact lowercase match — arguments keep case, so 'Root' falls through to name lookup) selects the top part; a token that parses fully as an unsigned integer is treated as a part id; otherwise it is a part name, resolved to the FIRST match in depth-first attachment order (names need not be unique; ids are session-specific and reassigned on reload, so scripts should address by unique name). Unknown key=value keys are skipped with a logger warning ('ignoring unknown design key '<key>''), which the CLI's ERROR-pinned logger suppresses entirely — the command still succeeds.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] parent (required positional): id | name | 'root'. type (required positional): NoseCone | BodyTube | FinSet | HollowSphere (case-sensitive). Then key=value tokens: geometry doubles strict-parsed; finCount strict unsigned; name string; solid boolean ('true' or '1' = true, anything else false); link keys seat/parentStation/childStation/gap. Caveat: std::stoull/stoul accept a leading '-' and wrap modulo 2\^{}64, so a negative id parses to a huge value and reports 'no part with id ...' rather than a bad-id error.
+\item[On success.] {\ttfamily OK addpart: <type> id=<childId> under <parentId>}
+\item[Errors.] Missing positionals: 'ERR usage: addpart <parentId|name|root> <type> [name=..] [geom key=value...] [seat=.. parentStation=.. childStation=.. gap=..]'. No design: 'ERR addpart: no design (use newdesign first)'. Parent not found by name: 'ERR addpart: no part named '<tok>' (use an id, a name, or 'root')'. Token parse: 'ERR addpart: expected key=value, got '<tok>'' or 'ERR addpart: bad value for '<key>': '<val>''. Link errors: 'ERR addpart: unknown seat '<s>' (Abut, NestInBore, OnSurface)' and 'ERR addpart: NestInBore gap is an insertion depth and must be >= 0'. Factory throw: 'ERR addpart: <what()>'. Attach rejected / bad numeric id: 'ERR addpart: no part with id <parentId> (or the attach was rejected)'.
+\item[Side effects.] Mutates the part tree (child added by move). Persisted by savedesign.
+\end{description}
+
+\subsubsection*{{\ttfamily checkdesign}}
+\label{cmd:checkdesign}
+Physical-sense check in two layers: (1) the cached placement-solve diagnostics (radial overlaps / poke-through) from Part::placementDiagnostics(); (2) an axial-coverage scan over resolved placements for air gaps — sorted spans of positive-length parts (zero-length parts like a Motor cannot bound coverage), tolerance 1e-9 m. A positive standoff is legal in a StationLink but leaves parts floating apart, which this reports.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily OK checkdesign: <n> parts, contiguous, no overlaps}
+\item[Errors.] No design: 'ERR checkdesign: no design'. Problems found: 'ERR checkdesign:' + ' <n> overlap(s)' if the solve failed and/or ', <n> air gap(s)' (comma only when both), then detail lines '  overlap: <message>' per diagnostic and '  gap: nothing spans z in [<lo>, <hi>] (<len> m)' per gap.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily listparts}}
+\label{cmd:listparts}
+Prints the part tree, one part per line indented two spaces per depth level, then the composite mass/CG at t=0. Note: the composite read can throw on a design whose placement solve failed; the top-level guard converts that to 'ERR listparts: <what()>' and the session survives.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily 'OK listparts:' then per part '  [<id>] <typeName> "<name>"  m=<own mass at t=0> kg' (extra 2-space indent per depth), then '  -- composite: mass=<kg> kg, cg\_z=<z> m (t=0)'.}
+\item[Errors.] No design: 'ERR listparts: no design'. Failed placement solve: 'ERR listparts: <exception what()>' via the catch-all. On the exception path the command word is echoed as typed (not lowercased): 'ERR <cmd-as-typed>: <what()>'.
+\item[Side effects.] None (may trigger the lazy composite recompute).
+\end{description}
+
+\subsubsection*{{\ttfamily removepart <id>}}
+\label{cmd:removepart}
+Removes a part and its entire sub-tree, addressed by numeric id only (see listparts for ids; ids are session-specific). The root cannot be removed.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] id (required): unsigned integer, strict full-token parse (stoull, trailing garbage rejected).
+\item[On success.] {\ttfamily OK removepart: removed id=<id> (<typeName>)}
+\item[Errors.] Missing token: 'ERR usage: removepart <id>'. Non-integer: 'ERR removepart: bad id '<tok>''. Root id: 'ERR removepart: cannot remove the root (use newdesign or cleardesign)'. Unknown id: 'ERR removepart: no part with id <id>'.
+\item[Side effects.] Detaches the sub-tree. If the motor was inside the removed sub-tree (rocket->isMotorSet() now false), the staged motorSet flag is cleared.
+\end{description}
+
+\subsubsection*{{\ttfamily savedesign <file.qrd>}}
+\label{cmd:savedesign}
+Saves the rocket design via DesignSerializer::save. Persisted in the .qrd: the part tree (geometry, names, placement links), the motor BY COMMON NAME, and the aero options (drag coefficient, reference area). NOT persisted (session-only): initial velocity, launch angle, timestep, atmosphere/gravity/integrator selections, the setmass dry-mass override, and part ids (ids are reassigned on reload).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] path (required): rest-of-line, trimmed.
+\item[On success.] {\ttfamily OK savedesign: <path>}
+\item[Errors.] Empty path: 'ERR usage: savedesign <file.qrd>'. Exception: 'ERR savedesign: <what()>'.
+\item[Side effects.] Writes the .qrd file.
+\end{description}
+
+\subsubsection*{{\ttfamily loaddesign <file.qrd>}}
+\label{cmd:loaddesign}
+Loads a design in place via DesignSerializer::load, re-resolving the motor by common name against the CURRENT motor database — load the motor db first (loaddb/loadmotors) or the design comes back with no motor. This is the only command that re-syncs staged config from the model: dragCoeff and referenceArea are read back from the loaded rocket, and motorSet/motorName reflect whether the by-name motor resolve succeeded. dry\_mass is NOT re-synced. Part ids are reassigned on load.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] path (required): rest-of-line, trimmed.
+\item[On success.] {\ttfamily 'OK loaddesign: <path> (motor <name>)' when the motor resolved, else 'OK loaddesign: <path> (no motor)'.}
+\item[Errors.] Empty path: 'ERR usage: loaddesign <file.qrd>'. Exception: 'ERR loaddesign: <what()>'.
+\item[Side effects.] Replaces the part tree (setRoot); may attach a motor; updates staged dragCoeff/referenceArea/motorSet/motorName.
+\end{description}
+
+\subsection{Run and inspection commands}
+\subsubsection*{{\ttfamily status}}
+\label{cmd:status}
+Shows the Repl's STAGED configuration, not the live model. Caveat: dragCoeff/refArea/motor re-sync from the model only inside loaddesign's handler; dry\_mass NEVER re-syncs (a loaded design's composite mass is not reflected — status keeps showing the last setmass value or the 1.0 kg default). Defaults shown on a fresh session: motor (none), dry\_mass 1 kg, drag\_coeff 1, ref\_area 0.001134 m\^{}2, velocity 0, angle 0, atmosphere 'Constant Atmosphere', gravity 'Constant Gravity', integrator 'Runge-Kutta 4th Order', database (none loaded).
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily 'OK status:' then exactly these labeled lines: '  motor      = <name|(none)>', '  dry\_mass   = <v> kg', '  drag\_coeff = <v>', '  ref\_area   = <v> m\^{}2', '  velocity   = <v> m/s', '  angle      = <v> deg (from vertical)', '  atmosphere = <name>', '  gravity    = <name>', '  integrator = <name>', '  database   = <N motors|(none loaded)>'.}
+\item[Errors.] None.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily launch}}
+\label{cmd:launch}
+Runs the simulation to termination (altitude z < 0 nominally). Builds the initial state from the staged velocity/angle: position (0,0,0), velocity (v*sin(a), 0, v*cos(a)) with a in radians via DEG\_PER\_RAD=57.2958; calls setInitialState + launchRocket. Pad-hold: the Propagator clamps the rocket to the pad (z=0, velocity zeroed) until a step genuinely lifts it, and aborts as NoLiftoff if it hasn't cleared noLiftoffAltitude=1.0 m within noLiftoffTime=3.0 s (Propagator.h 26-27) — hence the launch-rail setvelocity workaround for low-thrust motors. Apogee/max-speed come from live TrajectoryStatistics; downrange = hypot(x,y) of the final sample. Termination reason texts (WARN/abort messages): 'nominal'; 'no liftoff: never cleared 1 m after 3 s (check thrust vs weight)'; 'non-finite state: NaN/Inf in the trajectory'; 'max simulation time / iteration cap exceeded (flight never descended)'; 'integrator error'; fallback 'unknown'.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] None.
+\item[On success.] {\ttfamily Report at std::fixed 3 decimals: 'OK launch: <N> steps, t\_final=<t>s' then '  apogee    = <m> m @ t=<t>s', '  max\_speed = <v> m/s @ t=<t>s', '  downrange = <m> m', '  landing   = t=<t>s, pos=(<x>, <y>, <z>)'. If termination != Nominal, next line 'WARN: run aborted (<reason text>)'. If the CSV was written, final line 'CSV <absolute path>'.}
+\item[Errors.] No motor staged: 'ERR launch: no motor set (use loadmotors + setmotor first)'. Empty state series: 'ERR launch: no states produced' plus ' (run aborted: <reason text>)' appended when the reason is non-Nominal. CSV open failure: 'ERR launch: cannot open <abs path> for writing' (the report still prints; no CSV line follows).
+\item[Side effects.] Writes the full state series (stride 1) to fs::absolute("qtrocket\_run.csv") in the current working directory, overwriting any previous run. Replaces the stored state history read by states/save.
+\end{description}
+
+\subsubsection*{{\ttfamily states [stride]}}
+\label{cmd:states}
+Prints the last run's state series as CSV to stdout, keeping every stride-th sample. The stride argument is optional and forgiving: it is parsed with the strict token parser but a parse FAILURE is ignored (missing or non-numeric token both leave stride at 1 — no error). Fractional values truncate to int; values < 1 clamp to 1 via std::max.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] stride (optional, default 1): double token, truncated to int, clamped to >= 1; garbage silently treated as 1.
+\item[On success.] {\ttfamily 'OK states: <total> total, stride=<stride>' then the CSV: header 't,x,y,z,vx,vy,vz,mass,cg\_x,cg\_y,cg\_z,Ixx,Iyy,Izz' and one row per kept sample at setprecision(9).}
+\item[Errors.] No prior run: 'ERR states: nothing to show (launch first)'.
+\item[Side effects.] None.
+\end{description}
+
+\subsubsection*{{\ttfamily save <path.csv>}}
+\label{cmd:save}
+Writes the last run's FULL series (stride 1, same CSV format/precision as states) to a file. The no-run check happens before the usage check.
+
+\begin{description}[leftmargin=1.6em,itemsep=1pt]
+\item[Arguments.] path (required): rest-of-line, trimmed, may contain spaces.
+\item[On success.] {\ttfamily OK save: <absolute path>} --- the path echoed back is std::filesystem::absolute(path).
+\item[Errors.] No prior run: 'ERR save: nothing to save (launch first)'. Empty path: 'ERR usage: save <path.csv>'. Open failure: 'ERR save: cannot open <path> for writing'.
+\item[Side effects.] Writes/overwrites the CSV file.
+\end{description}
+
+
+\begin{note}[The \code{addpart} grammar in full]
+Part types, their required and optional \code{key=value} parameters, and the
+placement-link vocabulary are tabulated in \cref{sec:parts,sec:placement} ---
+the tutorials in \cref{sec:tut1,sec:tut3} exercise all of it against the real
+binary.
+\end{note}
+

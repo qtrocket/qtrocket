@@ -1,0 +1,95 @@
+One airframe, four motors, four very different flights. This tutorial is about
+motor management: the two local file formats, how databases merge, and the
+cleanest experiment QtRocket offers --- swap the motor, change nothing else,
+and watch total impulse turn into altitude.
+
+\begin{note}[Setup]
+An empty directory with both bundled motor files:
+\begin{minted}{text}
+cp <qtrocket>/tests/data/motors/estes_small.qmd .
+cp <qtrocket>/data/Aerotech.rse .
+qtrocket-cli tutorial2.cli      # or type along interactively
+\end{minted}
+\end{note}
+
+\subsection*{Two files, one database}
+
+\input{transcripts/tut2-block1}
+
+\repl{loaddb} reads QtRocket's native \code{.qmd}; \repl{loadmotors} imports
+vendor formats --- RockSim \code{.rse} here, RASP \code{.eng} works the same
+way. Both \emph{merge} into one session database: the 13 Estes-class motors
+and the 249 AeroTech motors are now one searchable pool, which is why the
+\code{D1} filter catches entries from both files at once. Filters are plain
+case-sensitive substring matches --- \code{E30} pins down one motor family.
+
+\subsection*{A mid-size airframe}
+
+\input{transcripts/tut2-block2}
+
+Nothing new grammatically --- a 26\,mm-diameter, 30\,cm tube under a stubby
+nose --- but note the composite mass in \repl{listparts}: about
+$45$\,g of airframe. Keep that number in mind as the motors get heavier.
+
+\subsection*{The ladder: C11, D12, E30T, F32T}
+
+\input{transcripts/tut2-block3}
+
+Each rung is the same three commands: \repl{setmotor}, \repl{launch},
+\repl{save} (which copies the trajectory CSV before the next flight overwrites
+it). The geometry never changes; only the motor does. Four flights,
+four apogees:
+
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Motor} & \textbf{Class} & \textbf{Apogee} & \textbf{Time to apogee}\\
+\midrule
+C11  & C & $257.1\m$ & $6.6$\,s\\
+D12  & D & $447.7\m$ & $8.1$\,s\\
+E30T & E & $721.9\m$ & $8.5$\,s\\
+F32T & F & $940.5\m$ & $9.8$\,s\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each impulse class doubles the total impulse of the one before it --- and the
+apogees march accordingly, sub-doubling because drag grows with speed.
+\Cref{fig:motor-ladder} overlays the four saved trajectories.
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[qtplot,
+  xlabel={time (s)}, ylabel={altitude (m)},
+  xmin=0, ymin=0,
+  legend pos=north east]
+\addplot table {data/tut2-C11.dat};  \addlegendentry{C11}
+\addplot table {data/tut2-D12.dat};  \addlegendentry{D12}
+\addplot table {data/tut2-E30T.dat}; \addlegendentry{E30T}
+\addplot table {data/tut2-F32T.dat}; \addlegendentry{F32T}
+\end{axis}
+\end{tikzpicture}
+\caption{The motor ladder: one airframe flown on four motors, plotted from the
+four \repl{save}d trajectory files. Impulse class doubles rung to rung; drag
+keeps the apogees from doubling with it.}
+\label{fig:motor-ladder}
+\end{figure}
+
+\subsection*{Keep the collection}
+
+\input{transcripts/tut2-block4}
+
+\repl{savedb} writes the whole merged database --- both files' motors plus
+anything an online search added --- to one \code{.qmd}, so the next session
+starts with a single \repl{loaddb}. The saved design
+(\cref{fig:motor-lab}) records the \emph{last} selected motor by name.
+
+\screenshot{ug-motor-lab.png}{\code{motor\_lab.qrd}: the 26\,mm test airframe.
+Same silhouette all day --- only the motor changed.}{fig:motor-lab}{0.78}
+
+\begin{tip}[What you learned]
+\code{.qmd} vs \code{.rse}/\code{.eng}; databases merge rather than replace;
+\repl{listmotors} filters are substrings; \repl{setmotor} swaps propulsion
+without touching geometry; \repl{save} preserves a flight's CSV before the
+next \repl{launch} overwrites it; \repl{savedb} persists the merged pool.
+\end{tip}

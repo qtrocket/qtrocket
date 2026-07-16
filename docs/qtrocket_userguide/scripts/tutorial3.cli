@@ -1,0 +1,33 @@
+# Tutorial 3 -- placement: seats, stations, a payload sphere, and two deliberate mistakes
+loadmotors Aerotech.rse
+newdesign NoseCone name=Nose baseRadius=0.02 length=0.12 density=1400
+addpart Nose BodyTube name=Airframe innerRadius=0.0191 outerRadius=0.02 length=0.40 density=1400
+addpart Airframe FinSet name=Fins finCount=3 rootChord=0.06 tipChord=0.03 span=0.045 sweep=0.03 thickness=0.003 bodyRadius=0.02 density=1400 seat=OnSurface parentStation=0 childStation=0
+checkdesign
+# mistake 1: a 0.05 m coupler nested only 0.02 m deep pokes 0.03 m past the
+# airframe's fore rim, into the solid nose cone
+addpart Airframe BodyTube name=Coupler innerRadius=0.018 outerRadius=0.019 length=0.05 density=1400 seat=NestInBore gap=0.02
+checkdesign
+listparts
+savedesign payload_broken.qrd
+# the fix: insertion depth = coupler length, so the coupler sits flush in the bore
+removepart 5
+addpart Airframe BodyTube name=Coupler innerRadius=0.018 outerRadius=0.019 length=0.05 density=1400 seat=NestInBore gap=0.05
+checkdesign
+# a hollow payload sphere, nested fully inside the coupler's bore
+addpart Coupler HollowSphere name=Payload innerRadius=0.016 outerRadius=0.0175 density=1200 seat=NestInBore gap=0.035
+checkdesign
+# mistake 2: a sign slip -- gap=-0.02 floats the tail 0.02 m behind the airframe
+addpart Airframe BodyTube name=Tail innerRadius=0.0191 outerRadius=0.02 length=0.06 density=1400 seat=Abut gap=-0.02
+checkdesign
+# the fix: abut means touching; leave gap at its default of 0
+removepart 8
+addpart Airframe BodyTube name=Tail innerRadius=0.0191 outerRadius=0.02 length=0.06 density=1400 seat=Abut
+checkdesign
+listparts
+setmotor I280DM
+setdrag 0.75
+setarea 0.001257
+savedesign payload_final.qrd
+launch
+quit

@@ -1,0 +1,111 @@
+Six flights of one airframe, each isolating one knob: which atmosphere
+supplies the air, which integrator does the arithmetic, how big the timestep
+is, and which way the launch rail points. The airframe is Tutorial~2's 26\,mm
+bird on a D12; if you skipped ahead, the script rebuilds it.
+
+\begin{note}[Setup]
+An empty directory with \code{estes\_small.qmd} copied in;
+\srcf{scripts/tutorial4.cli} replays the whole study. Each \repl{launch} is
+followed by a \repl{save} so its trajectory survives the next flight.
+\end{note}
+
+\subsection*{The knobs, listed}
+
+\input{transcripts/tut4-block1}
+
+Three \repl{list...} commands enumerate what is pluggable: three atmosphere
+models, two gravity models, two integrators. \repl{setatmosphere},
+\repl{setgravity}, and \repl{setintegrator} accept exactly these names ---
+misspell one and the CLI rejects it and keeps the current model.
+
+\subsection*{Baseline: constant air, RK4, $\Delta t = 0.01$\,s}
+
+\input{transcripts/tut4-block2}
+
+$447.7\m$. Drag is computed from the \emph{active atmosphere's} density at the
+rocket's current altitude --- that is the whole meaning of the atmosphere
+setting. \code{Constant Atmosphere} uses sea-level density everywhere.
+
+\subsection*{Real air: US Standard 1976}
+
+\input{transcripts/tut4-block3}
+
+$452.9\m$ --- about one percent higher, because air thins with altitude and a
+450-meter flight barely samples the difference. Model fidelity buys little on
+low flights and progressively more as you climb; knowing \emph{when} a better
+model matters is as useful as having it.
+
+\subsection*{No air at all: the vacuum ceiling}
+
+\input{transcripts/tut4-block4}
+
+$2223.6\m$ --- five times the apogee, from the same motor. Vacuum reduces the
+model to thrust plus gravity, which makes it two useful things: a
+deterministic upper bound (``what is drag costing me?'' --- here, 80\% of the
+theoretical altitude) and a diagnostic (if a flight surprises you, fly it in
+vacuum to separate propulsion questions from aerodynamics questions).
+
+\subsection*{Same flight, adaptive integrator}
+
+\input{transcripts/tut4-block5}
+
+The Runge--Kutta--Fehlberg integrator adapts its own step size against an
+error estimate. Its vacuum apogee agrees with fixed-step RK4 to within
+$0.12\m$ in $2223$ --- five parts in a hundred thousand --- while choosing its
+own steps. Agreement between two independent integration schemes is the
+cheapest confidence check numerical work offers.
+
+\subsection*{What a coarse timestep costs}
+
+\input{transcripts/tut4-block6}
+
+Back on RK4 with $\Delta t = 0.1$\,s --- ten times coarser --- the same vacuum
+flight reads $2183.4\m$: forty meters (1.8\%) short, lost to integration error
+across the sharp thrust transient. The lesson generalizes: when a result
+matters, halve the timestep and see if the answer moves.
+
+\subsection*{Tilt the rail}
+
+\input{transcripts/tut4-block7}
+
+Two changes together: a $15$\,m/s rail-exit velocity (\repl{setvelocity}) and
+a $10^\circ$ tilt from vertical (\repl{setangle}). For the first time
+\code{downrange} is nonzero --- $12.1\m$ of drift --- and apogee ticks up
+relative to the upright US-Standard flight because the rail speed adds kinetic
+energy. \Cref{fig:tut4-plots} shows both studies: the three atmosphere curves
+overlaid, and the tilted flight's ground track.
+
+\begin{figure}[htbp]\centering
+\begin{subfigure}[b]{0.55\linewidth}\centering
+\begin{tikzpicture}
+\begin{axis}[qtplot, width=\linewidth, height=0.75\linewidth,
+  xlabel={time (s)}, ylabel={altitude (m)}, xmin=0, ymin=0,
+  legend pos=north east]
+\addplot table {data/tut4-constant.dat}; \addlegendentry{Constant}
+\addplot table {data/tut4-usstd.dat};    \addlegendentry{US Std 1976}
+\addplot table {data/tut4-vacuum.dat};   \addlegendentry{Vacuum}
+\end{axis}
+\end{tikzpicture}
+\caption{Same rocket, three atmospheres.}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.42\linewidth}\centering
+\begin{tikzpicture}
+\begin{axis}[qtplot, width=\linewidth, height=0.98\linewidth,
+  xlabel={downrange $x$ (m)}, ylabel={altitude (m)}, ymin=0]
+\addplot table {data/tut4-angled.dat};
+\end{axis}
+\end{tikzpicture}
+\caption{Ground track, $10^\circ$ tilt.}
+\end{subfigure}
+\caption{Tutorial 4's studies, plotted from the \repl{save}d CSVs: the
+atmosphere overlay (left) and the tilted launch's $x$--$z$ trajectory
+(right).}
+\label{fig:tut4-plots}
+\end{figure}
+
+\begin{tip}[What you learned]
+Atmosphere selection is $\rho(z)$ selection; vacuum is a bound and a
+diagnostic; two integrators agreeing is cheap confidence; coarse timesteps
+have a measurable price; and the launch rail's speed and angle are the last
+two \repl{status} rows you had not touched yet.
+\end{tip}

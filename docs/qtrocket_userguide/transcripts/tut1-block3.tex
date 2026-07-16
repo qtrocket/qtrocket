@@ -1,0 +1,27 @@
+\begin{console}
+\uin{setmotor B6}
+\ok setmotor: B6
+\uin{setdrag 0.75}
+\ok setdrag: 0.75
+\uin{setarea 0.000302}
+\ok setarea: 0.000302 m^2
+\uin{status}
+\ok status:
+  motor      = B6
+  dry_mass   = 1 kg
+  drag_coeff = 0.75
+  ref_area   = 0.000302 m^2
+  velocity   = 0 m/s
+  angle      = 0 deg (from vertical)
+  atmosphere = Constant Atmosphere
+  gravity    = Constant Gravity
+  integrator = Runge-Kutta 4th Order
+  database   = 13 motors
+\uin{launch}
+\ok launch: 1457 steps, t_final=14.560s
+  apogee    = 241.405 m @ t=6.330s
+  max_speed = 97.562 m/s @ t=0.820s
+  downrange = 0.000 m
+  landing   = t=14.560s, pos=(0.000, 0.000, -0.314)
+CSV /tmp/flight1/qtrocket_run.csv
+\end{console}

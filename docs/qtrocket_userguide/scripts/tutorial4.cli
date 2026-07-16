@@ -1,0 +1,42 @@
+# Tutorial 4 -- the physics knobs: atmospheres, integrators, timestep, launch angle
+loaddb estes_small.qmd
+newdesign NoseCone name=nose baseRadius=0.013 length=0.09 density=900
+addpart nose BodyTube name=body innerRadius=0.0121 outerRadius=0.013 length=0.30 density=1000
+addpart body FinSet name=fins finCount=3 rootChord=0.05 tipChord=0.025 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.013 density=900 seat=OnSurface parentStation=0 childStation=0
+checkdesign
+setmotor D12
+setdrag 0.75
+setarea 0.000531
+listatmospheres
+listgravity
+listintegrators
+# baseline: constant sea-level air, RK4, dt = 0.01 s
+settimestep 0.01
+status
+launch
+save baseline_constant.csv
+# altitude-dependent air: density thins with altitude, apogee rises a little
+setatmosphere US Standard 1976
+launch
+save us_standard.csv
+# no air at all: thrust + gravity only -- the drag-free ceiling
+setatmosphere Vacuum
+launch
+save vacuum_rk4.csv
+# same vacuum flight on the adaptive integrator; apogee should match RK4 closely
+setintegrator Runge-Kutta-Fehlberg
+launch
+save vacuum_rkf45.csv
+# a coarse fixed step degrades the answer; compare apogee against dt = 0.01
+setintegrator Runge-Kutta 4th Order
+settimestep 0.1
+launch
+save coarse_dt.csv
+settimestep 0.01
+# tilt the launch rail 10 degrees and leave it at 15 m/s: downrange drift appears
+setatmosphere US Standard 1976
+setangle 10
+setvelocity 15
+launch
+save angled.csv
+quit

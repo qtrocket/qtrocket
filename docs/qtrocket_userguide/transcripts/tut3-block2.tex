@@ -1,0 +1,16 @@
+\begin{console}
+\uin{addpart Airframe BodyTube name=Coupler innerRadius=0.018 outerRadius=0.019 length=0.05 density=1400 seat=NestInBore gap=0.02}
+\ok addpart: BodyTube id=5 under 3
+\uin{checkdesign}
+\err checkdesign: 1 overlap(s)
+  overlap: part 5 (OD 0.019 m) intrudes into part 2 (capacity 0.015 m) by 0.004 m at z=-0.09 m
+\uin{listparts}
+\ok listparts:
+  [2] NoseCone "Nose"  m=0.0703717 kg
+    [3] BodyTube "Airframe"  m=0.0619095 kg
+      [4] FinSet "Fins"  m=0.025515 kg
+      [5] BodyTube "Coupler"  m=0.00813672 kg
+  -- composite: mass=0.165933 kg, cg_z=ERR listparts: Part::computeCompositeAt: placement solve failed -- part 5 (OD 0.019 m) intrudes into part 2 (capacity 0.015 m) by 0.004 m at z=-0.09 m
+\uin{savedesign payload_broken.qrd}
+\ok savedesign: payload_broken.qrd
+\end{console}

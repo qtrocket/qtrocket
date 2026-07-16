@@ -1,0 +1,113 @@
+\section{Concepts: the design tree, placement, and what persists}\label{sec:concepts}
+
+\subsection{A rocket is a tree of parts}\label{sec:parts}
+
+A QtRocket design is a tree: one root part (usually the nose cone) with
+children attached to it, children attached to those, and so on.
+\repl{newdesign} creates the root; \repl{addpart} attaches a child to any
+existing part, addressed by the \code{name=} you gave it, by its numeric id,
+or by the word \code{root}. Composite mass, center of gravity, and inertia are
+computed from the tree --- there is no separate ``mass budget'' to maintain.
+
+\begin{tip}[Address parts by name in scripts]
+Ids are assigned in session order and \emph{reset when a design is reloaded},
+so a saved script that says \code{removepart 5} may bite a different part
+tomorrow. Names are stable: give every part a \code{name=} and use it.
+\end{tip}
+
+Four part types are constructible today. All lengths are meters, densities
+kg/m$^3$ --- never millimeters.
+
+\begin{table}[htbp]\centering\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Type} & \textbf{Required keys} & \textbf{Optional keys}\\
+\midrule
+\code{NoseCone}     & \code{baseRadius length density} & \code{solid} (default \code{true}), \code{wallThickness}, \code{name}\\
+\code{BodyTube}     & \code{outerRadius length density} & \code{innerRadius} (default 0 $=$ solid rod), \code{name}\\
+\code{FinSet}       & \code{finCount rootChord tipChord span} & \code{sweep} (default 0), \code{name}\\
+                    & \code{thickness bodyRadius density} & \\
+\code{HollowSphere} & \code{outerRadius density} & \code{innerRadius} (default 0 $=$ solid), \code{name}\\
+\bottomrule
+\end{tabular}
+\caption{Constructible part types and their \code{key=value} parameters. A
+motor is \emph{not} a factory part --- it attaches through \repl{setmotor}.}
+\label{tab:parts}
+\end{table}
+
+Parameter values are parsed strictly: \code{length=0.25abc} is rejected, not
+truncated. Unknown keys are skipped so newer files keep working on older
+builds --- but a token without \code{=} is an error.
+
+\subsection{Placement: seat, stations, gap}\label{sec:placement}
+
+Every \repl{addpart} link records \emph{physical intent}, not baked
+coordinates: a \textbf{seat} kind plus optional station and gap overrides.
+Stations are fractions of a part's live length --- \code{0} is the aft plane,
+\code{1} the fore plane --- so editing a part's length later moves every seam
+with it.
+
+\begin{table}[htbp]\centering\small
+\begin{tabularx}{\linewidth}{@{}lXl@{}}
+\toprule
+\textbf{Seat} & \textbf{Meaning} & \textbf{\code{gap} means}\\
+\midrule
+\seat{Abut}       & Child's fore plane against the parent's aft plane --- how a
+                    body tube hangs under a nose cone. The default seat. &
+                    signed forward standoff ($0=$ touching)\\
+\seat{NestInBore} & Child slides into the parent's bore from the fore rim ---
+                    couplers, payloads. & insertion depth ($\ge 0$;
+                    $=$ child length $\Rightarrow$ flush)\\
+\seat{OnSurface}  & Child sits on the parent's outer wall --- fins. Align the
+                    axial position with \code{parentStation}/\code{childStation}. &
+                    signed forward standoff along $+z$, like \seat{Abut}\\
+\bottomrule
+\end{tabularx}
+\caption{The three seat kinds. The seat sets a canonical station pair first;
+explicit \code{parentStation}/\code{childStation}/\code{gap} keys then override
+individually.}
+\label{tab:seats}
+\end{table}
+
+\repl{checkdesign} is the arbiter of whether the assembled geometry makes
+physical sense: it reports \emph{overlaps} (a part intruding into another's
+solid material) with the offending part ids, the radial penetration, and the
+$z$ location, and \emph{air gaps} (a stack that is not contiguous) with the
+uncovered $z$ interval and its size.
+Tutorial~3 breaks a design twice on purpose to show both messages ---
+and shows the visualizer painting the offender red.
+
+\begin{note}[Where the deep theory lives]
+The placement model --- stations, seats, the resolver, and its diagnostics ---
+has its own design whitepaper in
+\srcf{docs/PartPlacementDesignLatex/}. This guide teaches the working
+vocabulary; the whitepaper holds the proofs.
+\end{note}
+
+\subsection{Motors and the motor database}\label{sec:motors-concept}
+
+Motors live in a session database, filled from three sources that merge: local
+RockSim files (\repl{loadmotors} \code{file.rse}), local RASP files
+(\repl{loadmotors} \code{file.eng}), and QtRocket's own \code{.qmd} format
+(\repl{loaddb}/\repl{savedb}). An online search
+(\repl{tcsearch}, needs network) adds results from
+\href{https://www.thrustcurve.org}{thrustcurve.org} into the same database.
+\repl{setmotor} selects a motor by its exact common name (\code{B6},
+\code{G80T}); \repl{listmotors} shows what is loaded.
+
+\subsection{What persists, and where}\label{sec:persistence}
+
+\begin{itemize}
+\item \textbf{The design} --- part tree, placement links, drag coefficient,
+      reference area, and the selected motor \emph{by name} --- is written by
+      \repl{savedesign} to a versioned \code{.qrd} XML file and restored by
+      \repl{loaddesign}. If the named motor is not in the database at load
+      time, the design still loads without one, and the \ok{} line says so:
+      \code{OK loaddesign: file.qrd (no motor)}.
+\item \textbf{The motor database} persists only via \repl{savedb} to
+      \code{.qmd}.
+\item \textbf{Session configuration} --- atmosphere, gravity, integrator,
+      timestep, launch velocity and angle --- is deliberately \emph{not} part
+      of the design file. Scripts restate it; that keeps a \code{.qrd}
+      a description of a rocket, not of one particular flight.
+\end{itemize}

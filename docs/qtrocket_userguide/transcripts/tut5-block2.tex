@@ -1,0 +1,27 @@
+\begin{console}
+\uin{cleardesign}
+\ok cleardesign: restored the placeholder body
+\uin{loaddesign workhorse.qrd}
+\ok loaddesign: workhorse.qrd (motor C6)
+\uin{checkdesign}
+\ok checkdesign: 4 parts, contiguous, no overlaps
+\uin{status}
+\ok status:
+  motor      = C6
+  dry_mass   = 1 kg
+  drag_coeff = 0.75
+  ref_area   = 0.000302 m^2
+  velocity   = 0 m/s
+  angle      = 0 deg (from vertical)
+  atmosphere = Constant Atmosphere
+  gravity    = Constant Gravity
+  integrator = Runge-Kutta 4th Order
+  database   = 13 motors
+\uin{launch}
+\ok launch: 2041 steps, t_final=20.400s
+  apogee    = 436.562 m @ t=7.990s
+  max_speed = 143.732 m/s @ t=1.820s
+  downrange = 0.000 m
+  landing   = t=20.400s, pos=(0.000, 0.000, -0.436)
+CSV /tmp/flight1/qtrocket_run.csv
+\end{console}

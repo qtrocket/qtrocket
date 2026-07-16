@@ -1,0 +1,21 @@
+\begin{console}
+\muted{# QtRocket CLI - type 'help' for commands, 'quit' to exit.}
+\uin{loaddb estes_small.qmd}
+\ok loaddb: 13 new motors from estes_small.qmd (13 total)
+\uin{newdesign NoseCone name=nose baseRadius=0.0098 length=0.10 density=700}
+\ok newdesign: root NoseCone id=2
+\uin{addpart nose BodyTube name=body innerRadius=0.0091 outerRadius=0.0098 length=0.25 density=700}
+\ok addpart: BodyTube id=3 under 2
+\uin{addpart body FinSet name=fins finCount=3 rootChord=0.04 tipChord=0.02 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.0098 density=700 seat=OnSurface parentStation=0 childStation=0}
+\ok addpart: FinSet id=4 under 3
+\uin{setmotor C6}
+\ok setmotor: C6
+\uin{setdrag 0.75}
+\ok setdrag: 0.75
+\uin{setarea 0.000302}
+\ok setarea: 0.000302 m^2
+\uin{checkdesign}
+\ok checkdesign: 4 parts, contiguous, no overlaps
+\uin{savedesign workhorse.qrd}
+\ok savedesign: workhorse.qrd
+\end{console}

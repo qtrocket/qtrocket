@@ -1,0 +1,36 @@
+QtRocket is an open-source model-rocket flight simulator: a C++ simulation core
+shared by a Qt6 desktop application, a command-line REPL called
+\code{qtrocket-cli}, and a standalone 3D design viewer called
+\code{qtrocket-visualizer}. This guide teaches the command-line interface ---
+today the most feature-complete way to drive QtRocket, and the only way to
+\emph{author} rocket designs. Everything you build here saves to \code{.qrd}
+files that the GUI and the visualizer open directly.
+
+The guide is organized as a short concepts primer
+(\cref{sec:getting-started,sec:concepts}), five hands-on tutorials
+(\cref{sec:tut1,sec:tut2,sec:tut3,sec:tut4,sec:tut5}), and a complete command
+reference (\cref{sec:reference}). The tutorials are the heart of it: each one
+builds something real, flies it, and reads the results, introducing commands as
+they earn their place.
+
+\begin{note}[Every transcript in this guide is real]
+The session transcripts in this guide are not typed-up approximations: each one
+is the captured output of the released \code{qtrocket-cli} binary running the
+tutorial scripts included alongside this document (\cref{app:repro}). The
+screenshots are captures of \code{qtrocket-visualizer} displaying the
+\code{.qrd} files those same sessions saved, and the flight plots are drawn
+from the CSV files they wrote. Where a long payload is shortened, the elision
+is marked in \textcolor{qrGray}{\textit{[bracketed gray italics]}} --- nothing
+else is edited. If you run the scripts, you will get these numbers.
+\end{note}
+
+\paragraph{Reading the transcripts.} Lines you type are shown in
+\textcolor{qrBlue}{\textbf{bold blue}}. The CLI answers every command with a
+line starting \ok{} (success) or \err{} (failure); those and the occasional
+\warnline{WARN} are colored the way you should read them. Muted
+\muted{\#~gray lines} are comments and banners the CLI prints or ignores.
+
+\paragraph{Conventions.} All quantities are SI --- meters, kilograms, seconds,
+Newtons; densities are kg/m$^3$. Altitude is the $z$~axis with the ground at
+$z=0$. Motor designations follow the standard hobby impulse classes (A, B, C,
+\dots), where each letter doubles the total impulse of the one before it.

@@ -1,0 +1,110 @@
+This is the placement tutorial: all three seat kinds, internal parts, and ---
+deliberately --- two broken designs, because \repl{checkdesign}'s error
+messages and the visualizer's red paint teach the model faster than any prose.
+By the end you will have built a payload bay: a coupler nested in the airframe
+carrying a hollow payload sphere, with a tail section abutted behind.
+
+\begin{note}[Setup]
+An empty directory with \code{Aerotech.rse} copied in
+(\srcf{scripts/tutorial3.cli} replays everything). Expect this script to exit
+with code 1 --- it contains two intentional failures, and the exit code
+honestly says so.
+\end{note}
+
+\subsection*{A clean three-part stack}
+
+\input{transcripts/tut3-block1}
+
+The same spine as Tutorial~1, at 40\,mm scale: nose, airframe,
+fins-on-surface. \repl{checkdesign} passes. Now we break it.
+
+\subsection*{Mistake one: the coupler that pokes through}
+
+A coupler is a short tube nested inside the airframe's bore ---
+\code{seat=NestInBore}. For that seat, \code{gap} means \emph{insertion
+depth}: how far the child slides in from the parent's fore rim. Here is a
+$0.05\m$ coupler inserted only $0.02\m$:
+
+\input{transcripts/tut3-block2}
+
+Three lessons in one failure:
+
+\begin{itemize}
+\item The overlap message is \emph{located and quantified}: the $0.03\m$ of
+      coupler left sticking out of the bore reaches under the nose skirt at
+      $z=-0.09\m$, where its $0.019\m$ outer diameter exceeds the nose's
+      $0.015\m$ capacity --- the reported $0.004\m$ intrusion is that
+      \emph{radial} penetration, at that axial location. Nothing vague.
+\item \repl{listparts} still prints the tree --- geometry exists --- but the
+      composite line degrades to an \err{} mid-print: composite mass and CG
+      are refused while the placement is unphysical. A broken design cannot
+      silently produce plausible-looking numbers.
+\item \repl{savedesign} still works. A \code{.qrd} records intent, including
+      broken intent --- which lets you save your work mid-repair, and lets
+      the visualizer show you the problem
+      (\cref{fig:payload-broken}).
+\end{itemize}
+
+\screenshot{ug-payload-broken.png}{\code{payload\_broken.qrd} in the
+visualizer (Hi-Vis scheme): the offending coupler is painted the fixed error
+red, jutting from the airframe's fore rim into the nose skirt. The overlap
+diagnostics and this red paint come from the same geometry resolver.}{fig:payload-broken}{0.8}
+
+\subsection*{The fix: insertion depth equals length}
+
+\input{transcripts/tut3-block3}
+
+\code{gap=0.05} --- the full coupler length --- seats it flush in the bore.
+Note the fix removed the broken part \emph{by id} (\code{removepart 5}); in a
+saved script you would prefer names (\cref{sec:parts}).
+
+\subsection*{An internal payload}
+
+\input{transcripts/tut3-block4}
+
+A hollow sphere, $17.5$\,mm outer radius, nested inside the coupler. Internal
+parts stack the same way external ones do: \seat{NestInBore} into the
+coupler's bore, insertion depth placing it fully inside. \repl{checkdesign}
+still passes --- the resolver knows a sphere inside a tube inside a tube is
+fine, because the bore capacities say so.
+
+\subsection*{Mistake two: the floating tail}
+
+\seat{Abut} means \emph{touching}: child's fore plane against parent's aft
+plane, \code{gap} a signed standoff along $+z$. A sign slip ---
+\code{gap=-0.02} --- leaves two centimeters of daylight:
+
+\input{transcripts/tut3-block5}
+
+An \emph{air gap} is the other way a stack can be wrong: nothing overlaps, but
+the rocket is not one connected body. Same locate-and-quantify style, same
+honest refusal to compute a composite.
+
+\subsection*{The fix, and the finished bay}
+
+\input{transcripts/tut3-block6}
+
+Leave \code{gap} at its default of zero: abut means touching. The finished
+six-part design flies (that is Tutorial~4's airframe class) and looks ---
+from the outside --- identical to a rocket with no payload at all
+(\cref{fig:payload-final}).
+
+\screenshot{ug-payload-final.png}{\code{payload\_final.qrd}: the repaired
+stack. The coupler and payload sphere are fully internal --- the outside gives
+no hint, which is precisely why \repl{checkdesign}, not the eyeball, is the
+arbiter of internal geometry.}{fig:payload-final}{0.8}
+
+\begin{warning}[The red paint and the ERR text are the same fact]
+\code{qtrocket-visualizer} runs the \emph{same placement resolver} the
+simulator uses. When \repl{checkdesign} names an offender, the visualizer
+paints that part red --- one geometry model, two views of its verdict. If the
+render looks fine but \repl{checkdesign} objects, believe \repl{checkdesign}:
+it can see inside.
+\end{warning}
+
+\begin{tip}[What you learned]
+\seat{Abut}/\seat{NestInBore}/\seat{OnSurface} and what \code{gap} means to
+each; overlap vs air-gap diagnostics, located and quantified; broken designs
+save but refuse composites; the visualizer's error-red; and that a script with
+intentional failures exits 1 --- which Tutorial~5 turns into a feature.
+\end{tip}

@@ -1,0 +1,13 @@
+\begin{console}
+\muted{# QtRocket CLI - type 'help' for commands, 'quit' to exit.}
+\uin{loadmotors Aerotech.rse}
+\ok loadmotors: 249 motors from Aerotech.rse
+\uin{newdesign NoseCone name=Nose baseRadius=0.02 length=0.12 density=1400}
+\ok newdesign: root NoseCone id=2
+\uin{addpart Nose BodyTube name=Airframe innerRadius=0.0191 outerRadius=0.02 length=0.40 density=1400}
+\ok addpart: BodyTube id=3 under 2
+\uin{addpart Airframe FinSet name=Fins finCount=3 rootChord=0.06 tipChord=0.03 span=0.045 sweep=0.03 thickness=0.003 bodyRadius=0.02 density=1400 seat=OnSurface parentStation=0 childStation=0}
+\ok addpart: FinSet id=4 under 3
+\uin{checkdesign}
+\ok checkdesign: 3 parts, contiguous, no overlaps
+\end{console}

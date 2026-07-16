@@ -1,0 +1,17 @@
+\begin{console}
+\uin{setintegrator Runge-Kutta 4th Order}
+\ok setintegrator: Runge-Kutta 4th Order
+\uin{settimestep 0.1}
+\ok settimestep: 0.1 s
+\uin{launch}
+\ok launch: 430 steps, t_final=42.900s
+  apogee    = 2183.363 m @ t=21.800s
+  max_speed = 207.113 m/s @ t=42.900s
+  downrange = 0.000 m
+  landing   = t=42.900s, pos=(0.000, 0.000, -3.702)
+CSV /tmp/flight1/qtrocket_run.csv
+\uin{save coarse_dt.csv}
+\ok save: /tmp/flight1/coarse_dt.csv
+\uin{settimestep 0.01}
+\ok settimestep: 0.01 s
+\end{console}

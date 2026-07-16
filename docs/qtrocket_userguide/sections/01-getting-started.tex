@@ -1,0 +1,86 @@
+\section{Getting started}\label{sec:getting-started}
+
+\subsection{Building \code{qtrocket-cli}}
+
+QtRocket builds with CMake presets; Qt6 is the only system dependency (and the
+CLI itself does not use Qt --- Qt is needed to build the sibling GUI targets).
+Everything else is fetched and pinned by CMake, so the first configure is slow
+once:
+
+\begin{minted}{text}
+cmake --preset release
+cmake --build --preset release
+\end{minted}
+
+The binary lands at \code{build/cli/qtrocket-cli}. The examples in this guide
+assume it is on your \code{PATH} or invoked by that path.
+
+\subsection{Four ways to run it}\label{sec:invocation}
+
+\begin{enumerate}
+\item \textbf{Interactively} --- run \code{qtrocket-cli} with no arguments and
+      type commands at it. It reads lines from standard input until
+      end-of-file or a \repl{quit}.
+\item \textbf{From a pipe} --- \code{printf 'help\textbackslash{}n' | qtrocket-cli}.
+      Same reader, no terminal required.
+\item \textbf{From a script file} --- \code{qtrocket-cli flight.cli} runs the
+      commands in the file. This is how the tutorial scripts are run.
+\item \textbf{One-liner} --- \code{qtrocket-cli -c "listmotors"} runs a single
+      command string in a fresh process. \code{--help} and \code{--version}
+      do what you expect.
+\end{enumerate}
+
+\begin{warning}[State does not survive between processes]
+Each invocation is a fresh session. \code{qtrocket-cli -c "setmotor B6"}
+followed by \code{qtrocket-cli -c "launch"} does \emph{not} fly a B6 --- the
+second process never saw the first command. Put multi-step work in one script
+file, one pipe, or one interactive session; use \code{.qrd} design files
+(\cref{sec:tut5}) to carry work \emph{between} sessions.
+\end{warning}
+
+\subsection{The output protocol and exit codes}\label{sec:protocol}
+
+The CLI is built to be read by both humans and scripts. Every command answers
+with a line beginning \code{OK <cmd>} on success or \code{ERR} on failure;
+data payloads (motor listings, part trees, state samples) usually follow the
+\code{OK} header unprefixed. Two exceptions keep parsers honest: \repl{help}
+prints its \code{\#}-prefixed listing \emph{before} its terminating
+\code{OK help}, and comment or blank lines produce no output at all. Two more prefixes appear only around flights:
+\code{CSV <path>} names the trajectory file \repl{launch} wrote, and
+\code{WARN: run aborted (...)} flags a flight that ended for a safety reason
+rather than a normal landing. Comment lines start with \code{\#}; the log
+system is pinned to errors-only with an \code{[ERROR]} prefix so log noise can
+never masquerade as command output.
+
+The process exit code summarizes the whole session: \textbf{0} if every command
+succeeded, \textbf{1} if any command reported \code{ERR}, and \textbf{2} for a
+bad invocation (unreadable script file, malformed \code{-c}). A failing
+command never kills the session --- the REPL reports it and keeps reading ---
+but the exit code remembers. \Cref{sec:tut5} turns this into one-line
+regression guards.
+
+\subsection{A ninety-second first session}
+
+\begin{console}
+\muted{\# QtRocket CLI - type 'help' for commands, 'quit' to exit.}
+\uin{help}
+\muted{\# commands:}
+\muted{\#   loadmotors <file.rse|file.eng>   import a motor database}
+\muted{\#   savedb <file.qmd>       save the motor database to a file}
+\textcolor{qrGray}{\textit{[40 more help lines --- the full list is \cref{sec:reference}]}}
+\ok help
+\uin{launch}
+\err launch: no motor set (use loadmotors + setmotor first)
+\uin{quit}
+\ok bye
+\end{console}
+
+That \err{} line is the CLI teaching you its own rules: a flight needs a motor,
+and motors come from a database you load. That is exactly where
+Tutorial~1 begins.
+
+\begin{tip}[If you get lost]
+\repl{help} prints every command with a one-line summary, and \repl{status}
+(\cref{sec:reference}) shows the current session configuration --- motor,
+masses, atmosphere, integrator, timestep --- at any moment.
+\end{tip}

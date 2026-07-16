@@ -1,0 +1,32 @@
+\begin{console}
+\muted{# QtRocket CLI - type 'help' for commands, 'quit' to exit.}
+\uin{loaddb estes_small.qmd}
+\ok loaddb: 13 new motors from estes_small.qmd (13 total)
+\uin{newdesign NoseCone name=nose baseRadius=0.013 length=0.09 density=900}
+\ok newdesign: root NoseCone id=2
+\uin{addpart nose BodyTube name=body innerRadius=0.0121 outerRadius=0.013 length=0.30 density=1000}
+\ok addpart: BodyTube id=3 under 2
+\uin{addpart body FinSet name=fins finCount=3 rootChord=0.05 tipChord=0.025 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.013 density=900 seat=OnSurface parentStation=0 childStation=0}
+\ok addpart: FinSet id=4 under 3
+\uin{checkdesign}
+\ok checkdesign: 3 parts, contiguous, no overlaps
+\uin{setmotor D12}
+\ok setmotor: D12
+\uin{setdrag 0.75}
+\ok setdrag: 0.75
+\uin{setarea 0.000531}
+\ok setarea: 0.000531 m^2
+\uin{listatmospheres}
+\ok listatmospheres: 3 available
+Constant Atmosphere
+US Standard 1976
+Vacuum
+\uin{listgravity}
+\ok listgravity: 2 available
+Constant Gravity
+Spherical Gravity
+\uin{listintegrators}
+\ok listintegrators: 2 available
+Runge-Kutta 4th Order
+Runge-Kutta-Fehlberg
+\end{console}

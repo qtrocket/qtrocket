@@ -1,0 +1,18 @@
+# Tutorial 1 -- your first rocket: nose cone, body tube, three fins, one motor
+loaddb estes_small.qmd
+listmotors B
+# phase 2: build
+newdesign NoseCone name=nose baseRadius=0.0098 length=0.10 density=700
+addpart nose BodyTube name=body innerRadius=0.0091 outerRadius=0.0098 length=0.25 density=700
+addpart body FinSet name=fins finCount=3 rootChord=0.04 tipChord=0.02 span=0.03 sweep=0.02 thickness=0.003 bodyRadius=0.0098 density=700 seat=OnSurface parentStation=0 childStation=0
+checkdesign
+listparts
+# phase 3: fly
+setmotor B6
+setdrag 0.75
+setarea 0.000302
+status
+launch
+# phase 4: keep it
+savedesign first_rocket.qrd
+quit
