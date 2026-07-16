@@ -149,10 +149,13 @@ involvement.
 Since mid-2026 I began using AI assistance within qtrocket to:
  - Learn and become comfortable with AI-assisted development practices and workflows. This is becoming more
    and more common, and whether we as software engineers like it or not, we should know how to use
-   it effectively. I'm learning to let go of all the details and focus more on high-level architecture and vision.
+   it effectively. I'm learning to let go of some of the details and focus more on high-level architecture and vision.
+   I never want to lose track of the code and what it does, so since introducing AI into the development process of
+   this project, I've begun to learn how to best use AI as an architect. I still need to understand all of the code,
+   the data structures, and the flow, but I don't have to be responsible for writing all of it.
  - (Potentially) accelerate work on parts of the application that bogged me down (GUI, CLI/REPL, some documentation, unit tests)
 
-The OpenGL visualizer and CLI/REPL are almost entirely AI-coded since I am unfamiliar with graphics programming and OpenGL, but since it
+The OpenGL visualizer and CLI/REPL are almost entirely AI-coded since I am unfamiliar with graphics programming and OpenGL (and writing a CLI was just not so interesting vs working on the physics engine), but since it
 can use the same Parts tree code in the qtrocket_core library as the rest of the application suite, it seemed like a 
 straightforward thing for AI to generate based on existing established architecture. And I can study it to learn more
 OpenGL if I like. The REPL was an idea to aid in the testing of the application since it's easily scriptable, and would allow
