@@ -2,7 +2,7 @@
 
 \subsection{A rocket is a tree of parts}\label{sec:parts}
 
-A QtRocket design is a tree: one root part (usually the nose cone) with
+A QtRocket design is a tree structure: one root part (usually the nose cone) with
 children attached to it, children attached to those, and so on.
 \repl{newdesign} creates the root; \repl{addpart} attaches a child to any
 existing part, addressed by the \code{name=} you gave it, by its numeric id,
@@ -41,7 +41,7 @@ builds --- but a token without \code{=} is an error.
 
 \subsection{Placement: seat, stations, gap}\label{sec:placement}
 
-Every \repl{addpart} link records \emph{physical intent}, not baked
+Every \repl{addpart} link records \emph{physical intent}, not
 coordinates: a \textbf{seat} kind plus optional station and gap overrides.
 Stations are fractions of a part's live length --- \code{0} is the aft plane,
 \code{1} the fore plane --- so editing a part's length later moves every seam
@@ -58,7 +58,7 @@ with it.
 \seat{NestInBore} & Child slides into the parent's bore from the fore rim ---
                     couplers, payloads. & insertion depth ($\ge 0$;
                     $=$ child length $\Rightarrow$ flush)\\
-\seat{OnSurface}  & Child sits on the parent's outer wall --- fins. Align the
+\seat{OnSurface}  & Child sits on the parent's outer wall, e.g. fins. Align the
                     axial position with \code{parentStation}/\code{childStation}. &
                     signed forward standoff along $+z$, like \seat{Abut}\\
 \bottomrule
@@ -77,11 +77,11 @@ uncovered $z$ interval and its size.
 Tutorial~3 breaks a design twice on purpose to show both messages ---
 and shows the visualizer painting the offender red.
 
-\begin{note}[Where the deep theory lives]
+\begin{note}[Further Reading]
 The placement model --- stations, seats, the resolver, and its diagnostics ---
 has its own design whitepaper in
-\srcf{docs/PartPlacementDesignLatex/}. This guide teaches the working
-vocabulary; the whitepaper holds the proofs.
+\srcf{docs/PartPlacementDesignLatex/}. This guide just teaches the usage.
+See the whitepaper for more detail.
 \end{note}
 
 \subsection{Motors and the motor database}\label{sec:motors-concept}

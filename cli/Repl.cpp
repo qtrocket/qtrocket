@@ -732,6 +732,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
         out << "OK status:\n"
              << "  motor      = " << (motorSet ? motorName : std::string("(none)")) << "\n"
              << "  mass       = " << qtRocket->getRocket()->getMass(0.0) << " kg\n"
+             << "  dry_mass   = " << qtRocket->getRocket()->getMass(0.0) - (motorSet ? qtRocket->getRocket()->getMotorModel().getMass(0.0) : 0.0) << " kg\n"
              << "  drag_coeff = " << dragCoeff << "\n"
              << "  ref_area   = " << referenceArea << " m^2\n"
              << "  velocity   = " << initialVelocity << " m/s\n"
@@ -897,7 +898,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
       qtRocket->getRocket()->clearDesign();
       motorSet = false;
       motorName.clear();
-      out << "OK cleardesign: restored the placeholder body\n";
+      out << "OK cleardesign: \n";
       return true;
    }
    else if(cmd == "addpart")

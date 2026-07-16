@@ -133,17 +133,6 @@ Selects a motor by its exact common name (e.g. 'A8'); the name is the rest of th
 \end{description}
 
 \subsection{Flight configuration commands}
-\subsubsection*{{\ttfamily setmass <kg>}}
-\label{cmd:setmass}
-Sets the structural (dry) mass in kilograms. Strict numeric parse: the whole token must be a valid double ('0.5abc' is rejected, not truncated).
-
-\begin{description}[leftmargin=1.6em,itemsep=1pt]
-\item[Arguments.] kg (required): double, strict full-token parse; must be > 0. Staged default 1.0 kg.
-\item[On success.] {\ttfamily OK setmass: <m> kg}
-\item[Errors.] Missing/non-numeric token: 'ERR usage: setmass <kg>'. m <= 0: 'ERR setmass: mass must be > 0'.
-\item[Side effects.] Calls RocketModel::setMass immediately and stages dryMass for status. Session-only; not saved in .qrd, and status's dry\_mass never re-syncs from a loaded design.
-\end{description}
-
 \subsubsection*{{\ttfamily setdrag <cd>}}
 \label{cmd:setdrag}
 Sets the (dimensionless) drag coefficient. No range validation — any double std::stod accepts is taken, including negative, inf, and nan.
@@ -335,7 +324,7 @@ Removes a part and its entire sub-tree, addressed by numeric id only (see listpa
 
 \subsubsection*{{\ttfamily savedesign <file.qrd>}}
 \label{cmd:savedesign}
-Saves the rocket design via DesignSerializer::save. Persisted in the .qrd: the part tree (geometry, names, placement links), the motor BY COMMON NAME, and the aero options (drag coefficient, reference area). NOT persisted (session-only): initial velocity, launch angle, timestep, atmosphere/gravity/integrator selections, the setmass dry-mass override, and part ids (ids are reassigned on reload).
+Saves the rocket design via DesignSerializer::save. Persisted in the .qrd: the part tree (geometry, names, placement links), the motor BY COMMON NAME, and the aero options (drag coefficient, reference area). NOT persisted (session-only): initial velocity, launch angle, timestep, atmosphere/gravity/integrator selections, and part ids (ids are reassigned on reload).
 
 \begin{description}[leftmargin=1.6em,itemsep=1pt]
 \item[Arguments.] path (required): rest-of-line, trimmed.

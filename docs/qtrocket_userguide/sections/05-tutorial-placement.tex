@@ -7,8 +7,7 @@ carrying a hollow payload sphere, with a tail section abutted behind.
 \begin{note}[Setup]
 An empty directory with \code{Aerotech.rse} copied in
 (\srcf{scripts/tutorial3.cli} replays everything). Expect this script to exit
-with code 1 --- it contains two intentional failures, and the exit code
-honestly says so.
+with code 1 --- it contains two intentional failures
 \end{note}
 
 \subsection*{A clean three-part stack}
@@ -18,7 +17,7 @@ honestly says so.
 The same spine as Tutorial~1, at 40\,mm scale: nose, airframe,
 fins-on-surface. \repl{checkdesign} passes. Now we break it.
 
-\subsection*{Mistake one: the coupler that pokes through}
+\subsection*{Mistake one: a coupler that pokes through}
 
 A coupler is a short tube nested inside the airframe's bore ---
 \code{seat=NestInBore}. For that seat, \code{gap} means \emph{insertion
@@ -66,19 +65,18 @@ A hollow sphere, $17.5$\,mm outer radius, nested inside the coupler. Internal
 parts stack the same way external ones do: \seat{NestInBore} into the
 coupler's bore, insertion depth placing it fully inside. \repl{checkdesign}
 still passes --- the resolver knows a sphere inside a tube inside a tube is
-fine, because the bore capacities say so.
+fine.
 
 \subsection*{Mistake two: the floating tail}
 
 \seat{Abut} means \emph{touching}: child's fore plane against parent's aft
 plane, \code{gap} a signed standoff along $+z$. A sign slip ---
-\code{gap=-0.02} --- leaves two centimeters of daylight:
+\code{gap=-0.02} --- leaves two centimeters of empty space:
 
 \input{transcripts/tut3-block5}
 
 An \emph{air gap} is the other way a stack can be wrong: nothing overlaps, but
-the rocket is not one connected body. Same locate-and-quantify style, same
-honest refusal to compute a composite.
+the rocket is not one connected body.
 
 \subsection*{The fix, and the finished bay}
 
@@ -97,14 +95,14 @@ arbiter of internal geometry.}{fig:payload-final}{0.8}
 \begin{warning}[The red paint and the ERR text are the same fact]
 \code{qtrocket-visualizer} runs the \emph{same placement resolver} the
 simulator uses. When \repl{checkdesign} names an offender, the visualizer
-paints that part red --- one geometry model, two views of its verdict. If the
+paints that part red. If the
 render looks fine but \repl{checkdesign} objects, believe \repl{checkdesign}:
-it can see inside.
+it can see problems beneath the surface.
 \end{warning}
 
 \begin{tip}[What you learned]
 \seat{Abut}/\seat{NestInBore}/\seat{OnSurface} and what \code{gap} means to
-each; overlap vs air-gap diagnostics, located and quantified; broken designs
-save but refuse composites; the visualizer's error-red; and that a script with
-intentional failures exits 1 --- which Tutorial~5 turns into a feature.
+each; overlap vs air-gap diagnostics, broken designs
+save but refuse mass computations; the visualizer's error-red; and that a script with
+intentional failures exits 1.
 \end{tip}

@@ -4,8 +4,9 @@
 
 QtRocket builds with CMake presets; Qt6 is the only system dependency (and the
 CLI itself does not use Qt --- Qt is needed to build the sibling GUI targets).
-Everything else is fetched and pinned by CMake, so the first configure is slow
-once:
+Everything else is fetched and pinned by CMake during compilation, so they do not
+need to be present on the system prior to building, though the first configure may
+be slow once while the dependencies are fetched:
 
 \begin{minted}{text}
 cmake --preset release
@@ -43,9 +44,8 @@ file, one pipe, or one interactive session; use \code{.qrd} design files
 The CLI is built to be read by both humans and scripts. Every command answers
 with a line beginning \code{OK <cmd>} on success or \code{ERR} on failure;
 data payloads (motor listings, part trees, state samples) usually follow the
-\code{OK} header unprefixed. Two exceptions keep parsers honest: \repl{help}
-prints its \code{\#}-prefixed listing \emph{before} its terminating
-\code{OK help}, and comment or blank lines produce no output at all. Two more prefixes appear only around flights:
+\code{OK} header unprefixed. Comment or blank lines produce no output at all.
+Two more prefixes appear only around flights:
 \code{CSV <path>} names the trajectory file \repl{launch} wrote, and
 \code{WARN: run aborted (...)} flags a flight that ended for a safety reason
 rather than a normal landing. Comment lines start with \code{\#}; the log
@@ -56,10 +56,10 @@ The process exit code summarizes the whole session: \textbf{0} if every command
 succeeded, \textbf{1} if any command reported \code{ERR}, and \textbf{2} for a
 bad invocation (unreadable script file, malformed \code{-c}). A failing
 command never kills the session --- the REPL reports it and keeps reading ---
-but the exit code remembers. \Cref{sec:tut5} turns this into one-line
+but the exit code will be set. \Cref{sec:tut5} turns this into one-line
 regression guards.
 
-\subsection{A ninety-second first session}
+\subsection{A first session}
 
 \begin{console}
 \muted{\# QtRocket CLI - type 'help' for commands, 'quit' to exit.}

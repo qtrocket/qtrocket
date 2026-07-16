@@ -18,19 +18,17 @@ The complete session below is also included as
 
 \input{transcripts/tut1-block1}
 
-Two commands, two habits. \repl{loaddb} fills the session motor database from a
-\code{.qmd} file and answers with how many motors arrived --- every command
+\repl{loaddb} fills the session motor database from a
+\code{.qmd} file and answers with how many motors arrived. Every command
 answers \ok{} or \err{}, and that is the entire protocol. \repl{listmotors}
 takes an optional substring filter (case-sensitive); \code{B} narrows the
 thirteen bundled motors to the B-class. The two numbers per row --- average
 thrust and total impulse --- are the two numbers that matter when choosing a
-motor.
+motor for now. Delays are not currently used.
 
 \subsection*{Build the airframe}
 
 \input{transcripts/tut1-block2}
-
-Read the \repl{addpart} lines closely; they carry the whole design grammar:
 
 \begin{itemize}
 \item \repl{newdesign} starts the tree with a root part --- here a solid
@@ -46,10 +44,10 @@ Read the \repl{addpart} lines closely; they carry the whole design grammar:
       aft edges aligned --- fins flush with the bottom of the tube.
 \end{itemize}
 
-\repl{checkdesign} then renders the verdict that matters:
+\repl{checkdesign} then checks for physical consistency.
 \code{3 parts, contiguous, no overlaps}. \repl{listparts} shows the tree with
 each part's computed mass and the composite mass and center of gravity ---
-derived from geometry and density, not typed in.
+derived from geometry and density.
 
 \subsection*{Fly it}
 
@@ -58,16 +56,10 @@ derived from geometry and density, not typed in.
 \repl{setmotor} attaches the B6 by its common name. \repl{setdrag} and
 \repl{setarea} set the drag coefficient and aerodynamic reference area ---
 $0.75$ and the body tube's frontal disc ($\pi r^2 \approx 3.02\times10^{-4}$~m$^2$)
-are honest starting values for a small sport model. \repl{status} plays back
-the full session configuration before committing to flight. One row deserves a
-squint: \code{dry\_mass = 1 kg} is only the mirror of the last \repl{setmass}
---- an initial placeholder here, never applied, since this session hasn't
-called \repl{setmass} at all. Your rocket flies on the part tree's computed
-$\approx 20$\,g composite plus the motor, as \repl{listparts} showed. (On a
-design, \repl{setmass} immediately overwrites the \emph{root part's} own mass
---- rarely what you want on a multi-part rocket; trust the tree.)
+are realistic starting values for a small sport model. \repl{status} plays back
+the full session configuration before committing to flight.
 
-The \repl{launch} report is the payoff, one line per question you would ask at
+The \repl{launch} report is the payoff, one line per question you might ask at
 the field: how high (\code{apogee}), how fast (\code{max\_speed}, reached just
 after burnout), how far downwind (\code{downrange} --- zero, this was a
 straight-up flight), and where and when it came down. The \code{CSV} line

@@ -35,7 +35,7 @@ $45$\,g of airframe. Keep that number in mind as the motors get heavier.
 
 \input{transcripts/tut2-block3}
 
-Each rung is the same three commands: \repl{setmotor}, \repl{launch},
+Each iteration is the same three commands: \repl{setmotor}, \repl{launch},
 \repl{save} (which copies the trajectory CSV before the next flight overwrites
 it). The geometry never changes; only the motor does. Four flights,
 four apogees:
@@ -85,11 +85,11 @@ starts with a single \repl{loaddb}. The saved design
 (\cref{fig:motor-lab}) records the \emph{last} selected motor by name.
 
 \screenshot{ug-motor-lab.png}{\code{motor\_lab.qrd}: the 26\,mm test airframe.
-Same silhouette all day --- only the motor changed.}{fig:motor-lab}{0.78}
+Same silhouette --- only the motor changed.}{fig:motor-lab}{0.78}
 
 \begin{tip}[What you learned]
 \code{.qmd} vs \code{.rse}/\code{.eng}; databases merge rather than replace;
 \repl{listmotors} filters are substrings; \repl{setmotor} swaps propulsion
 without touching geometry; \repl{save} preserves a flight's CSV before the
-next \repl{launch} overwrites it; \repl{savedb} persists the merged pool.
+next \repl{launch} overwrites it; \repl{savedb} persists the merged motor pool.
 \end{tip}

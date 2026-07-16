@@ -34,7 +34,7 @@ mode will consume). Every plot in this guide is drawn from these files.
 
 \subsection*{One-liners and exit codes}
 
-Real captures, dollar-prompts and all:
+Real captures.
 
 \begin{minted}{text}
 $ qtrocket-cli -c "loaddb estes_small.qmd" ; echo $?
@@ -51,9 +51,9 @@ error: cannot open script file 'tutorial5-missing.cli'
 \end{minted}
 
 The middle example is the process-isolation warning from
-\cref{sec:invocation} made concrete: each \code{-c} is a fresh session, so the
-launch never saw a motor. The exit-code contract --- 0 all-OK, 1 any
-\code{ERR}, 2 bad invocation --- makes the CLI an honest citizen of shell
+\cref{sec:invocation}: each \code{-c} is a fresh session, so the
+launch never saw a motor. The exit-code --- 0 all-OK, 1 any
+\code{ERR}, 2 bad invocation --- makes the CLI usable in
 scripts and CI pipelines:
 
 \begin{minted}{text}

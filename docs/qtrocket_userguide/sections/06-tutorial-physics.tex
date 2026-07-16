@@ -9,7 +9,7 @@ An empty directory with \code{estes\_small.qmd} copied in;
 followed by a \repl{save} so its trajectory survives the next flight.
 \end{note}
 
-\subsection*{The knobs, listed}
+\subsection*{The knobs}
 
 \input{transcripts/tut4-block1}
 
@@ -32,8 +32,7 @@ setting. \code{Constant Atmosphere} uses sea-level density everywhere.
 
 $452.9\m$ --- about one percent higher, because air thins with altitude and a
 450-meter flight barely samples the difference. Model fidelity buys little on
-low flights and progressively more as you climb; knowing \emph{when} a better
-model matters is as useful as having it.
+low flights and progressively more as you climb.
 
 \subsection*{No air at all: the vacuum ceiling}
 
@@ -61,8 +60,7 @@ cheapest confidence check numerical work offers.
 
 Back on RK4 with $\Delta t = 0.1$\,s --- ten times coarser --- the same vacuum
 flight reads $2183.4\m$: forty meters (1.8\%) short, lost to integration error
-across the sharp thrust transient. The lesson generalizes: when a result
-matters, halve the timestep and see if the answer moves.
+across the sharp thrust transient.
 
 \subsection*{Tilt the rail}
 
@@ -106,6 +104,6 @@ atmosphere overlay (left) and the tilted launch's $x$--$z$ trajectory
 \begin{tip}[What you learned]
 Atmosphere selection is $\rho(z)$ selection; vacuum is a bound and a
 diagnostic; two integrators agreeing is cheap confidence; coarse timesteps
-have a measurable price; and the launch rail's speed and angle are the last
+have a measurable price to pay for speed; and the launch rail's speed and angle are the last
 two \repl{status} rows you had not touched yet.
 \end{tip}
