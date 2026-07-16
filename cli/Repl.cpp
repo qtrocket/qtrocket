@@ -361,7 +361,6 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
              << "#                           keys: manufacturer, diameter, impulseClass\n"
              << "#   listmotors [substr]     list motor common names (optional filter)\n"
              << "#   setmotor <code>         select a motor by common name\n"
-             << "#   setmass <kg>            set structural (dry) mass, must be > 0\n"
              << "#   setdrag <cd>            set drag coefficient (dimensionless)\n"
              << "#   setarea <m^2>           set aerodynamic reference area, must be >= 0\n"
              << "#   setvelocity <m/s>       set initial speed (default 0)\n"
@@ -573,24 +572,6 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
         out << "OK setmotor: " << name << "\n";
         return true;
     }
-    else if(cmd == "setmass")
-    {
-        double m = 0.0;
-        if(!parseDouble(iss, m))
-        {
-            out << "ERR usage: setmass <kg>\n";
-            return true;
-        }
-        if(m <= 0.0)
-        {
-            out << "ERR setmass: mass must be > 0\n";
-            return true;
-        }
-        qtRocket->getRocket()->setMass(m);
-        dryMass = m;
-        out << "OK setmass: " << m << " kg\n";
-        return true;
-    }
     else if(cmd == "setdrag")
     {
         double d = 0.0;
@@ -750,7 +731,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
     {
         out << "OK status:\n"
              << "  motor      = " << (motorSet ? motorName : std::string("(none)")) << "\n"
-             << "  dry_mass   = " << dryMass << " kg\n"
+             << "  mass       = " << qtRocket->getRocket()->getMass(0.0) << " kg\n"
              << "  drag_coeff = " << dragCoeff << "\n"
              << "  ref_area   = " << referenceArea << " m^2\n"
              << "  velocity   = " << initialVelocity << " m/s\n"

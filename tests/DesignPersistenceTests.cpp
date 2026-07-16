@@ -198,6 +198,7 @@ TEST_F(DesignRoundTrip, UnsupportedMajorVersionIsRejectedAndLeavesRocketUntouche
     }
     model::MotorModelDatabase motors;
     model::RocketModel r; // boot placeholder
+    r.setRoot(std::make_shared<model::part::HollowSphere>("Body", 0.04, 0.05, 1956.8));
     EXPECT_THROW(model::DesignSerializer::load(r, motors, tmp), std::exception);
     std::filesystem::remove(tmp);
 

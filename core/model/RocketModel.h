@@ -82,11 +82,6 @@ public:
     /// fins). 0 for the placeholder body.
     double deriveReferenceAreaFromGeometry() const;
 
-    /// Set the structural (dry) airframe mass = the top part's own mass (kg); the motor child carries
-    /// its own mass(t), so getMass(t) is the composite. Non-positive values ignored (getMass is the
-    /// ODE divisor).
-    void setMass(double m) { if(m > 0.0) topPart->setMass(m); }
-
     // ---- Part-tree facade ----------------------------------------------------------------------
     // The CLI and the design serializer reach the tree only through these. The mutators keep the
     // borrowed motorPart handle consistent (reresolveMotorPart) so the force path never reads a

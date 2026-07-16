@@ -120,7 +120,7 @@ void CannonballTab::onButton_calculateTrajectory_clicked()
     initialState.position = {0.0, 0.0, 0.0};
     initialState.velocity = {initialVelocityX, 0.0, initialVelocityZ};
     auto rocket = QtRocket::getInstance()->getRocket();
-    rocket->setMass(mass);
+    rocket->getTopPart()->setMass(mass);
     rocket->setDragCoefficient(dragCoeff);
     rocket->setReferenceArea(referenceArea);
 

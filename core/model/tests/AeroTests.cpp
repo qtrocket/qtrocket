@@ -197,6 +197,7 @@ TEST(AeroTest, AssembledRocketCmMassAndRefArea)
 TEST(AeroTest, ManualReferenceAreaOverrideWins)
 {
     model::RocketModel rocket;
+    rocket.setRoot(std::make_shared<model::part::HollowSphere>("Body", 0.04, 0.05, 1956.8));
     // Placeholder body presents no frontal disc, so the geometry-derived area is 0 in P2 ...
     EXPECT_DOUBLE_EQ(rocket.deriveReferenceAreaFromGeometry(), 0.0);
     EXPECT_FALSE(rocket.isReferenceAreaOverridden());

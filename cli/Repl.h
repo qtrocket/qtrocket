@@ -46,7 +46,6 @@ private:
     // Staged configuration, applied at launch (mirrors the GUI's line edits).
     bool motorSet{false};
     std::string motorName;
-    double dryMass{1.0};
     double dragCoeff{1.0};
     double initialVelocity{0.0};
     double initialAngleDeg{0.0}; // from vertical; 0 == straight up

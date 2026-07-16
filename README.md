@@ -38,8 +38,7 @@ parameters at runtime:
 quaternion state carried in `StateData`, a `DESolver<Quaternion>` slot in the propagator for future orientation integration, a
 torque interface on the model, and full-stack inertia tensors recorded every step.
 Barrowman stability math (per-part CN<sub>α</sub> and center-of-pressure composition) is
-implemented and test-verified; surfacing it in the CLI and GUI is the next milestone. The
-[roadmap](TODO.md) tracks what's real versus planned.
+implemented and test-verified; surfacing it in the CLI and GUI is the next milestone.
 
 ## The REPL
 

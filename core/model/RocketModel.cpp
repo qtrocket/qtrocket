@@ -25,18 +25,13 @@ part::Motor* findMotorInTree(part::Part* node)
 } // anonymous namespace
 
 RocketModel::RocketModel()
-    // Placeholder structural body: an aluminum-density hollow sphere (ri=40 mm, ro=50 mm,
-    // rho=2700 kg/m^3) ~ 0.69 kg. Real mass and inertia tensor; the GUI may override the mass.
-    : topPart(std::make_shared<part::HollowSphere>("Body", 0.04, 0.05, 2700.0))
 {
-
 }
 
 
 double RocketModel::getMass(double t)
 {
-    // The motor is a child Part, so the composite already includes its time-varying mass. setMass()
-    // writes only the top part's own (dry) mass.
+    // The motor is a child Part, so the composite already includes its time-varying mass.
     return topPart->getCompositeMass(t);
 }
 
@@ -159,8 +154,7 @@ void RocketModel::setRoot(std::shared_ptr<part::Part> root)
 
 void RocketModel::clearDesign()
 {
-    // Restore the boot placeholder (identical to the constructor's body) through the one install seam.
-    setRoot(std::make_shared<part::HollowSphere>("Body", 0.04, 0.05, 2700.0));
+    topPart = nullptr; // functionally identical to topPart.reset()
 }
 
 bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, part::StationLink link)

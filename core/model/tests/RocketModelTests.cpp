@@ -20,14 +20,6 @@ std::shared_ptr<model::part::FinSet> finSet(const std::string& name)
 }
 } // namespace
 
-TEST(RocketModelFacadeTest, GetTopPartReturnsTheBootPlaceholder)
-{
-    RocketModel r;
-    ASSERT_NE(r.getTopPart(), nullptr);
-    EXPECT_EQ(r.getTopPart()->typeName(), "HollowSphere");
-    EXPECT_EQ(r.getTopPart()->getName(), "Body");
-}
-
 TEST(RocketModelFacadeTest, SetRootReplacesTreeAndResetsReferenceAreaOverride)
 {
     RocketModel r;
@@ -46,20 +38,10 @@ TEST(RocketModelFacadeTest, SetRootReplacesTreeAndResetsReferenceAreaOverride)
 TEST(RocketModelFacadeTest, SetRootIgnoresNullAndKeepsTreeValid)
 {
     RocketModel r;
+    r.setRoot(bodyTube("Tube"));
     r.setRoot(nullptr);                      // logged no-op
     ASSERT_NE(r.getTopPart(), nullptr);
-    EXPECT_EQ(r.getTopPart()->typeName(), "HollowSphere");
-}
-
-TEST(RocketModelFacadeTest, ClearDesignRestoresThePlaceholder)
-{
-    RocketModel r;
-    r.setRoot(bodyTube("Tube"));
-    ASSERT_EQ(r.getTopPart()->typeName(), "BodyTube");
-
-    r.clearDesign();
-    EXPECT_EQ(r.getTopPart()->typeName(), "HollowSphere");
-    EXPECT_EQ(r.getTopPart()->getName(), "Body");
+    EXPECT_EQ(r.getTopPart()->typeName(), "BodyTube");
 }
 
 TEST(RocketModelFacadeTest, AddPartAttachesUnderParentAndReportsSuccessOrFailure)
@@ -151,6 +133,7 @@ TEST(RocketModelFacadeTest, SetRootReresolvesMotorPartSoThrustNeverDangles)
     // must re-resolve it (to the new tree's motor, or null) so getThrust() can never read freed memory
     // and isMotorSet() never reports a stale pointer.
     RocketModel r;
+    r.setRoot(bodyTube("Body"));
     r.setMotorModel(model::MotorModel{}); // attaches a Motor child to the placeholder tree
     EXPECT_TRUE(r.isMotorSet());
 

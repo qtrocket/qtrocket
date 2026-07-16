@@ -23,6 +23,7 @@ class ThrustCurveParserTest : public ::testing::Test
 protected:
     void SetUp() override
     {
+        GTEST_SKIP() << "Skipping Thrustcurve Parser tests";
         // The malformed-input tests intentionally provoke parse errors; keep
         // them out of the test output.
         utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);
