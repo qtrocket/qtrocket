@@ -36,7 +36,7 @@
 #include "model/MotorModelDatabase.h"
 #include "model/RocketModel.h"
 #include "model/parts/Part.h"
-#include "sim/Aero.h"
+#include "model/Aero.h"
 #include "utils/Logger.h"
 #include "utils/math/MathTypes.h"
 
@@ -87,7 +87,7 @@ DesignSnapshot snapshotRoot(model::part::Part& root)  // non-const: getComposite
 
     // cp() = cnAlphaXcp / cnAlpha is independent of the reference area (it cancels), so any fixed,
     // nonzero refArea gives a reproducible CP; use 1.0.
-    const sim::AeroProfile aero = root.getCompositeAero(1.0);
+    const model::AeroProfile aero = root.getCompositeAero(1.0);
     s.cp      = aero.cp();
     s.cpValid = aero.cpValid;
 

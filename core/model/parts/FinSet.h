@@ -72,7 +72,7 @@ public:
     double getMaxRadius()       const { return bodyRadius + span; }                  ///< fin tip radius (extent only)
     double radiusOuterAt(double) const override { return bodyRadius; }               ///< body disc only, not bodyRadius+span
 
-    sim::AeroComponent getAero(double refArea) const override; ///< Barrowman fin-set term
+    model::AeroComponent getAero(double refArea) const override; ///< Barrowman fin-set term
 
 protected:
     FinSet(const FinSet&) = default;

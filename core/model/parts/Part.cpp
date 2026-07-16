@@ -228,7 +228,7 @@ Part::CompositeProperties Part::computeCompositeAt(double t)
     return CompositeProperties{m, temp_cm, I};
 }
 
-sim::AeroProfile Part::getCompositeAero(double refArea) const
+model::AeroProfile Part::getCompositeAero(double refArea) const
 {
     // Re-express every part's x_cp (reported from its own CM) onto the shared sub-tree-root (tip) datum:
     // the part's CM station = pose.origin.z + (-L/2 + getCenterMassOffset().z()). Adding cmStation back
@@ -236,14 +236,14 @@ sim::AeroProfile Part::getCompositeAero(double refArea) const
     // only, not mass distribution. cp() and cg() then share the tip datum, so cp() - cg() (the static
     // margin) is datum-independent.
     ensurePlacementCache();
-    sim::AeroProfile profile;
+    model::AeroProfile profile;
     profile.refArea = refArea;
     for(const Placed& pl : resolvedCache)
     {
-        const sim::AeroComponent c = pl.part->getAero(refArea);
+        const model::AeroComponent c = pl.part->getAero(refArea);
         const double cmStationZ =
             pl.pose.origin.z() + (-pl.part->getLength() / 2.0 + pl.part->getCenterMassOffset().z());
-        profile += sim::AeroComponent{c.cnAlpha, c.cnAlphaXcp + c.cnAlpha * cmStationZ, c.cd};
+        profile += model::AeroComponent{c.cnAlpha, c.cnAlphaXcp + c.cnAlpha * cmStationZ, c.cd};
     }
     return profile;
 }

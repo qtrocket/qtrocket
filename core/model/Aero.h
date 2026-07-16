@@ -1,5 +1,5 @@
-#ifndef SIM_AERO_H
-#define SIM_AERO_H
+#ifndef MODEL_AERO_H
+#define MODEL_AERO_H
 
 /// \cond
 // C headers
@@ -8,10 +8,7 @@
 // 3rd party headers
 /// \endcond
 
-// qtrocket headers
-#include "utils/math/MathTypes.h"
-
-namespace sim
+namespace model
 {
 
 /**
@@ -60,11 +57,11 @@ struct AeroProfile
     }
 };
 
-/// @brief Back-compat alias: model::Propagatable still holds a default-constructed, unread
-///        `sim::Aero aeroData` member. Keeping the name complete and default-constructible lets that
-///        member stay untouched while the seam itself is the AeroComponent/AeroProfile value types.
+/// @brief Back-compat alias: Propagatable still holds a default-constructed, unread `Aero aeroData`
+///        member. Keeping the name complete and default-constructible lets that member stay untouched
+///        while the seam itself is the AeroComponent/AeroProfile value types.
 using Aero = AeroProfile;
 
-} // namespace sim
+} // namespace model
 
-#endif // SIM_AERO_H
+#endif // MODEL_AERO_H

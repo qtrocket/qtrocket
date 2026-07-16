@@ -56,7 +56,7 @@ public:
     double radiusInnerAt(double) const override { return innerRadius; } ///< constant bore (0 for a solid rod)
     bool   isSolid()             const override { return innerRadius <= 0.0; } ///< solid rod when ri == 0
 
-    sim::AeroComponent getAero(double refArea) const override; ///< CNalpha = 0 (constant-diameter body)
+    model::AeroComponent getAero(double refArea) const override; ///< CNalpha = 0 (constant-diameter body)
 
 protected:
     BodyTube(const BodyTube&) = default;

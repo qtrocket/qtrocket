@@ -12,7 +12,7 @@
 #include "model/ThrustCurve.h"
 #include "model/parts/Part.h"
 #include "model/parts/Parts.h"
-#include "sim/Aero.h"
+#include "model/Aero.h"
 
 // Exercises the Barrowman composition seam: per-part getAero folded by Part::getCompositeAero into a
 // whole-rocket AeroProfile, with x_cp shared on the root-CM datum. NOTE: nothing in production
@@ -27,9 +27,9 @@ constexpr double pi = std::numbers::pi;
 class FixedAeroPart : public model::part::Part
 {
 public:
-    FixedAeroPart(const std::string& name, sim::AeroComponent aero)
+    FixedAeroPart(const std::string& name, model::AeroComponent aero)
         : Part(name, Matrix3::Zero(), 1.0, Vector3::Zero()), aero_(aero) {}
-    sim::AeroComponent getAero(double /*refArea*/) const override { return aero_; }
+    model::AeroComponent getAero(double /*refArea*/) const override { return aero_; }
     std::string typeName() const override { return "FixedAeroPart"; } // Part is abstract; concrete stub
 
 protected:
@@ -38,7 +38,7 @@ protected:
     { return std::shared_ptr<model::part::Part>(new FixedAeroPart(*this)); }
 
 private:
-    sim::AeroComponent aero_;
+    model::AeroComponent aero_;
 };
 
 double finAxialMassCentroid(double cr, double ct, double sweep)
@@ -74,16 +74,16 @@ TEST(AeroTest, CompositeCpIsCNalphaWeighted)
     auto fins = std::make_shared<model::part::FinSet>("fins", 3, 0.10, 0.05, 0.05, 0.04, 0.003, R, 600.0);
 
     // Per-part aero is a pure function of geometry (independent of placement) -- capture before moving.
-    const sim::AeroComponent na = nose->getAero(refArea);
-    const sim::AeroComponent ba = body->getAero(refArea);
-    const sim::AeroComponent fa = fins->getAero(refArea);
+    const model::AeroComponent na = nose->getAero(refArea);
+    const model::AeroComponent ba = body->getAero(refArea);
+    const model::AeroComponent fa = fins->getAero(refArea);
     EXPECT_DOUBLE_EQ(ba.cnAlpha, 0.0); // the body carries no normal force
 
     const double zBody = 0.225, zFins = 0.38; // CM-to-CM z stations from the nose CM (root datum)
     nose->addChildPart(body, model::part::test::cmToCm(*nose, *body, zBody));
     nose->addChildPart(fins, model::part::test::cmToCm(*nose, *fins, zFins));
 
-    const sim::AeroProfile prof = nose->getCompositeAero(refArea);
+    const model::AeroProfile prof = nose->getCompositeAero(refArea);
 
     // Hand-assembled CNalpha-weighted CP. Each part's x_cp is its CM-relative value (cnAlphaXcp) plus
     // cnAlpha * station; the zero-CNalpha body drops out automatically. The composite cp is now reported
@@ -105,13 +105,13 @@ TEST(AeroTest, CompositeCpIsCNalphaWeighted)
 
 TEST(AeroTest, CompositeCdIsAdditive)
 {
-    auto root = std::make_shared<FixedAeroPart>("root", sim::AeroComponent{0.0, 0.0, 0.10});
-    root->addChildPart(std::make_shared<FixedAeroPart>("c1", sim::AeroComponent{0.5, 0.0, 0.20}),
+    auto root = std::make_shared<FixedAeroPart>("root", model::AeroComponent{0.0, 0.0, 0.10});
+    root->addChildPart(std::make_shared<FixedAeroPart>("c1", model::AeroComponent{0.5, 0.0, 0.20}),
                              model::part::abut(0.10));
-    root->addChildPart(std::make_shared<FixedAeroPart>("c2", sim::AeroComponent{0.0, 0.0, 0.30}),
+    root->addChildPart(std::make_shared<FixedAeroPart>("c2", model::AeroComponent{0.0, 0.0, 0.30}),
                              model::part::abut(0.20));
 
-    const sim::AeroProfile prof = root->getCompositeAero(1.0);
+    const model::AeroProfile prof = root->getCompositeAero(1.0);
     EXPECT_NEAR(prof.cd, 0.60, 1e-12);      // cd adds over all parts
     EXPECT_NEAR(prof.cnAlpha, 0.50, 1e-12); // only c1 carries CNalpha
     EXPECT_NEAR(prof.refArea, 1.0, 1e-12);
@@ -120,7 +120,7 @@ TEST(AeroTest, CompositeCdIsAdditive)
 TEST(AeroTest, BodyOnlyRocketHasInvalidCp)
 {
     auto body = std::make_shared<model::part::BodyTube>("body", 0.018, 0.019, 0.40, 680.0);
-    const sim::AeroProfile prof = body->getCompositeAero(pi * 0.019 * 0.019);
+    const model::AeroProfile prof = body->getCompositeAero(pi * 0.019 * 0.019);
     EXPECT_DOUBLE_EQ(prof.cnAlpha, 0.0);
     EXPECT_FALSE(prof.cpValid);    // CP is undefined when total CNalpha == 0
     EXPECT_DOUBLE_EQ(prof.cp(), 0.0); // guarded divide
@@ -137,15 +137,15 @@ TEST(AeroTest, SharedReferenceAreaInvariant)
     auto fins = std::make_shared<model::part::FinSet>("fins", 4, 0.10, 0.05, 0.05, 0.04, 0.003, rb, 600.0);
 
     const double rA = pi * R * R;
-    const sim::AeroComponent noseA = nose->getAero(rA);
-    const sim::AeroComponent finsA = fins->getAero(rA);
+    const model::AeroComponent noseA = nose->getAero(rA);
+    const model::AeroComponent finsA = fins->getAero(rA);
     nose->addChildPart(fins, model::part::test::cmToCm(*nose, *fins, 0.30));
 
-    const sim::AeroProfile profA = nose->getCompositeAero(rA);
+    const model::AeroProfile profA = nose->getCompositeAero(rA);
     EXPECT_NEAR(profA.cnAlpha, noseA.cnAlpha + finsA.cnAlpha, 1e-12); // additive only after rescaling
 
     const double rB = pi * rb * rb;
-    const sim::AeroProfile profB = nose->getCompositeAero(rB);
+    const model::AeroProfile profB = nose->getCompositeAero(rB);
     EXPECT_NEAR(profA.cp(), profB.cp(), 1e-12);                  // CP independent of refArea
     EXPECT_NEAR(profA.cnAlpha * rA, profB.cnAlpha * rB, 1e-12);  // CNalpha scales as 1/refArea
 }
@@ -223,7 +223,7 @@ TEST(AeroTest, MotorIsMassButNotAeroOrReferenceContributor)
 
     const double massNoMotor = nose->getCompositeMass(0.0);
     const double refNoMotor  = nose->maxFrontalReferenceArea();
-    const sim::AeroProfile aeroNoMotor = nose->getCompositeAero(refArea);
+    const model::AeroProfile aeroNoMotor = nose->getCompositeAero(refArea);
 
     auto motor = std::make_shared<model::part::Motor>("motor", makeTestMotor(0.060, 0.030, 1.5, 20.0));
     const double motorMass = motor->getMass(0.0);
@@ -235,7 +235,7 @@ TEST(AeroTest, MotorIsMassButNotAeroOrReferenceContributor)
     EXPECT_GT(nose->getCompositeCm(0.0).z(), 0.0);
     // The inert motor changes neither the reference disc nor the aero profile.
     EXPECT_DOUBLE_EQ(nose->maxFrontalReferenceArea(), refNoMotor);
-    const sim::AeroProfile aeroWithMotor = nose->getCompositeAero(refArea);
+    const model::AeroProfile aeroWithMotor = nose->getCompositeAero(refArea);
     EXPECT_DOUBLE_EQ(aeroWithMotor.cnAlpha, aeroNoMotor.cnAlpha);
     EXPECT_DOUBLE_EQ(aeroWithMotor.cnAlphaXcp, aeroNoMotor.cnAlphaXcp);
 }
@@ -251,14 +251,14 @@ TEST(AeroTest, CompositeCpThreadsNestedStations)
     auto body = std::make_shared<model::part::BodyTube>("body", 0.018, R, 0.40, 680.0);
     auto fins = std::make_shared<model::part::FinSet>("fins", 3, 0.10, 0.05, 0.05, 0.04, 0.003, R, 600.0);
 
-    const sim::AeroComponent na = nose->getAero(refArea);
-    const sim::AeroComponent fa = fins->getAero(refArea);
+    const model::AeroComponent na = nose->getAero(refArea);
+    const model::AeroComponent fa = fins->getAero(refArea);
 
     const double zBody = 0.225, zFinsFromBody = 0.15; // fins nested UNDER body
     body->addChildPart(fins, model::part::test::cmToCm(*body, *fins, zFinsFromBody));
     nose->addChildPart(body, model::part::test::cmToCm(*nose, *body, zBody));
 
-    const sim::AeroProfile prof = nose->getCompositeAero(refArea);
+    const model::AeroProfile prof = nose->getCompositeAero(refArea);
     const double zFins = zBody + zFinsFromBody; // cumulative station from the root CM
     const double cmLocalZRoot = -3.0 * 0.10 / 4.0; // solid nose (L = 0.10) CM station: the tip-datum shift
     const double expectedCnAlpha = na.cnAlpha + fa.cnAlpha; // body cnAlpha == 0

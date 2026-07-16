@@ -15,8 +15,8 @@
 /// \endcond
 
 // qtrocket headers
+#include "model/Aero.h"
 #include "model/parts/Placement.h"   // Station (returned by stationAt), StationLink (used in childParts)
-#include "sim/Aero.h"
 #include "utils/math/MathTypes.h"
 
 namespace model::part
@@ -113,14 +113,14 @@ public:
 
     /// This part's Barrowman aero contribution, normalized to the shared reference area @p refArea.
     /// Default is aerodynamically inert (CNalpha = 0). x_cp is reported from this part's own CM (see
-    /// sim::AeroComponent). Pure function of geometry; not stored.
-    virtual sim::AeroComponent getAero(double refArea [[maybe_unused]]) const { return {}; }
+    /// model::AeroComponent). Pure function of geometry; not stored.
+    virtual model::AeroComponent getAero(double refArea [[maybe_unused]]) const { return {}; }
 
     /// Assemble the composite Barrowman profile over this sub-tree, normalized to @p refArea, by folding
     /// each part's getAero(refArea) additively. Threads each part's resolved axial station so every x_cp
     /// shares the sub-tree-root (tip) datum -- the same datum as getCompositeCm(), so cp() - cg() is the
     /// static margin. A separate pass from computeCompositeAt: it reads no time-varying state.
-    sim::AeroProfile getCompositeAero(double refArea) const;
+    model::AeroProfile getCompositeAero(double refArea) const;
 
     /// Cached envelope-sweep verdict for this sub-tree (resolved once per structural change). @c ok ==
     /// false means the geometry self-intersects and @c diagnostics locate each offender -- the same

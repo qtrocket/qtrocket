@@ -57,7 +57,7 @@ Vector3 FinSet::finSetCmOffset(double cr, double ct, double sweep)
     return Vector3{0.0, 0.0, xcMass - cr / 2.0};
 }
 
-sim::AeroComponent FinSet::getAero(double refArea) const
+model::AeroComponent FinSet::getAero(double refArea) const
 {
     const double d = 2.0 * bodyRadius; // body diameter at the fin mount
     if(refArea <= 0.0 || d <= 0.0)

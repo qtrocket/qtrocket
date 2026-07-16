@@ -35,10 +35,10 @@ double BodyTube::computeMass(double ri, double ro, double L, double density)
     return density * computeVolume(ri, ro, L);
 }
 
-sim::AeroComponent BodyTube::getAero(double refArea [[maybe_unused]]) const
+model::AeroComponent BodyTube::getAero(double refArea [[maybe_unused]]) const
 {
     // Barrowman: a constant-diameter body produces no normal force, so CNalpha = 0 and it drops out of
-    // the composite CP weighted-average (see sim::AeroProfile). cd stays 0 -- skin friction over
+    // the composite CP weighted-average (see model::AeroProfile). cd stays 0 -- skin friction over
     // getWettedArea() is its eventual contribution.
     return {};
 }

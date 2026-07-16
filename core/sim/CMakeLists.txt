@@ -1,6 +1,4 @@
 add_library(sim
-   Aero.cpp
-   Aero.h
    AtmosphericModel.h
    ConstantAtmosphere.h
    ConstantGravityModel.h

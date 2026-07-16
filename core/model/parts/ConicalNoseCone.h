@@ -61,7 +61,7 @@ public:
     double radiusOuterAt(double zLocal) const override
     { return (length <= 1e-9) ? baseRadius : baseRadius * (-zLocal / length); }
 
-    sim::AeroComponent getAero(double refArea) const override; ///< Barrowman; CNalpha=2 at ref base area
+    model::AeroComponent getAero(double refArea) const override; ///< Barrowman; CNalpha=2 at ref base area
 
 protected:
     ConicalNoseCone(const ConicalNoseCone&) = default;

@@ -9,7 +9,7 @@
 /// \endcond
 
 // qtrocket headers
-#include "sim/Aero.h"
+#include "model/Aero.h"
 #include "sim/StateData.h"
 #include "sim/TrajectoryStatistics.h"
 #include "utils/math/MathTypes.h"
@@ -58,7 +58,7 @@ public:
 
 protected:
 
-    sim::Aero aeroData;
+    Aero aeroData;
 
     StateData initialState;
     StateData currentState;

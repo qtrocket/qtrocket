@@ -54,7 +54,7 @@ Vector3 ConicalNoseCone::coneCmOffset(double L, bool solid)
     return Vector3{0.0, 0.0, hbar - L / 2.0};
 }
 
-sim::AeroComponent ConicalNoseCone::getAero(double refArea) const
+model::AeroComponent ConicalNoseCone::getAero(double refArea) const
 {
     // Barrowman cone: CNalpha = 2 at the base area (pi R^2), rescaled to refArea. The cone CP is 2/3 L
     // aft of the tip (shape-independent). Report x_cp from the cone's own CM (the composite datum) in

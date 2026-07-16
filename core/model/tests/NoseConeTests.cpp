@@ -145,7 +145,7 @@ TEST(NoseConeTest, AeroConeCNalphaAndCp)
     // -- and confirm it is -(2/3)L for BOTH solid and shell, independent of the +L/12 / 0 CM arithmetic.
     auto tipStation = [&](const model::part::ConicalNoseCone& c)
     {
-        const sim::AeroComponent a = c.getAero(pi * R * R);
+        const model::AeroComponent a = c.getAero(pi * R * R);
         return a.cnAlphaXcp / a.cnAlpha + c.getCenterMassOffset().z() - L / 2.0;
     };
     EXPECT_NEAR(tipStation(solid), -2.0 / 3.0 * L, 1e-12);

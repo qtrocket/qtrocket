@@ -1,4 +1,6 @@
 add_library(model
+   Aero.cpp
+   Aero.h
    MotorModel.cpp
    MotorModel.h
    MotorModelDatabase.cpp
@@ -41,8 +43,8 @@ qtrocket_enable_coverage(model)
 # headers are included as "model/...", rooted at core/
 target_include_directories(model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-# sim is a real dependency: Propagatable/RocketModel use sim::Aero and
-# sim/StateData.h. Boost/jsoncpp serve the motor-database ingest paths
+# sim is a real dependency: Propagatable/RocketModel use sim/StateData.h
+# and sim::Environment. Boost/jsoncpp serve the motor-database ingest paths
 # (RockSim .rse XML and the thrustcurve.org REST API).
 target_link_libraries(model PUBLIC
    utils

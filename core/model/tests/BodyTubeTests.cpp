@@ -108,7 +108,7 @@ TEST(BodyTubeTest, TwoBodyTubesEndToEndEqualOneLongerTube)
 TEST(BodyTubeTest, AeroBodyHasZeroCNalpha)
 {
     model::part::BodyTube tube("body", 0.018, 0.019, 0.30, 680.0);
-    const sim::AeroComponent aero = tube.getAero(pi * 0.019 * 0.019);
+    const model::AeroComponent aero = tube.getAero(pi * 0.019 * 0.019);
     EXPECT_DOUBLE_EQ(aero.cnAlpha, 0.0);
     EXPECT_DOUBLE_EQ(aero.cnAlphaXcp, 0.0);
     EXPECT_DOUBLE_EQ(aero.cd, 0.0);
