@@ -1,6 +1,12 @@
 # QtRocket
 
-[![CI](https://github.com/cthunter01/qtrocket/actions/workflows/cmake-multi-platform.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/cmake-multi-platform.yml)
+[![Linux GCC](https://github.com/cthunter01/qtrocket/actions/workflows/linux-gcc.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/linux-gcc.yml)
+[![Linux Clang](https://github.com/cthunter01/qtrocket/actions/workflows/linux-clang.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/linux-clang.yml)
+[![Linux Clang ASan+UBSan](https://github.com/cthunter01/qtrocket/actions/workflows/linux-clang-asan.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/linux-clang-asan.yml)
+[![macOS](https://github.com/cthunter01/qtrocket/actions/workflows/macos.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/macos.yml)
+[![Windows](https://github.com/cthunter01/qtrocket/actions/workflows/windows.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/windows.yml)
+[![FreeBSD](https://github.com/cthunter01/qtrocket/actions/workflows/freebsd.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/freebsd.yml)
+[![clang-tidy](https://github.com/cthunter01/qtrocket/actions/workflows/clang-tidy.yml/badge.svg?branch=development)](https://github.com/cthunter01/qtrocket/actions/workflows/clang-tidy.yml)
 
 An open-source model-rocket flight simulator: a C++23 simulation core shared by a Qt6 Widgets
 GUI, a scriptable headless REPL, and a standalone OpenGL design viewer.
@@ -119,7 +125,7 @@ Executables land in `build/gui/qtrocket`, `build/cli/qtrocket-cli`, and
 
 ## Documentation
 
-Three LaTeX whitepapers (source and PDF committed) document the design at depth:
+Whitepapers and User Guides (source and PDF committed) document the design at depth:
 
 - [User Guide](docs/qtrocket_userguide/UserGuide.pdf) - QtRocket User Guide and Tutorials
 

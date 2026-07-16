@@ -1,0 +1,20 @@
+# One workflow per CI configuration so each gets its own README status badge.
+# Shared steps live in .github/actions/build-and-test.
+name: macOS
+
+on:
+  push:
+    branches: [ "development" ]
+  pull_request:
+    branches: [ "development" ]
+
+jobs:
+  build:
+    name: macOS / AppleClang
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: ./.github/actions/build-and-test
+      with:
+        preset: release-clang
+        cache-key: macos-latest-release-clang

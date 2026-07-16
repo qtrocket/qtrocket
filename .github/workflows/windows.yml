@@ -1,0 +1,21 @@
+# One workflow per CI configuration so each gets its own README status badge.
+# Shared steps live in .github/actions/build-and-test (including the vcvars
+# setup the release-msvc preset's Ninja + cl combination needs).
+name: Windows
+
+on:
+  push:
+    branches: [ "development" ]
+  pull_request:
+    branches: [ "development" ]
+
+jobs:
+  build:
+    name: Windows / MSVC
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: ./.github/actions/build-and-test
+      with:
+        preset: release-msvc
+        cache-key: windows-latest-release-msvc

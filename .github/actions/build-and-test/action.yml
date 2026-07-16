@@ -1,0 +1,62 @@
+# Shared configure/build/test steps for the per-configuration CI workflows
+# (one workflow per configuration so each gets its own README status badge;
+# GitHub badges are per-workflow, not per-job).
+#
+# CI drives the build through the project's CMake presets (CMakePresets.json), so
+# it exercises the same Ninja-based configure/build/test path that developers use
+# locally instead of each platform's default generator.
+name: Build and test
+description: Configure, build, and ctest a CMake preset.
+
+inputs:
+  preset:
+    description: CMake preset to configure, build, and test
+    required: true
+  cache-key:
+    description: ccache cache key (kept stable per os/preset pair)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Provides a recent CMake plus Ninja on every runner. Ninja is not installed
+    # by default on the Linux/macOS images, and all presets require it.
+    - name: Install CMake and Ninja
+      uses: lukka/get-cmake@latest
+
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: 6.10.2
+        target: desktop
+
+    # The Ninja generator + cl need the MSVC toolchain environment (vcvars).
+    # The VS generator set this up implicitly; with Ninja we do it explicitly.
+    - name: Set up MSVC environment
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    # Cache compiled objects (including the FetchContent dependencies: curl,
+    # Boost, Eigen, GoogleTest, jsoncpp) across runs to cut build times.
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ inputs.cache-key }}
+
+    - name: Configure
+      shell: bash
+      run: >
+        cmake --preset ${{ inputs.preset }}
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+    - name: Build
+      shell: bash
+      run: cmake --build --preset ${{ inputs.preset }}
+
+    - name: Test
+      # The presets use single-config Ninja, so no --build-config is needed.
+      # The qtrocket_* filter runs each suite once via its aggregate ctest entry
+      # (model, sim, integration, propagator).
+      shell: bash
+      run: ctest --preset ${{ inputs.preset }} -R 'qtrocket_*'

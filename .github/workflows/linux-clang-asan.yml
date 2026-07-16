@@ -1,0 +1,26 @@
+# One workflow per CI configuration so each gets its own README status badge.
+# Shared steps live in .github/actions/build-and-test. The asan-clang preset
+# builds with ASan+UBSan (FetchContent deps instrumented too) and runs the
+# tests instrumented.
+name: Linux Clang ASan+UBSan
+
+on:
+  push:
+    branches: [ "development" ]
+  pull_request:
+    branches: [ "development" ]
+
+jobs:
+  build:
+    name: Linux / Clang ASan+UBSan
+    runs-on: ubuntu-latest
+    env:
+      # UBSan findings are already fatal (-fno-sanitize-recover), this just makes
+      # the CI log actionable when one fires.
+      UBSAN_OPTIONS: print_stacktrace=1
+    steps:
+    - uses: actions/checkout@v4
+    - uses: ./.github/actions/build-and-test
+      with:
+        preset: asan-clang
+        cache-key: ubuntu-latest-asan-clang

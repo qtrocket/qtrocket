@@ -1,0 +1,42 @@
+# FreeBSD has no hosted GitHub runner, so we boot a FreeBSD VM (QEMU) inside an
+# ubuntu-latest runner via vmactions/freebsd-vm and build there. It's separate
+# from the build-and-test composite action the other platforms share because the
+# toolchain setup differs: Qt comes from pkg (install-qt-action ships no FreeBSD
+# binaries) and the base compiler is Clang with libc++. Reuses the release-clang
+# preset as-is.
+name: FreeBSD
+
+on:
+  push:
+    branches: [ "development" ]
+  pull_request:
+    branches: [ "development" ]
+
+jobs:
+  freebsd:
+    name: FreeBSD / Clang
+    runs-on: ubuntu-latest
+    # No ccache here yet and the FetchContent deps build from source in the VM,
+    # so the first run is slow; the generous timeout keeps a stalled VM from
+    # running forever.
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build and test on FreeBSD
+      uses: vmactions/freebsd-vm@v1
+      with:
+        release: "15.0"        # adjust to the FreeBSD you run; pkg uses the quarterly branch
+        usesh: true
+        copyback: false        # we only need the test exit status, not the build tree synced back
+        # Qt6 + build tooling from pkg. Everything else (curl, Boost, Eigen,
+        # GoogleTest, jsoncpp) is FetchContent and builds from source in the VM,
+        # so git is required. The hermetic curl config means OpenSSL + zlib (both
+        # in the FreeBSD base system) are the only external libs curl needs.
+        prepare: |
+          pkg install -y cmake ninja git pkgconf qt6-base qt6-tools
+        run: |
+          set -e
+          cmake --preset release-clang
+          cmake --build --preset release-clang
+          ctest --preset release-clang -R 'qtrocket_*'

@@ -59,7 +59,7 @@ The `coverage` target builds the instrumented test binaries, runs `ctest -R '^qt
 
 ## Sanitizers and clang-tidy
 
-Both run in CI (`cmake-multi-platform.yml`); keep them green locally before pushing:
+Both run in CI (`linux-clang-asan.yml` and `clang-tidy.yml` — CI is one workflow file per configuration under `.github/workflows/`, sharing steps via `.github/actions/build-and-test`); keep them green locally before pushing:
 
 ```bash
 cmake --preset asan-clang                       # separate build-asan/ tree
