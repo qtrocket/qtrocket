@@ -1,6 +1,12 @@
 /// \cond
 // C headers
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 // C++ headers
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -29,7 +35,17 @@ void printUsage(std::ostream& out)
              "Type 'help' at the prompt for the command list.\n";
 }
 
-int runRepl(std::istream& in, std::ostream& out)
+// Prompt only when a human is typing: pipes, -c, and script files keep byte-clean output.
+bool stdinIsATty()
+{
+#if defined(_WIN32)
+    return _isatty(_fileno(stdin)) != 0;
+#else
+    return isatty(fileno(stdin)) != 0;
+#endif
+}
+
+int runRepl(std::istream& in, std::ostream& out, bool interactive)
 {
     // Logger shares stdout with the CLI's machine-readable output, so run at ERROR. The "[ERROR]"
     // prefix keeps those lines distinct from the CLI's own "OK"/"ERR"/"CSV".
@@ -39,7 +55,7 @@ int runRepl(std::istream& in, std::ostream& out)
     out.flush();
 
     cli::Repl repl(QtRocket::getInstance());
-    return repl.run(in, out);
+    return repl.run(in, out, interactive ? "qtrocket> " : "");
 }
 
 } // anonymous namespace
@@ -47,7 +63,7 @@ int runRepl(std::istream& in, std::ostream& out)
 int main(int argc, char* argv[])
 {
     if(argc <= 1)
-        return runRepl(std::cin, std::cout);
+        return runRepl(std::cin, std::cout, stdinIsATty());
 
     const std::string arg1 = argv[1];
 
@@ -72,7 +88,7 @@ int main(int argc, char* argv[])
             return 2;
         }
         std::istringstream command(argv[2]);
-        return runRepl(command, std::cout);
+        return runRepl(command, std::cout, false);
     }
 
     if(argc != 2 || arg1.starts_with('-'))
@@ -88,5 +104,5 @@ int main(int argc, char* argv[])
         std::cerr << "error: cannot open script file '" << arg1 << "'\n";
         return 2;
     }
-    return runRepl(script, std::cout);
+    return runRepl(script, std::cout, false);
 }

@@ -279,11 +279,23 @@ Repl::Repl(QtRocket* _qtRocket)
     : qtRocket(_qtRocket)
 {}
 
-int Repl::run(std::istream& in, std::ostream& out)
+int Repl::run(std::istream& in, std::ostream& out, const std::string& prompt)
 {
     std::string line;
-    while(std::getline(in, line))
+    while(true)
     {
+        if(!prompt.empty())
+        {
+            out << prompt;
+            out.flush();
+        }
+        if(!std::getline(in, line))
+        {
+            // EOF (ctrl-d) leaves the cursor on the prompt line; finish it.
+            if(!prompt.empty())
+                out << "\n";
+            break;
+        }
         const bool keepGoing = execute(line, out);
         out.flush();
         if(!keepGoing)

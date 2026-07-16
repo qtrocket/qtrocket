@@ -26,8 +26,9 @@ public:
     explicit Repl(QtRocket* qtRocket);
 
     /// Read and execute commands until EOF or a quit/exit command. Returns a process exit code:
-    /// 0 if every command succeeded, 1 if any command reported ERR.
-    int run(std::istream& in, std::ostream& out);
+    /// 0 if every command succeeded, 1 if any command reported ERR. A non-empty @p prompt is
+    /// printed before each read (interactive use); leave it empty for pipes and scripts.
+    int run(std::istream& in, std::ostream& out, const std::string& prompt = "");
 
    /// Execute one command line. Returns false to exit the REPL, true to keep going. A command that
    /// throws (e.g. a composite read on a design whose placement solve failed) reports ERR, never kills
