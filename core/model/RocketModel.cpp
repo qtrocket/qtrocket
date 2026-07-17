@@ -15,9 +15,14 @@ namespace model
 
 RocketModel::RocketModel()
 {
-    // Bridge the typed event stream to the coarse GUI callback: any completed mutation counts.
-    parts_.setChangedCallback([this](const PartsModel::Event&, bool before)
+    // The single subscriber on parts_: forward the typed stream to any granular consumer, and fold
+    // completed mutations into the coarse did-anything-change callback.
+    parts_.setChangedCallback([this](const PartsModel::Event& e, bool before)
     {
+        if(partsEventCallback)
+        {
+            partsEventCallback(e, before);
+        }
         if(!before && structureChangedCallback)
         {
             structureChangedCallback();

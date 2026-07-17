@@ -90,11 +90,15 @@ public:
     /// dangle across a clear.
     void clearDesign() { installDesign(nullptr); }
 
-    /// Register a callback fired after any change to the part tree's structure or composition.
-    /// A GUI tree view uses it to refresh. std::function keeps the model layer Qt-free; only the
-    /// latest callback is kept. Pass {} to clear. (Granular consumers subscribe to
-    /// PartsModel::setChangedCallback instead; this is the coarse did-anything-change signal.)
+    /// Register a callback fired after any change to the part tree's structure or composition --
+    /// the coarse did-anything-change signal. std::function keeps the model layer Qt-free; only the
+    /// latest callback is kept. Pass {} to clear.
     void setStructureChangedCallback(std::function<void()> cb) { structureChangedCallback = std::move(cb); }
+
+    /// Register a consumer for the typed aboutTo/did event stream (see PartsModel::Event). The
+    /// model's internal bridge is the single subscriber on PartsModel itself and forwards here, so
+    /// this coexists with the coarse callback above. Only the latest is kept; {} clears.
+    void setPartsEventCallback(PartsModel::ChangeCallback cb) { partsEventCallback = std::move(cb); }
 
 private:
     std::string name;
@@ -104,6 +108,9 @@ private:
 
     /// Fired on every structural/compositional edit; null until the GUI registers one.
     std::function<void()> structureChangedCallback;
+
+    /// Typed event forward (aboutTo/did pairs); null until a granular consumer registers.
+    PartsModel::ChangeCallback partsEventCallback;
 
     /// Dimensionless drag coefficient for the drag term in getForces().
     double dragCoefficient{1.0};

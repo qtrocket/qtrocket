@@ -10,7 +10,9 @@
 /// \endcond
 
 // qtrocket headers
-namespace model { class PartsModel; class PartNode; class RocketModel; }
+#include "model/PartsModel.h"
+
+namespace model { class RocketModel; }
 
 class RocketPartModel : public QAbstractItemModel
 {
@@ -29,6 +31,11 @@ public:
     /// Bind to @p parts (borrowed; may be null to empty the view) and reset.
     void setParts(const model::PartsModel* parts);
 
+    /// Consume one typed aboutTo/did event: attach/detach become surgical row inserts/removes,
+    /// leaf and link edits become dataChanged on the affected row, and only a design install is a
+    /// full reset -- so selection, expansion, and scroll survive ordinary edits.
+    void onPartsEvent(const model::PartsModel::Event& e, bool before);
+
     // QAbstractItemModel interface reqs
     QModelIndex index(int row, int column, const QModelIndex& parent) const override;
     QModelIndex parent(const QModelIndex& index) const override;
@@ -41,6 +48,9 @@ private:
     /// The node behind an index, resolved by id through the PartsModel index -- a stale index fails
     /// the lookup (nullptr) instead of dereferencing a dead pointer. Root for an invalid index.
     const model::PartNode* nodeForIndex(const QModelIndex& index) const;
+
+    /// Column-0 index for the node with @p id; invalid if absent. Rows come from the live tree.
+    QModelIndex indexForId(model::part::Part::Id id) const;
 
     const model::PartsModel* m_parts{nullptr};
 };
@@ -56,14 +66,12 @@ public:
     ~RocketTreeView() override;
 
     /// Show @p rocket's part tree and keep it live: binds the model to the rocket's PartsModel and
-    /// registers a structure-changed callback so add/remove (and motor changes) refresh the view.
-    /// Re-pointing replaces any prior binding; nullptr detaches. The rocket must outlive this view.
+    /// subscribes to the typed event stream so edits update surgically (a design install resets and
+    /// re-expands). Re-pointing replaces any prior binding; nullptr detaches. The rocket must
+    /// outlive this view.
     void setRocketModel(model::RocketModel* rocket);
 
 private:
-    /// Reset the model against the rocket's current tree; the callback the rocket fires.
-    void onRocketStructureChanged();
-
     RocketPartModel* m_partModel{nullptr};
     model::RocketModel* m_rocket{nullptr};
 };

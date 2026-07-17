@@ -18,6 +18,37 @@ void RocketPartModel::setParts(const PartsModel* parts)
     endResetModel();
 }
 
+void RocketPartModel::onPartsEvent(const model::PartsModel::Event& e, bool before)
+{
+    using Event = model::PartsModel::Event;
+    switch (e.kind)
+    {
+        case Event::Reset:
+            // Qt's contract: begin* before the model mutates, end* after; the event stream fires
+            // exactly that way (aboutTo == before the tree changes).
+            if (before) { beginResetModel(); } else { endResetModel(); }
+            break;
+        case Event::Attached:
+            if (before) { beginInsertRows(indexForId(e.parentId), e.row, e.row); }
+            else        { endInsertRows(); }
+            break;
+        case Event::Detached:
+            if (before) { beginRemoveRows(indexForId(e.parentId), e.row, e.row); }
+            else        { endRemoveRows(); }
+            break;
+        case Event::Mutated:
+        case Event::LinkChanged:
+            // In-place edit: no rows move; refresh the affected row's cells once the write landed.
+            if (!before)
+            {
+                const QModelIndex left  = createIndex(e.row, 0, static_cast<quintptr>(e.id));
+                const QModelIndex right = createIndex(e.row, ColumnCount - 1, static_cast<quintptr>(e.id));
+                emit dataChanged(left, right);
+            }
+            break;
+    }
+}
+
 QModelIndex RocketPartModel::index(int row, int column, const QModelIndex& parent) const
 {
     if (!hasIndex(row, column, parent))
@@ -109,6 +140,14 @@ const PartNode* RocketPartModel::nodeForIndex(const QModelIndex& index) const
     return m_parts->find(static_cast<model::part::Part::Id>(index.internalId()));
 }
 
+QModelIndex RocketPartModel::indexForId(model::part::Part::Id id) const
+{
+    const PartNode* node = m_parts ? m_parts->find(id) : nullptr;
+    if (!node)
+        return {};
+    return createIndex(node->rowInParent(), 0, static_cast<quintptr>(id));
+}
+
 RocketTreeView::RocketTreeView(QWidget* parent)
     : QTreeView(parent),
       m_partModel(new RocketPartModel(this))
@@ -122,24 +161,27 @@ RocketTreeView::~RocketTreeView()
     // Drop the callback first: the rocket (owned by the QtRocket singleton) outlives this view, and the
     // callback captures `this`, so leaving it registered would dangle.
     if(m_rocket)
-        m_rocket->setStructureChangedCallback({});
+        m_rocket->setPartsEventCallback({});
 }
 
 void RocketTreeView::setRocketModel(model::RocketModel* rocket)
 {
     if(m_rocket)
-        m_rocket->setStructureChangedCallback({}); // detach the previous binding
+        m_rocket->setPartsEventCallback({}); // detach the previous binding
 
     m_rocket = rocket;
+    m_partModel->setParts(m_rocket ? &m_rocket->parts() : nullptr); // seed with the current tree
 
     if(m_rocket)
-        m_rocket->setStructureChangedCallback([this]{ onRocketStructureChanged(); });
-
-    onRocketStructureChanged(); // seed the view with the current tree
-}
-
-void RocketTreeView::onRocketStructureChanged()
-{
-    m_partModel->setParts(m_rocket ? &m_rocket->parts() : nullptr);
+    {
+        m_rocket->setPartsEventCallback([this](const model::PartsModel::Event& e, bool before)
+        {
+            m_partModel->onPartsEvent(e, before);
+            // a freshly-installed design starts fully expanded; ordinary edits keep the user's
+            // expansion state, which is the point of the granular events
+            if(!before && e.kind == model::PartsModel::Event::Reset)
+                expandAll();
+        });
+    }
     expandAll();
 }
