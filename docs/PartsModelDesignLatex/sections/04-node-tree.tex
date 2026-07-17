@@ -1,0 +1,374 @@
+\section[The node tree: PartNode and PartsModel]{The node tree: \code{PartNode} and
+\code{PartsModel}}\label{sec:tree}
+
+Where the leaf of \cref{sec:leaf} is the physical vocabulary, the tree is the grammar. Two classes
+in \srcf{core/model/PartsModel.h} carry all of it. \code{PartNode} is one interior node of the
+rocket: it owns exactly one \code{Part}, the \code{StationLink} that seats it on its parent
+(\cref{sec:placement}), and the child nodes beneath it --- so any node is a complete sub-assembly,
+and the composite queries of \cref{sec:caching} run identically on a full rocket or a booster
+stack. \code{PartsModel} is the single owner of that tree and its only mutation authority: reads
+hand out \cppinline|const Part&|, and every post-attach change --- structural or leaf-level --- is
+a named verb on the model that performs the write, maintains the id index and the motor borrow,
+dirties the correct cache chain, and brackets itself in change events. \Cref{fig:tree-class} shows
+the full ownership picture, with \code{RocketModel} above as the value owner and install facade.
+
+This section covers the tree's structure and mutation surface: the node's owned interior and read
+surface, how detached trees are built and cloned, lookup and traversal, the structural verbs and
+their typed errors, the routed leaf edits with their invalidation hint, and the event stream that
+lets a Qt front-end mirror the tree without the model knowing Qt exists. The caches that hang off
+each node are specified in \cref{sec:caching}; the motor slot's semantics in \cref{sec:motor}.
+
+\classfig{class-partsmodel}{The owned part tree (\srcfcap{core/model/PartsModel.h}).
+\code{RocketModel} holds \code{PartsModel} by value; \code{PartsModel} owns the root node through
+\cppinline|unique_ptr| and indexes every node by part id; each \code{PartNode} owns its leaf and
+its children the same way. \code{Event} and the error enums are nested types of
+\code{PartsModel}.}{fig:tree-class}{0.85}
+
+\subsection{The node: an owned interior, a const read surface}\label{sec:tree-node}
+
+A \code{PartNode} holds five members (\src{core/model/PartsModel.h}{108}--112). Three express
+ownership and shape: \cppinline|part_|, a \cppinline|std::unique_ptr<part::Part>| --- the node
+\emph{is} the owner of its leaf; \cppinline|children_|, a
+\cppinline|std::vector<std::unique_ptr<PartNode>>| in attachment order; and \cppinline|link_|, the
+\code{StationLink} stored on the \emph{child} as its incoming edge --- the placement intent
+relative to whatever parent the node currently has, a default link on a root. Storing the edge on
+the child rather than in a parent-side table means a detached sub-tree carries its internal
+seating with it: every edge except the one that was cut travels inside the value.
+
+The remaining two are raw back-pointers, and both are deliberate non-owners.
+\cppinline|parent_| points up the tree; it is safe as a bare pointer because ownership already
+guarantees the parent outlives the child --- destroying a parent destroys its
+\cppinline|children_| first. \cppinline|model_| points at the owning \code{PartsModel} while the
+node is attached to one and is null while detached; it exists purely as a guard bit for
+\code{addChild} (\cref{sec:tree-detached}). Because nodes point back at their model,
+\code{PartsModel} is non-copyable and non-movable (\src{core/model/PartsModel.h}{156}) --- a
+moved-from model would leave every node's back-pointer dangling, so the type simply forbids it.
+
+The read surface is small and entirely \code{const}: \code{id()} forwards to the part's own id, so
+there is exactly one identity namespace --- a node is named by the part it owns, and no separate
+node-id can ever disagree with it; \code{part()} returns \cppinline|const Part&|, so no reader can
+mutate a leaf behind the model's back; \code{link()}, \code{parent()}, and \code{children()} (a
+\cppinline|std::span| view, exposing the sequence but not the vector) complete the topology; and
+\code{rowInParent()} reports the node's index among its siblings, 0 for a root
+(\src{core/model/PartsModel.cpp}{55}). That last accessor earns its place by shape: (parent, row)
+is precisely the coordinate system of \code{QAbstractItemModel}, so the Qt adapter of
+\cref{sec:gui} reads its geometry straight off the node instead of maintaining a parallel map.
+
+\subsection[Building detached trees: make, addChild, clone]{Building detached trees: \code{make}, \code{addChild}, \code{clone}}
+\label{sec:tree-detached}
+
+Nodes begin life detached. The only way to create one is the static factory
+\code{PartNode::make(p, link)} (\src{core/model/PartsModel.h}{47}), which wraps a leaf and its
+intended incoming edge into a fresh node --- null part in, null node out. A detached tree is then
+assembled bottom-up with \code{addChild}, which wires the child's \cppinline|parent_| pointer,
+stores the edge, and moves the child in (\cref{lst:tree-addchild}). This is the loader's idiom:
+\code{DesignSerializer} builds the whole tree from the file --- \code{make} per part,
+\code{addChild} per edge (\src{core/model/DesignSerializer.cpp}{163}) --- and only then hands the
+finished root to the model in one step.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+void PartNode::addChild(std::unique_ptr<PartNode> child, part::StationLink link)
+{
+    if(!child)
+    {
+        utils::Logger::getInstance()->error("PartNode::addChild: ignoring null child");
+        return;
+    }
+    if(model_ != nullptr || child->model_ != nullptr)
+    {
+        utils::Logger::getInstance()->error(
+            "PartNode::addChild: owned trees mutate only through PartsModel verbs");
+        return;
+    }
+    child->parent_ = this;
+    child->link_   = link;
+    children_.push_back(std::move(child));
+    markMassDirty();
+    markPlacementDirty();
+}
+\end{minted}
+\caption{Detached-tree assembly and its ownership guard
+(\srccap{core/model/PartsModel.cpp}{72}--90).}\label{lst:tree-addchild}
+\end{listing}
+
+The guard in the middle of \cref{lst:tree-addchild} is the boundary of the whole design:
+\code{addChild} is a logged no-op the moment either node is owned by a model.
+
+\begin{designrule}[Owned trees mutate only through verbs]
+Once a node belongs to a \code{PartsModel}, a structural edit implies bookkeeping the node cannot
+do alone: the id index must gain or lose entries, the motor borrow may need re-resolving, cache
+chains must be dirtied \emph{from the right node upward}, and the Qt-facing event pair must fire
+with correct pre-state. \code{addChild} on an owned node would silently skip all four, so it
+refuses --- the \cppinline|model_| back-pointer exists to make ``am I owned?'' answerable at the
+one place it matters. Detached trees have none of those obligations, which is exactly why free
+assembly is legal there.
+\end{designrule}
+
+\code{clone()} (\src{core/model/PartsModel.cpp}{92}) deep-copies a sub-tree by recursion on this
+same machinery: every leaf duplicated through the virtual \code{Part::clone} --- so each copy
+carries a fresh id, per the leaf's identity contract (\cref{sec:leaf}) --- and every
+\code{StationLink} copied verbatim, so the copy is seated exactly as the original was. The result
+is a detached root, ready for \code{attachSubtree}: clone-then-attach is copy-paste.
+
+\subsection{The model: identity, lookup, traversal}\label{sec:tree-lookup}
+
+\code{PartsModel} holds a \emph{nullable} root (\cppinline|std::unique_ptr<PartNode> root_|) and
+reports it through \code{hasDesign()} (\src{core/model/PartsModel.h}{161}). The null state is a
+real state, not a placeholder: the GUI opens with no design loaded, the CLI runs before any
+\code{loaddesign}, and both must render, save-refuse, and report sensibly. Representing ``no
+design'' as an empty-but-present dummy root would force every consumer to distinguish a real
+single-part rocket from the sentinel; a null root makes the distinction structural, and consumers
+gate on \code{hasDesign()} before asking composite questions (the CLI's design commands and the
+geometry-derived reference area both check it explicitly, \cref{sec:cli,sec:flight}).
+
+Lookup is by id, in constant time: \cppinline|index_| maps
+\cppinline|Part::Id| $\to$ \cppinline|PartNode*| for every owned node, and \code{find(id)} returns
+the node or \cppinline|nullptr| (\src{core/model/PartsModel.h}{167}). The index is maintained
+exclusively by the adoption pair \code{registerSubtree}/\code{unregisterSubtree}
+(\cref{sec:tree-verbs}), so it can never disagree with the ownership tree.
+
+\begin{keyinsight}[Stale ids fail safe]
+Front-ends hold ids across time: a GUI selection survives a delete, a CLI script names parts that
+a previous command may have removed, an undo stack refers to nodes that no longer exist. Every
+verb therefore resolves its id through \code{find} and returns a typed error or \code{false} on a
+miss --- and because ids are drawn from a process-wide counter and never reused within a run
+(\cref{sec:leaf}), a stale id can never alias a \emph{different} part later. The worst outcome of
+a dangling identity is a refused verb with a diagnosable error, never a write to the wrong node
+and never undefined behavior. This is the payoff of making the id, not a pointer or a name, the
+currency of the mutation API.
+\end{keyinsight}
+
+\code{findByName} (\src{core/model/PartsModel.cpp}{257}) is the deliberate second-class citizen:
+a pre-order first-match walk, provided because humans type names at the CLI, but names carry no
+uniqueness requirement --- two \code{"BodyTube"}s are legal --- so the method is a convenience
+for interactive lookup and nothing in the model keys on it. \code{size()} is the index's size,
+$O(1)$ and zero with no design. Traversal is \code{forEachNode}
+(\src{core/model/PartsModel.h}{185}), a template over \cppinline|f(const PartNode&, int depth)|
+that visits parent-before-child in attachment order --- the same deterministic order the placement
+resolver emits (\cref{sec:placement}), so a listing printed from the walk and a diagnostic
+reported from the resolver name parts in the same sequence.
+
+\subsection{Structural verbs and typed errors}\label{sec:tree-verbs}
+
+Four verbs change the shape of an owned tree, and each returns its failure modes in the type:
+\code{attach} and \code{attachSubtree} return
+\cppinline|std::expected<Part::Id, AttachError>|, \code{detach} returns
+\cppinline|std::expected<std::unique_ptr<PartNode>, DetachError>|, and \code{installRoot} is
+total. The enums are small and exact --- \code{AttachError} is
+\{\code{NullPart}, \code{NoSuchParent}, \code{DuplicateMotor}\}, \code{DetachError} is
+\{\code{NoSuchId}, \code{IsRoot}\} --- so a front-end can map each case to a specific message
+instead of parsing a boolean (\cref{sec:cli}). \Cref{fig:tree-attach} traces the attach path;
+\cref{lst:tree-attach} is its body.
+
+\tikzfig{activity-attach}{The attach path
+(\srcfcap{core/model/PartsModel.cpp}). \code{attach} wraps the bare part and delegates to
+\code{attachSubtree}; every failure exits before any state changes, and the event pair brackets
+exactly the mutating region.}{fig:tree-attach}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+std::expected<part::Part::Id, PartsModel::AttachError>
+PartsModel::attachSubtree(part::Part::Id parent, std::unique_ptr<PartNode> subtree,
+                          std::optional<part::StationLink> linkOverride)
+{
+    if(!subtree || subtree->model_ != nullptr)
+    {
+        return std::unexpected(AttachError::NullPart);
+    }
+    PartNode* parentNode = find(parent);
+    if(parentNode == nullptr)
+    {
+        return std::unexpected(AttachError::NoSuchParent);
+    }
+    // Single-motor invariant, enforced where it can be broken: reject a second Motor
+    // anywhere in the incoming sub-tree.
+    if(motor_ != nullptr)
+    {
+        // ... pre-order scan of the incoming sub-tree ...
+        if(hasMotor)
+        {
+            return std::unexpected(AttachError::DuplicateMotor);
+        }
+    }
+
+    if(linkOverride)
+    {
+        subtree->link_ = *linkOverride;
+    }
+    const part::Part::Id childId = subtree->id();
+    const int row = static_cast<int>(parentNode->children_.size());
+    const Event e{Event::Attached, childId, parentNode->id(), row};
+
+    emitEvent(e, true);
+    subtree->parent_ = parentNode;
+    registerSubtree(subtree.get());
+    parentNode->children_.push_back(std::move(subtree));
+    parentNode->markMassDirty();
+    parentNode->markPlacementDirty();
+    emitEvent(e, false);
+    return childId;
+}
+\end{minted}
+\caption{\code{attachSubtree}, lightly elided
+(\srccap{core/model/PartsModel.cpp}{304}--350): guards first, then the event-bracketed adoption.}
+\label{lst:tree-attach}
+\end{listing}
+
+Three details of \cref{lst:tree-attach} carry most of the design. First, \code{attach} is
+literally \code{attachSubtree} over a single-node tree
+(\src{core/model/PartsModel.cpp}{298}) --- one adoption path, not two. Second, the single-motor
+invariant is checked \emph{here}, at the only door a second motor could enter through: when a
+motor is already installed, the incoming sub-tree is scanned and refused with
+\code{DuplicateMotor} if it contains one (\cref{sec:motor} covers why at most one). Third,
+\code{linkOverride} exists for re-seating: a sub-tree built by the serializer arrives with its
+stored links and should keep them, but a pasted or moved sub-tree is being seated on a \emph{new}
+parent, and its old incoming edge is intent about a parent it no longer has. The override replaces
+exactly that one edge --- the cut edge --- and leaves the sub-tree's interior seating untouched.
+
+\code{detach(id)} is the inverse (\src{core/model/PartsModel.cpp}{352}), and its return type is
+the point: the removed sub-tree comes back as a live
+\cppinline|std::unique_ptr<PartNode>| --- unregistered, parent pointer cleared, internal links
+intact. A first-class detached value is the building block for every higher-level edit:
+detach-then-drop is delete (the CLI's \code{removepart}, \src{cli/Repl.cpp}{1056}),
+detach-then-attachSubtree is move, hold-and-reattach is one undo frame, and clone-then-attach is
+paste. None of those features needs model support beyond the verb pair. The root is the one node
+\code{detach} refuses (\code{IsRoot}): it is the datum every resolved pose is expressed against,
+and removing it is not an edit to the tree but a replacement of the design ---
+which is what \code{installRoot} is for. \code{installRoot} atomically swaps the whole tree
+(null clears), unregistering the old root and registering the new
+(\src{core/model/PartsModel.cpp}{380}).
+
+All four verbs converge on the private adoption pair.
+\code{registerSubtree}/\code{unregisterSubtree} (\src{core/model/PartsModel.cpp}{270}) walk the
+sub-tree once and maintain the three pieces of derived ownership state together: the id index
+gains or loses every node, each node's \cppinline|model_| back-pointer is set or cleared, and the
+typed motor borrow (\cppinline|motor_|) is re-resolved if the walk crosses a \code{Motor}. That
+pair is the \emph{only} code that touches \cppinline|motor_| --- attach, detach, and a clearing
+\code{installRoot} all route through it, so a cleared design can never leave the borrow dangling
+(\cref{sec:motor}).
+
+\subsection{Routed leaf edits and the mutation hint}\label{sec:tree-edits}
+
+Post-attach leaf edits reach the tree through four routed verbs, the public face of the
+private-plus-friend seam on \code{Part} (\cref{sec:leaf}). \code{setPartMass} and
+\code{setPartInertia} (\src{core/model/PartsModel.cpp}{399}) perform the plain write and dirty the
+mass chain from the edited node upward --- and only the mass chain. \code{setLink}
+(\src{core/model/PartsModel.cpp}{431}) re-seats an existing edge (station, gap, or seat-kind
+edits; refused on a root, which has no incoming edge) and dirties \emph{both} chains from the
+parent: a seat edit moves resolved poses, and an equal-mass geometry change is exactly what the
+mass-delta gate of \cref{sec:caching} cannot see, so relying on the mass gate alone would serve a
+stale CM.
+
+\code{mutatePart} (\cref{lst:tree-mutate}) is the escape hatch for edits with no typed verb: an
+arbitrary functor applied to the leaf under a declared \code{MutateHint}.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+bool PartsModel::mutatePart(part::Part::Id id, MutateHint hint,
+                            const std::function<void(part::Part&)>& fn)
+{
+    PartNode* n = find(id);
+    if(n == nullptr || !fn)
+    {
+        return false;
+    }
+    const Event e{Event::Mutated, id, n->parent_ ? n->parent_->id() : part::Part::Id{0},
+                       n->rowInParent()};
+    emitEvent(e, true);
+    fn(*n->part_);
+    n->markMassDirty();
+    if(hint == MutateHint::Geometry)
+    {
+        n->markPlacementDirty();
+    }
+    emitEvent(e, false);
+    return true;
+}
+\end{minted}
+\caption{The hinted escape hatch (\srccap{core/model/PartsModel.cpp}{449}--468): the write and its
+invalidation are fused, and the hint chooses how much invalidation.}\label{lst:tree-mutate}
+\end{listing}
+
+\begin{designrule}[Declare what an edit can move]
+The two invalidation chains have very different prices. Dirtying the mass chain schedules an
+$O(N)$ re-weighting at the next composite read; dirtying the placement chain schedules a full
+geometry re-resolve plus the $O(N \log N)$ envelope sweep (the sort at
+\src{core/model/parts/Placement.cpp}{149}). A mass-only edit --- a motor swap, a payload trim ---
+moves no pose and cannot create an overlap, so \code{MassOnly} skips the sweep entirely; a length
+or radius edit can do both, so \code{Geometry} dirties both chains. The hint is a declaration the
+caller must make, not an inference the model attempts: the model cannot see inside the functor,
+and guessing conservatively on every edit would put the sweep on paths that run per-swap in batch
+motor studies. Note the asymmetry is one-way --- \code{Geometry} still dirties mass, because
+reshaping a part moves its CM even at constant mass.
+\end{designrule}
+
+\subsection{The event stream}\label{sec:tree-events}
+
+Every mutating verb in the previous two subsections brackets itself in a pair of notifications:
+one \code{Event} value fired with \cppinline|before == true| immediately \emph{before} the first
+write, and the identical value fired with \cppinline|before == false| after the last
+(\cref{lst:tree-event}). The event carries the affected node's id, its (ex-)parent's id, and its
+row within that parent --- captured \emph{pre-mutation}, so a \code{Detached} event names the row
+the node still occupies and an \code{Attached} event names the row the node is about to land in.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+/// One change notification, fired as aboutTo/did pairs (before == true, then false)
+/// around every mutation -- the shape Qt's begin*/end* row-op contract needs.
+struct Event
+{
+    enum Kind : std::uint8_t { Reset, Attached, Detached, LinkChanged, Mutated };
+    Kind kind{Reset};
+    part::Part::Id id{0};        ///< the affected node (0 on a clearing Reset)
+    part::Part::Id parentId{0};  ///< its (ex-)parent; 0 for a root
+    int row{0};                  ///< its row within that parent
+};
+using ChangeCallback = std::function<void(const Event&, bool before)>;
+\end{minted}
+\caption{The change notification (\srccap{core/model/PartsModel.h}{143}--151).}
+\label{lst:tree-event}
+\end{listing}
+
+The shape is not incidental: it is the exact contract of Qt's model/view row operations, which
+demand \code{beginInsertRows(parent, row, row)} before the underlying insert and
+\code{endInsertRows()} after, with removal mirrored. The GUI adapter is therefore a
+\cppinline|switch| that forwards each pair verbatim (\src{gui/RocketTreeView.cpp}{32});
+\cref{sec:gui} covers it. The model keeps a single callback slot
+(\code{setChangedCallback}; the latest registration wins, \cppinline|{}| clears), and
+\code{RocketModel} is that single subscriber: its constructor installs a bridge
+(\src{core/model/RocketModel.cpp}{16}) that forwards the typed stream to whichever granular
+consumer registered via \cppinline|setPartsEventCallback| and folds each completed mutation
+(\cppinline|before == false|) into the coarse ``something changed'' callback that simpler
+consumers prefer. One producer, one bridge, two subscription shapes.
+
+\begin{rejected}[Rejected --- Qt signals in the model]
+The natural Qt idiom --- make \code{PartsModel} a \code{QObject} and emit signals --- would drag
+QtCore into \cppinline|qtrocket_core|, and with it into the CLI and every test binary, breaking the
+layering rule that only \srcf{gui/} may depend on Qt. A \cppinline|std::function| callback
+carrying aboutTo/did pairs delivers everything the Qt adapter needs while costing the headless
+consumers nothing: the CLI simply never registers one. Multicast is deliberately absent ---
+\code{RocketModel} is by construction the one subscriber, and it already fans out --- so the model
+avoids owning listener-list bookkeeping it would never exercise.
+\end{rejected}
+
+\subsection{The install facade}\label{sec:tree-install}
+
+Whole-design replacement has one public door: \code{RocketModel::installDesign}
+(\src{core/model/RocketModel.h}{87}), with \code{clearDesign()} as sugar for installing null.
+It delegates the tree swap to \code{PartsModel::installRoot} and then performs the one install
+side effect that belongs to \code{RocketModel} rather than the tree: it clears the manual
+reference-area override (\src{core/model/RocketModel.cpp}{118}). The override is drag-model state,
+not tree state --- a provenance flag marking the stored frontal area as user-entered
+(\cref{sec:flight}) --- and it describes the airframe it was entered for. A freshly installed
+design must not present it as authored intent for the new airframe; resetting the flag strips
+that provenance, so a subsequent save records the area as unauthored and a loaded file's own
+\code{<sim>} block decides whether an override is re-established (\cref{sec:serialization}).
+Both loaders honor the facade: the serializer installs a loaded
+design through it (\src{core/model/DesignSerializer.cpp}{262}), and the CLI's design commands
+build a detached root and hand it over the same way (\src{cli/Repl.cpp}{880}).
+
+The tree, then, is a closed system: one owner, one id currency, verbs that fuse writes with their
+bookkeeping, and an event stream shaped for the one consumer that needs granularity. What those
+verbs actually invalidate --- and what the flight loop pays when it reads the composites back ---
+is the subject of \cref{sec:caching}.

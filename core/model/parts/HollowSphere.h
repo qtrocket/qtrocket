@@ -63,9 +63,9 @@ protected:
     /// geometry and, via Part's copy ctor, the base mass properties with a fresh id.
     HollowSphere(const HollowSphere&) = default;
 
-    std::shared_ptr<Part> cloneShallow() const override
+    std::unique_ptr<Part> clone() const override
     {
-        return std::shared_ptr<Part>(new HollowSphere(*this));
+        return std::unique_ptr<Part>(new HollowSphere(*this));
     }
 
 private:

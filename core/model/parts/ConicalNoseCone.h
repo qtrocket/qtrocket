@@ -65,8 +65,8 @@ public:
 
 protected:
     ConicalNoseCone(const ConicalNoseCone&) = default;
-    std::shared_ptr<Part> cloneShallow() const override
-    { return std::shared_ptr<Part>(new ConicalNoseCone(*this)); }
+    std::unique_ptr<Part> clone() const override
+    { return std::unique_ptr<Part>(new ConicalNoseCone(*this)); }
 
 private:
     static double  computeVolume(double R, double L, double t, bool solid);

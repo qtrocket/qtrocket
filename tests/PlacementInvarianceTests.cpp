@@ -34,6 +34,7 @@
 
 #include "model/DesignSerializer.h"
 #include "model/MotorModelDatabase.h"
+#include "model/PartsModel.h"
 #include "model/RocketModel.h"
 #include "model/parts/Part.h"
 #include "model/Aero.h"
@@ -78,22 +79,22 @@ std::string f17(double x)
 
 /// Snapshot a fully built airframe tree: the pinned quantities at t = 0. Shared by the corpus
 /// comparison, the resave-stability check, and the gated baseline regeneration below.
-DesignSnapshot snapshotRoot(model::part::Part& root)  // non-const: getComposite* lazily recompute
+DesignSnapshot snapshotRoot(const model::PartNode& root)
 {
     DesignSnapshot s;
-    s.mass    = root.getCompositeMass(0.0);
-    s.cm      = root.getCompositeCm(0.0);
-    s.inertia = root.getCompositeI(0.0);
+    s.mass    = root.compositeMass(0.0);
+    s.cm      = root.compositeCm(0.0);
+    s.inertia = root.compositeI(0.0);
 
     // cp() = cnAlphaXcp / cnAlpha is independent of the reference area (it cancels), so any fixed,
     // nonzero refArea gives a reproducible CP; use 1.0.
-    const model::AeroProfile aero = root.getCompositeAero(1.0);
+    const model::AeroProfile aero = root.compositeAero(1.0);
     s.cp      = aero.cp();
     s.cpValid = aero.cpValid;
 
    // Per-part CM station in the tip datum: pose.origin + the uniform local CM (-L/2 +
    // getCenterMassOffset().z()) -- the same expression the composite pass uses. DFS order.
-   for(const model::part::Placed& pl : model::part::resolvePlacements(root, model::part::Pose{}))
+   for(const model::part::Placed& pl : root.resolvedPlacements())
    {
       const Vector3 off = pl.part->getCenterMassOffset();
       const Vector3 cmLocal(off.x(), off.y(), -pl.part->getLength() / 2.0 + off.z());
@@ -109,7 +110,7 @@ DesignSnapshot snapshotFixture(const std::string& stem)
    model::RocketModel        rocket;
    model::MotorModelDatabase motors;  // intentionally empty -- see the file header
    model::DesignSerializer::load(rocket, motors, kDesignsDir + "/" + stem + ".qrd");
-   return snapshotRoot(*rocket.getTopPart());
+   return snapshotRoot(*rocket.parts().root());
 }
 
 /// Relative-or-absolute closeness: |a - b| <= tol * max(1, |a|, |b|).
@@ -270,10 +271,10 @@ TEST(PlacementInvariance, RegenerateBaseline)
           "# behind QTROCKET_REGEN_PLACEMENT_BASELINE=1), never to silence an unexplained diff.\n"
           "#\n"
           "# All stations are in the tip datum (z = 0 at the root fore plane, +z forward):\n"
-          "#   mass     topPart->getCompositeMass(0)                  [kg]\n"
-          "#   cm       topPart->getCompositeCm(0)      (x y z)       [m]\n"
-          "#   inertia  topPart->getCompositeI(0)       (row-major)   [kg m^2, about the composite CG]\n"
-          "#   cp       topPart->getCompositeAero(1).cp()  (valid cp) [m]\n"
+          "#   mass     root->compositeMass(0)                     [kg]\n"
+          "#   cm       root->compositeCm(0)      (x y z)          [m]\n"
+          "#   inertia  root->compositeI(0)       (row-major)      [kg m^2, about the composite CG]\n"
+          "#   cp       root->compositeAero(1).cp()  (valid cp)    [m]\n"
           "#   part     '<index> <type> <x> <y> <z> <name>': each part's resolved CM station,\n"
           "#            DFS pre-order.\n"
           "# Doubles are %.17g (exact IEEE-754 double round-trip).\n"
@@ -403,7 +404,7 @@ TEST(PlacementInvariance, CorpusStableOnResave)
       model::RocketModel        r1;
       model::MotorModelDatabase m1;
       model::DesignSerializer::load(r1, m1, std::format("{}/{}.qrd", kDesignsDir, stem));
-      const DesignSnapshot a = snapshotRoot(*r1.getTopPart());
+      const DesignSnapshot a = snapshotRoot(*r1.parts().root());
 
       // ... save it back and reload it.
       const std::string tmp =
@@ -413,7 +414,7 @@ TEST(PlacementInvariance, CorpusStableOnResave)
       model::MotorModelDatabase m2;
       model::DesignSerializer::load(r2, m2, tmp);
       std::filesystem::remove(tmp);
-      const DesignSnapshot b = snapshotRoot(*r2.getTopPart());
+      const DesignSnapshot b = snapshotRoot(*r2.parts().root());
 
         EXPECT_DOUBLE_EQ(b.mass, a.mass) << stem << " mass not reload-stable";
         EXPECT_TRUE(approxEq(b.cm.z(), a.cm.z(), kTol, stem + " cg.z reload"));
@@ -445,15 +446,15 @@ namespace
 {
 constexpr double kHandTol = 1e-12;
 
-/// Load a fixture's airframe-only tree (empty motor DB, as in snapshotFixture) and hand back its root.
-/// getTopPart() returns the owning shared_ptr by value, so the tree outlives the local RocketModel.
-std::shared_ptr<model::part::Part> loadAirframe(const std::string& stem)
+/// Load a fixture's airframe-only tree (empty motor DB, as in snapshotFixture). The model owns the
+/// part tree, so it is what the caller must keep alive.
+std::unique_ptr<model::RocketModel> loadAirframe(const std::string& stem)
 {
     utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_);  // quiet motor-absent warnings
-    model::RocketModel        rocket;
+    auto rocket = std::make_unique<model::RocketModel>();
     model::MotorModelDatabase motors;  // intentionally empty -> airframe geometry only
-    model::DesignSerializer::load(rocket, motors, kDesignsDir + "/" + stem + ".qrd");
-    return rocket.getTopPart();
+    model::DesignSerializer::load(*rocket, motors, kDesignsDir + "/" + stem + ".qrd");
+    return rocket;
 }
 
 /// A part's OWN CM in its local fore-plane (tip) datum: -L/2 + getCenterMassOffset().z().
@@ -463,9 +464,9 @@ double localCmZ(const model::part::Part& p)
 }
 
 /// First part of the given typeName() in resolved DFS order (the fixtures hold one of each).
-const model::part::Part* findByType(const model::part::Part& root, const std::string& type)
+const model::part::Part* findByType(const model::PartNode& root, const std::string& type)
 {
-    for(const model::part::Placed& pl : model::part::resolvePlacements(root, model::part::Pose{}))
+    for(const model::part::Placed& pl : root.resolvedPlacements())
     {
         if(pl.part->typeName() == type) { return pl.part; }
     }
@@ -478,8 +479,8 @@ const model::part::Part* findByType(const model::part::Part& root, const std::st
 // tip). A reversed-frame defect would instead report +0.075 m, so this hand-pin isolates that risk.
 TEST(PlacementInvariance, ConeNoseCmHandPinnedMinus0p225)
 {
-    const std::shared_ptr<model::part::Part> root = loadAirframe("xl75_multi");
-    const model::part::Part*                 cone = findByType(*root, "NoseCone");
+    const std::unique_ptr<model::RocketModel> rocket = loadAirframe("xl75_multi");
+    const model::part::Part* cone = findByType(*rocket->parts().root(), "NoseCone");
     ASSERT_NE(cone, nullptr) << "xl75_multi must contain a NoseCone";
     EXPECT_NEAR(cone->getLength(), 0.30, kHandTol) << "fixture cone length changed -- re-derive the pin";
     EXPECT_NEAR(localCmZ(*cone), -0.225, kHandTol);
@@ -491,8 +492,8 @@ TEST(PlacementInvariance, ConeNoseCmHandPinnedMinus0p225)
 // mid-chord reference slip (worth cr/2 = 0.05 m) would be caught.
 TEST(PlacementInvariance, FinSetCmHandPinned)
 {
-    const std::shared_ptr<model::part::Part> root = loadAirframe("xl75_multi");
-    const model::part::Part*                 fin  = findByType(*root, "FinSet");
+    const std::unique_ptr<model::RocketModel> rocket = loadAirframe("xl75_multi");
+    const model::part::Part* fin = findByType(*rocket->parts().root(), "FinSet");
     ASSERT_NE(fin, nullptr) << "xl75_multi must contain a FinSet";
 
     const double cr = 0.10, ct = 0.04, sweep = 0.04;  // fixture trapezoid (hard-coded -> independent)

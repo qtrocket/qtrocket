@@ -5,6 +5,7 @@
 #include <numbers>
 #include <stdexcept>
 
+#include "model/PartsModel.h"
 #include "model/parts/ConicalNoseCone.h"
 #include "model/parts/Part.h"
 #include "model/tests/TestPart.h"
@@ -51,9 +52,9 @@ AxisymInertia conicalShellSurfaceIntegral(double R, double L, int n = 400000)
     return {izz / m, ixx / m, cm};
 }
 
-std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
+std::unique_ptr<model::part::Part> pointMass(const std::string& name, double mass)
 {
-    return std::make_shared<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
+    return std::make_unique<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 } // namespace
 
@@ -71,7 +72,7 @@ TEST(NoseConeTest, SolidCmOffsetIsLOver4FromBase)
     const double R = 0.019, L = 0.10;
     model::part::ConicalNoseCone cone("nose", R, L, 0.0, 2700.0, true);
     // CM is L/4 forward of the base (the wide, aft end) => -L/4 from the middle in the +z = forward
-    // frame (base at -L/2 aft). (Corrected sign; see whitepaper 2.3.)
+    // frame (base at -L/2 aft).
     const Vector3 off = cone.getCenterMassOffset();
     EXPECT_NEAR(off.z(), -L / 4.0, 1e-15);
     EXPECT_NEAR(off.x(), 0.0, 1e-15);
@@ -81,21 +82,28 @@ TEST(NoseConeTest, SolidCmOffsetIsLOver4FromBase)
 TEST(NoseConeTest, SolidInertiaMatchesNumericDiskIntegration)
 {
     const double R = 0.019, L = 0.10, density = 2700.0;
-    model::part::ConicalNoseCone cone("nose", R, L, 0.0, density, true);
+    auto cone = std::make_unique<model::part::ConicalNoseCone>("nose", R, L, 0.0, density, true);
 
-    const double mass = cone.getMass(0.0);
-    const Matrix3 I = cone.getCompositeI(0.0); // full mass-weighted tensor about the CM
+    const double mass = cone->getMass(0.0);
+    const Matrix3 I = cone->getI(); // per-unit-mass tensor about the cone's own CM
     const AxisymInertia oracle = solidConeDiskIntegral(R, L);
 
     EXPECT_NEAR(oracle.cmFromApex, 0.75 * L, 1e-6); // 3L/4 from apex == L/4 from base
-    EXPECT_NEAR(I(2, 2) / mass, oracle.izz, 1e-5 * oracle.izz);
-    EXPECT_NEAR(I(0, 0) / mass, oracle.ixx, 1e-5 * oracle.ixx);
+    EXPECT_NEAR(I(2, 2), oracle.izz, 1e-5 * oracle.izz);
+    EXPECT_NEAR(I(0, 0), oracle.ixx, 1e-5 * oracle.ixx);
     // Independently pins the (3/80)L^2 transverse term (it is CM-specific).
-    EXPECT_NEAR(I(0, 0) / mass, 3.0 / 20.0 * R * R + 3.0 / 80.0 * L * L, 1e-12);
-    EXPECT_NEAR(I(2, 2) / mass, 3.0 / 10.0 * R * R, 1e-12);
+    EXPECT_NEAR(I(0, 0), 3.0 / 20.0 * R * R + 3.0 / 80.0 * L * L, 1e-12);
+    EXPECT_NEAR(I(2, 2), 3.0 / 10.0 * R * R, 1e-12);
     EXPECT_DOUBLE_EQ(I(0, 1), 0.0);
     EXPECT_DOUBLE_EQ(I(0, 2), 0.0);
     EXPECT_DOUBLE_EQ(I(1, 2), 0.0);
+
+    // a lone cone's composite tensor is the mass-weighted per-unit tensor: no axis shift applies
+    model::PartsModel tree;
+    tree.installRoot(model::PartNode::make(std::move(cone)));
+    const Matrix3 Ic = tree.root()->compositeI(0.0);
+    EXPECT_NEAR(Ic(2, 2), mass * I(2, 2), 1e-15);
+    EXPECT_NEAR(Ic(0, 0), mass * I(0, 0), 1e-15);
 }
 
 TEST(NoseConeTest, ShellMassCmInertiaMatchSurfaceIntegral)
@@ -110,14 +118,13 @@ TEST(NoseConeTest, ShellMassCmInertiaMatchSurfaceIntegral)
     // CM is L/3 forward of the base => -L/6 from the middle in the +z = forward frame.
     EXPECT_NEAR(cone.getCenterMassOffset().z(), -L / 6.0, 1e-15);
 
-    const double mass = cone.getMass(0.0);
-    const Matrix3 I = cone.getCompositeI(0.0);
+    const Matrix3 I = cone.getI(); // per-unit-mass tensor about the cone's own CM
     const AxisymInertia oracle = conicalShellSurfaceIntegral(R, L);
     EXPECT_NEAR(oracle.cmFromApex, 2.0 / 3.0 * L, 1e-6);
-    EXPECT_NEAR(I(2, 2) / mass, oracle.izz, 1e-5 * oracle.izz);
-    EXPECT_NEAR(I(0, 0) / mass, oracle.ixx, 1e-5 * oracle.ixx);
-    EXPECT_NEAR(I(2, 2) / mass, 1.0 / 2.0 * R * R, 1e-12);
-    EXPECT_NEAR(I(0, 0) / mass, 1.0 / 4.0 * R * R + 1.0 / 18.0 * L * L, 1e-12);
+    EXPECT_NEAR(I(2, 2), oracle.izz, 1e-5 * oracle.izz);
+    EXPECT_NEAR(I(0, 0), oracle.ixx, 1e-5 * oracle.ixx);
+    EXPECT_NEAR(I(2, 2), 1.0 / 2.0 * R * R, 1e-12);
+    EXPECT_NEAR(I(0, 0), 1.0 / 4.0 * R * R + 1.0 / 18.0 * L * L, 1e-12);
 }
 
 TEST(NoseConeTest, AeroConeCNalphaAndCp)
@@ -129,7 +136,7 @@ TEST(NoseConeTest, AeroConeCNalphaAndCp)
     EXPECT_NEAR(solid.getAero(pi * R * R).cnAlpha, 2.0, 1e-12);
     EXPECT_NEAR(solid.getAero(2.0 * pi * R * R).cnAlpha, 1.0, 1e-12);
 
-    // x_cp reported from the cone's own CM in the corrected +z = forward frame: L/3 - hbar = +L/12
+    // x_cp reported from the cone's own CM in the +z = forward frame: L/3 - hbar = +L/12
     // (solid), so cnAlphaXcp = 2 * (L/12) at refArea = pi R^2.
     EXPECT_NEAR(solid.getAero(pi * R * R).cnAlphaXcp, 2.0 * (L / 12.0), 1e-12);
     EXPECT_DOUBLE_EQ(solid.getAero(pi * R * R).cd, 0.0);
@@ -155,25 +162,29 @@ TEST(NoseConeTest, AeroConeCNalphaAndCp)
 // CP is a function of external SHAPE only, never of mass distribution. A solid cone and a thin-shell
 // cone of identical base radius and length are aerodynamically identical (same CNalpha, same CP at
 // 2/3 L aft of the tip) but have DIFFERENT centers of mass (-L/4 vs -L/6 from the middle). So the
-// COMPOSITE cp must be the textbook -2/3 L for BOTH, independent of the CM. This locks in a placement-
-// migration correction: the legacy aero walk leaked each part's own CM into cnAlphaXcp/cnAlpha (it gave
-// +L/12 vs 0 for these two cones -- the source of the static-margin drift across the corpus), which the
-// migrated CM-station formula (Part::getCompositeAero) exactly cancels. A regression that re-contaminates
-// cp with the CM would split these two values apart.
+// composite cp must be the textbook -2/3 L for BOTH, independent of the CM. The composite walk
+// (PartNode::compositeAero) re-expresses each part's CM-datum x_cp onto the sub-tree-root datum,
+// exactly cancelling the part's own CM; a regression that leaks the CM back into cp would split
+// these two values apart (+L/12 vs 0).
 TEST(NoseConeTest, CompositeCpIsCmIndependentSolidVsShell)
 {
     const double R = 0.0395, L = 0.30;
     const double refArea = pi * R * R;
-    auto solid = std::make_shared<model::part::ConicalNoseCone>("solid", R, L, 0.0,   1700.0, true);
-    auto shell = std::make_shared<model::part::ConicalNoseCone>("shell", R, L, 0.001, 1700.0, false);
+    auto solid = std::make_unique<model::part::ConicalNoseCone>("solid", R, L, 0.0,   1700.0, true);
+    auto shell = std::make_unique<model::part::ConicalNoseCone>("shell", R, L, 0.001, 1700.0, false);
 
     // Precondition: the two cones really DO have different CM (else CM-independence proves nothing).
     ASSERT_NEAR(solid->getCenterMassOffset().z(), -L / 4.0, 1e-12);
     ASSERT_NEAR(shell->getCenterMassOffset().z(), -L / 6.0, 1e-12);
 
+    model::PartsModel solidTree;
+    solidTree.installRoot(model::PartNode::make(std::move(solid)));
+    model::PartsModel shellTree;
+    shellTree.installRoot(model::PartNode::make(std::move(shell)));
+
     // ... yet identical composite CP, equal to the textbook 2/3 L aft of the tip (CM-independent).
-    const double cpSolid = solid->getCompositeAero(refArea).cp();
-    const double cpShell = shell->getCompositeAero(refArea).cp();
+    const double cpSolid = solidTree.root()->compositeAero(refArea).cp();
+    const double cpShell = shellTree.root()->compositeAero(refArea).cp();
     EXPECT_NEAR(cpSolid, -2.0 / 3.0 * L, 1e-12);
     EXPECT_NEAR(cpShell, -2.0 / 3.0 * L, 1e-12);
     EXPECT_DOUBLE_EQ(cpSolid, cpShell);
@@ -215,18 +226,27 @@ TEST(NoseConeTest, RejectsNonPhysical)
 
 TEST(NoseConeTest, CloneIsDeepTypePreserving)
 {
-    auto cone = std::make_shared<model::part::ConicalNoseCone>("nose", 0.019, 0.10, 0.0, 2700.0, true);
-    cone->addChildPart(pointMass("ballast", 0.02), model::part::abut(0.03));
+    auto root = model::PartNode::make(
+        std::make_unique<model::part::ConicalNoseCone>("nose", 0.019, 0.10, 0.0, 2700.0, true));
+    root->addChild(model::PartNode::make(pointMass("ballast", 0.02)), model::part::abut(0.03));
 
-    auto copy = cone->clone();
-    const double massBefore = copy->getCompositeMass(0.0);
-    const double iyyBefore = copy->getCompositeI(0.0)(1, 1);
+    model::PartsModel original;
+    original.installRoot(std::move(root));
 
-    cone->setMass(99.0);
-    cone->addChildPart(pointMass("extra", 50.0), model::part::abut(1.0));
+    model::PartsModel copy;
+    copy.installRoot(original.root()->clone());
+    ASSERT_TRUE(copy.hasDesign());
+    const double massBefore = copy.root()->compositeMass(0.0);
+    const double iyyBefore  = copy.root()->compositeI(0.0)(1, 1);
 
-    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
-    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(1, 1), iyyBefore);
-    EXPECT_NE(dynamic_cast<model::part::ConicalNoseCone*>(copy.get()), nullptr);
-    EXPECT_NE(copy->getId(), cone->getId());
+    // edits to the original must not leak into the deep copy
+    ASSERT_TRUE(original.setPartMass(original.root()->id(), 99.0));
+    ASSERT_TRUE(original.attach(original.root()->id(), pointMass("extra", 50.0),
+                                model::part::abut(1.0)).has_value());
+
+    EXPECT_DOUBLE_EQ(copy.root()->compositeMass(0.0), massBefore);
+    EXPECT_DOUBLE_EQ(copy.root()->compositeI(0.0)(1, 1), iyyBefore);
+    EXPECT_NE(dynamic_cast<const model::part::ConicalNoseCone*>(&copy.root()->part()), nullptr);
+    EXPECT_EQ(copy.root()->children().size(), 1u);
+    EXPECT_NE(copy.root()->id(), original.root()->id());
 }

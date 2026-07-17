@@ -1,0 +1,35 @@
+% ensureCompositeCache(t): the mass-delta gate, the placement gate behind it, the throw path,
+% and the stamp-after-success discipline.
+\begin{tikzpicture}[node distance=6mm and 14mm]
+  \node[startstop] (read) {read: \texttt{compositeCm(t)}\\ or \texttt{compositeI(t)}};
+  \node[act, below=of read] (sum) {\texttt{mNow = compositeMass(t)}\\ live recursive sum (uncached)};
+  \node[decision, below=of sum, text width=34mm] (gate)
+      {\texttt{massDirty\_} or\\ \texttt{mNow} $\neq$ \texttt{builtAtMass\_}?};
+  \node[oknode, right=16mm of gate, text width=36mm] (hit)
+      {cache hit: return stored\\ \texttt{compositeCm\_}, \texttt{compositeI\_}};
+  \node[act, below=of gate] (place)
+      {\texttt{ensurePlacementCache()}\\ resolve + overlap sweep\\ iff \texttt{placementDirty\_}};
+  \node[decision, below=of place, text width=24mm] (ok) {\texttt{verdict\_.ok}?};
+  \node[failnode, right=16mm of ok, text width=40mm] (fail)
+      {throw \texttt{runtime\_error}\\ with located diagnostic\\ (no stamp written)};
+  \node[act, below=of ok] (build)
+      {\texttt{computeCompositeAt(t)}\\ pass 1: mass-weighted CM\\ pass 2: parallel-axis tensor};
+  \node[act, below=of build] (stamp)
+      {stamp after success:\\ \texttt{builtAtMass\_ = mNow}\\ \texttt{massDirty\_ = false}};
+  \node[oknode, below=of stamp, text width=36mm] (ret)
+      {return fresh\\ \texttt{compositeCm\_}, \texttt{compositeI\_}};
+
+  \draw[flow] (read) -- (sum);
+  \draw[flow] (sum) -- (gate);
+  \draw[flow] (gate) -- node[flowlbl, align=center] {no\\ (frozen)} (hit);
+  \draw[flow] (gate) -- node[flowlbl] {yes} (place);
+  \draw[flow] (place) -- (ok);
+  \draw[flow] (ok) -- node[flowlbl] {no} (fail);
+  \draw[flow] (ok) -- node[flowlbl] {yes} (build);
+  \draw[flow] (build) -- (stamp);
+  \draw[flow] (stamp) -- (ret);
+  \draw[flow, dashed, draw=qrRed]
+      (fail.east) .. controls +(3.4,0.0) and +(4.2,0.0) .. (read.east)
+      node[flowlbl, align=center, text=qrRed, pos=0.32, right=3pt]
+      {\texttt{massDirty\_} still true:\\ every later read re-throws};
+\end{tikzpicture}

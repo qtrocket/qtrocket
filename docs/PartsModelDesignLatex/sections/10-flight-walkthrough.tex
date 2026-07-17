@@ -1,0 +1,305 @@
+\section{Execution walkthrough: a simulated flight}\label{sec:flight}
+
+Every preceding section examined the part tree at rest --- how it is owned (\cref{sec:tree}), how
+its composites are cached (\cref{sec:caching}), how its geometry is resolved
+(\cref{sec:placement}). This section runs it, following a single flight end to end --- from
+\code{QtRocket::launchRocket()} through the integrator's innermost stage down to the part tree and
+back out to the CSV on disk --- and counting every call the simulation makes into the model along
+the way. The point of the walkthrough is a claim the earlier sections could only assert: a tree built
+for interactive editing --- ids, events, placement links, envelope sweeps --- serves an adaptive
+numerical integrator's hot loop while touching, per stage, nothing but one thrust-curve lookup and
+two recursive additions.
+
+The trace below uses the Runge-Kutta-Fehlberg (RKF45) stepper as the illustrative case because it
+is the demanding one: six stages per attempted step, evaluated at fractional node times the step
+controller chooses and sometimes discards. The fixed-step RK4 backend is the configured default
+(\src{core/sim/Propagator.cpp}{48}); either is selectable at runtime through the same
+\code{Integrator} facade (\srcf{core/sim/Integrator.h}), and everything said here holds for both
+--- RK4 simply asks four times per step instead of six per attempt.
+
+\subsection{Ignition}\label{sec:flight-ignition}
+
+A flight begins at the controller singleton. \code{QtRocket::launchRocket()}
+(\src{core/QtRocket.cpp}{37}) does four things in order: it clears the previous run's state
+history, rewinds the propagator clock to $t = 0$, tells the rocket to \code{launch()}, and hands
+control to \code{Propagator::runUntilTerminate()}. The model-side half of that handshake is two
+lines (\cref{lst:flight-launch}): copy the caller-supplied initial state into the current state,
+and ignite the motor.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+void RocketModel::launch()
+{
+    setCurrentState(initialState);
+    parts_.startMotor(0.0);
+}
+// ...
+void PartsModel::startMotor(double t)
+{
+    if(motor_ != nullptr)
+    {
+        motor_->mm.startMotor(t); // friend seam: ignition is a routed runtime mutation
+    }
+}
+// ...
+void startMotor(double startTime) { ignitionOccurred = true; ignitionTime = startTime; }
+\end{minted}
+\caption{The ignition chain: \srccap{core/model/RocketModel.cpp}{101} $\to$
+\srccap{core/model/PartsModel.cpp}{511} $\to$ \srccap{core/model/MotorModel.h}{330}. The
+simulation never holds a motor pointer; it asks the tree.}\label{lst:flight-launch}
+\end{listing}
+
+Ignition is deliberately a \emph{routed} mutation. The wrapped \code{MotorModel} lives inside the
+tree's single \code{Motor} node (\cref{sec:motor}), and the only code allowed to flip its
+ignition latch is \code{PartsModel::startMotor} --- the friend seam through which all motor
+runtime state flows. Even the simulation obeys the mutation-routing discipline of
+\cref{sec:philosophy}: \cppinline|parts_| is asked, the typed borrow \cppinline|motor_| is
+dereferenced inside the model, and a design with no motor degrades to a no-op rather than a null
+dereference. From this point on the motor's mass begins falling and its thrust curve is live;
+everything else about the rocket --- every pose, every seam, every link --- is already fixed and
+will not move again until the run returns.
+
+\subsection{The loop and its stages}\label{sec:flight-loop}
+
+\code{runUntilTerminate()} (\src{core/sim/Propagator.cpp}{58}) is a synchronous loop on the
+caller's thread: read the current state, take one integrator step, vet the result, record it,
+check for termination, advance $t$ by the step the integrator actually took
+(\src{core/sim/Propagator.cpp}{166}) --- constant for RK4, adaptive for RKF45. The physics enters
+through a single closure, installed once at construction (\cref{lst:flight-ode}): the coupled
+linear ODEs $\dot{\mathbf r} = \mathbf v$, $\dot{\mathbf v} = \mathbf F/m$.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+std::function<std::pair<Vector3, Vector3>(double, Vector3&, Vector3&)> linearODEs =
+    [this](double t, Vector3& state, Vector3& rate) -> std::pair<Vector3, Vector3>
+{
+    Vector3 dPosition;
+    Vector3 dVelocity;
+    dPosition = rate;
+    dVelocity = object->getForces(t, state, rate, *environment) / object->getMass(t);
+
+    return std::make_pair(dPosition, dVelocity);
+};
+\end{minted}
+\caption{The ODE right-hand side (\srccap{core/sim/Propagator.cpp}{36}). \code{object} is the
+rocket behind the \code{Propagatable} interface --- the sim never sees a part, a node, or a
+motor.}\label{lst:flight-ode}
+\end{listing}
+
+The RKF45 stepper (\src{core/sim/RK45Solver.h}{92}) evaluates this closure six times per
+attempted step, each stage at its Fehlberg node time $t + c_i h$ on a trial state assembled from
+the previous stages. Sampling at the true node times is what lets a thrust transient register in
+the embedded error estimate: across a sharp burn the fourth- and fifth-order solutions diverge,
+the error rises, and the controller shrinks $h$ to resolve the transient. When the estimate
+exceeds tolerance the whole six-stage attempt is discarded and re-run at a smaller $h$; when it
+cannot shrink further the stepper throws, and the propagator's enclosing \code{try} converts the
+exception into a reported termination rather than a crash (\src{core/sim/Propagator.cpp}{81}).
+\Cref{fig:flight-seq} lays out the resulting per-stage and per-step data flow across the three
+layers.
+
+\tikzfig{seq-flight}{Data flow of one integration step. Stage traffic (upper path, six times per
+RKF45 attempt) reaches the parts tree only through the motor's thrust curve and the live
+\code{compositeMass} sum. The accepted-step record (lower path, once per step) is the only path
+through the mass-delta gate; the placement cache is never consulted in
+flight.}{fig:flight-seq}
+
+\subsection{One stage, itemized}\label{sec:flight-stage}
+
+Each stage evaluation costs the model exactly two calls: \code{getForces} and \code{getMass}.
+\Cref{lst:flight-forces} is the entire force model.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+Vector3 RocketModel::getForces(double t, const Vector3& position,
+                               const Vector3& velocity, sim::Environment& environment)
+{
+    // Thrust along the rocket's z-axis, assumed through the CM.
+    Vector3 forces{0.0, 0.0, parts_.thrust(t)};
+
+    auto gravityModel = environment.getGravityModel();
+    Vector3 gravity = gravityModel->getAccel(position)*getMass(t);
+    forces += gravity;
+
+    auto atmosphere = environment.getAtmosphericModel();
+    // Clamp altitude to >= 0: trial states crossing z=0 fall outside the atmosphere models' domain.
+    const double altitude = position[2] > 0.0 ? position[2] : 0.0;
+    const double rho = atmosphere->getDensity(altitude);
+    const double speed = velocity.norm();
+    const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
+    forces += drag;
+
+    return forces;
+}
+\end{minted}
+\caption{The 3-DOF force model (\srccap{core/model/RocketModel.cpp}{64}, comments elided). Thrust
+and mass come from the part tree; gravity and density from the injected environment; drag
+configuration from the model's own scalars.}\label{lst:flight-forces}
+\end{listing}
+
+Three terms, three provenances:
+
+\begin{itemize}
+\item \textbf{Thrust} is \cppinline|parts_.thrust(t)| (\src{core/model/PartsModel.cpp}{505}): a
+      null-check on the motor borrow, then \code{MotorModel::getThrust}
+      (\src{core/model/MotorModel.cpp}{69}) --- linear interpolation over the catalog thrust
+      samples, zero after burnout, \code{const} end to end. A motorless tree reads as zero
+      thrust, not an error; the launch front ends refuse earlier
+      (\src{cli/Repl.cpp}{744}, \cref{sec:cli}).
+\item \textbf{Gravity} is the environment's pluggable model evaluated at the \emph{trial}
+      position --- not \code{currentState}, so every stage sees a self-consistent state ---
+      weighted by \code{getMass(t)}, which is nothing but
+      \cppinline|parts_.root()->compositeMass(t)| (\src{core/model/RocketModel.cpp}{33}).
+\item \textbf{Drag} is $-\tfrac{1}{2}\rho(\mathrm{alt})\,\lVert\mathbf v\rVert\,C_d\,A\,\mathbf v$,
+      written with $\lVert\mathbf v\rVert\,\mathbf v$ rather than $v^2\hat{\mathbf v}$ so a
+      zero-velocity stage costs no division. The altitude clamp exists because RKF45 trial states
+      legitimately probe below $z = 0$ near the ground, outside the atmosphere models' domain.
+      $A$ is the model's stored reference area: an explicit \code{setReferenceArea()} marks it a
+      manual override (\src{core/model/RocketModel.h}{69}), \code{installDesign()} clears that
+      flag so a later save does not record the old airframe's area as authored intent
+      (\src{core/model/RocketModel.cpp}{121}); the geometry-derived value --- the largest
+      single frontal disc, \code{maxFrontalReferenceArea()} over the same tree --- is exposed
+      to front ends through \code{deriveReferenceAreaFromGeometry()}
+      (\src{core/model/RocketModel.cpp}{44}, \cref{sec:caching}), but the force model always
+      flies the stored scalar.
+\end{itemize}
+
+Per stage, then, the parts tree is touched exactly three times: one thrust-curve lookup and two
+live \code{compositeMass} sums --- the gravity weight inside \code{getForces} and the $F/m$
+divisor in the ODE closure. Neither motor query does real work at stage cadence: thrust
+interpolates the sample table, and in-burn mass interpolates a mass curve precomputed at load
+time (\src{core/model/MotorModel.cpp}{132}), so both are table walks, not quadrature. The live
+sum itself is $N$ double additions over a tree whose $N$ is tens --- deliberately uncached,
+because it is simultaneously the cheapest quantity in the system and the key that keeps the
+composite cache honest (the full argument is \cref{sec:caching}). \Cref{tab:flight-traffic}
+totals the traffic.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+\textbf{Tree traffic} & \textbf{Per RKF45 attempt (6 stages)} & \textbf{Per RK4 step (4 stages)} \\
+\midrule
+Thrust-curve lookup & 6 & 4 \\
+Live \code{compositeMass} sum (stages) & 12 \quad (2 per stage) & 8 \\
+Live sums in the step record & 3 \quad (snapshot + one gate key per gated read) & 3 \\
+Gated CM/tensor rebuild & $\le 1$ while the motor burns; 0 after burnout & same \\
+Placement resolve / envelope sweep & 0 & 0 \\
+\bottomrule
+\end{tabularx}
+\caption{What one integration step asks of the part tree. A rejected RKF45 attempt repeats its
+six-stage column at a smaller $h$; the record column runs once per accepted, recorded
+step.}\label{tab:flight-traffic}
+\end{table}
+
+The absolute numbers make the ``cheap'' claim concrete. At the default $0.01\unit{s}$ step
+(\src{core/sim/Propagator.h}{110}) a ten-second model-rocket flight is on the order of a thousand
+accepted steps: under RK4 that is 4{,}000 stage evaluations, hence 8{,}000 live sums and 4{,}000
+curve lookups. For a twenty-part tree a live sum is twenty additions, so the tree's entire
+stage-cadence contribution over the \emph{whole flight} is a few hundred thousand floating-point
+additions --- noise against the Eigen vector algebra of the stages themselves. The expensive
+machinery runs elsewhere, and less often.
+
+\subsection{The accepted step: recording through the gate}\label{sec:flight-record}
+
+When an attempt passes the error test, the propagator vets the advanced state (the non-finite and
+launch-pad guards of \cref{sec:flight-end}), commits it with \code{setCurrentState}, folds it into
+the running trajectory statistics, and --- when state saving is on --- records it
+(\src{core/sim/Propagator.cpp}{132}):
+
+\begin{minted}{cpp}
+object->writeMassProperties(currentTime, nextState);
+object->appendState(currentTime, nextState);
+\end{minted}
+
+\code{writeMassProperties} (\src{core/model/RocketModel.cpp}{49}) snapshots
+\code{compositeMass}, \code{compositeCm}, and \code{compositeI} at the accepted time into the
+\code{StateData} sample, so every row of the state history carries a mutually consistent
+mass/CG/tensor triple. This is the flight's only path through the mass-delta gate of
+\cref{sec:caching}, and the gate's two regimes are visible in the cadence. While the motor burns,
+the live sum differs from the stamp at every accepted step --- mass genuinely moved --- so the
+gate fires and the two-pass CM/tensor walk runs: once per recorded step, roughly 150 rebuilds
+across a 1.5-second burn. After burnout, \code{MotorModel::getMass} returns the casing mass
+verbatim for every $t$, the recursive sum reproduces bit for bit, exact \code{==} holds, and
+every read for the rest of the flight --- coast, apogee, descent, the majority of the samples ---
+is a frozen-cache hit. Zero rebuilds, by construction rather than by tolerance tuning.
+
+Just as telling is what \emph{never} runs. The placement machinery of \cref{sec:placement} ---
+seat resolution, pose accumulation, the $O(N \log N)$ envelope sweep --- is keyed on structure,
+and a flight changes no structure: geometry is invariant under mass loss. Each gated rebuild does
+enter \code{ensurePlacementCache} (\src{core/model/PartsModel.cpp}{144}), but finds
+\cppinline|placementDirty_| false and returns after a single boolean test. The resolve count for
+an entire flight is zero; the integrator re-weights, thousands of times, a geometry that was
+solved once at edit time.
+
+\begin{designrule}[The flight owns the tree]
+\code{runUntilTerminate()} is synchronous on its caller's thread, so the thread that could edit
+the tree is busy flying it, and the single-writer contract (\cref{sec:philosophy}) forbids any
+other thread from touching the model at all --- even for \code{const} reads, since any composite
+read may be the one that rebuilds. This is not a grudging limitation; it is what excludes an
+otherwise ugly class of states. A structural edit landing between stages three and four of one
+attempt would blend two different rockets into a single Butcher tableau; it would raise both
+dirty chains, so the next recorded step re-resolves geometry mid-run and stamps the history with
+a rocket the first half of the flight never was; and it could flip the overlap verdict, turning a
+flying design into a throwing one between two samples. Rather than defending every read
+against a caller the architecture never creates, the contract makes the whole class
+unrepresentable: edits happen between flights, and a flight sees one rocket from ignition to
+touchdown.
+\end{designrule}
+
+\begin{hardfail}[A self-intersecting design refuses to fly]
+If the design's cached overlap verdict is a failure, the first composite read ---
+\code{writeMassProperties} at the first recorded step, if no editor read composites earlier ---
+throws \cppinline|std::runtime_error| from \code{computeCompositeAt} carrying the first located
+diagnostic (\src{core/model/PartsModel.cpp}{184}): which parts interpenetrate, and where. The
+propagator's enclosing \code{catch} (\src{core/sim/Propagator.cpp}{169}) turns the throw into a
+terminated run with \code{TerminationReason::IntegratorError} and the message in the log --- a
+located refusal, not a trajectory quietly integrated over a physically meaningless inertia
+tensor. Note the stage path cannot throw this: stages touch only the live mass sum, which never
+consults the verdict, so the refusal surfaces exactly at the first attempt to \emph{record} the
+bad rocket. The full throw-and-rethrow mechanics are in \cref{sec:caching}.
+\end{hardfail}
+
+\subsection{Termination and the flight record}\label{sec:flight-end}
+
+The nominal end of flight is the model's own verdict (\src{core/model/RocketModel.cpp}{58}): the
+rocket is below the launch site and descending, $z < 0$ and $v_z < 0$. Requiring both keeps an
+arcing trajectory that crosses $z = 0$ upward, or a pad-level start, from reading as a landing.
+Around that nominal check the loop carries four safety guards, each converting a would-be
+infinite loop or silent lie into a reportable \code{TerminationReason}
+(\srcf{core/sim/Propagator.h}):
+
+\begin{itemize}
+\item \textbf{Pad hold.} A thrust curve begins with an implicit $(0,0)$ sample, so over the first
+      step thrust is nearly zero and a from-rest launch would sink below the pad and trip the
+      nominal terminate after one step. Until the rocket first achieves $z > 0$ under power, the
+      loop clamps it to the pad at rest (\src{core/sim/Propagator.cpp}{111}) --- the pad's normal
+      force, modeled as a clamp.
+\item \textbf{NoLiftoff.} If after $3\unit{s}$ the flight has never climbed past $1\unit{m}$, the
+      run aborts with a thrust-versus-weight warning rather than holding the clamp forever.
+\item \textbf{NonFiniteState.} A NaN or Inf coordinate fails every comparison --- $z < 0$ would
+      never trip --- so a non-finite step aborts immediately and is kept out of the recorded
+      history (\src{core/sim/Propagator.cpp}{97}).
+\item \textbf{Backstops.} A sim-time cap and an iteration cap catch a flight that never descends
+      or collapses into vanishingly small steps; the \code{catch} that wraps the loop reports any
+      integrator throw as \code{IntegratorError}.
+\end{itemize}
+
+What remains when the loop exits is the flight record, in two grains. The
+\code{TrajectoryStatistics} fold (\srcf{core/sim/TrajectoryStatistics.h}) --- apogee and its
+time, maximum speed and its time --- is updated on \emph{every} accepted step, independent of
+state saving, so the summary and the no-liftoff guard work even for runs that retain no history.
+The state history itself is the vector of $(t, \code{StateData})$ samples, each carrying
+position, velocity, and the gate-consistent mass/CG/inertia triple recorded in
+\cref{sec:flight-record}. Both surface through the controller
+(\src{core/QtRocket.h}{47}): \code{getStates()}, \code{getTrajectoryStatistics()}, and
+\code{getTerminationReason()}. The CLI's \code{launch} command (\cref{sec:cli}) prints the
+summary from the statistics, warns on any non-nominal reason, and streams the full series to
+\cppinline|qtrocket_run.csv| (\src{cli/Repl.cpp}{785}) --- one row per sample,
+\cppinline|t,x,y,z,vx,vy,vz,mass,cg_x,cg_y,cg_z,Ixx,Iyy,Izz| --- which is the artifact the test
+matrix regressions and any external analysis consume.
+
+The walkthrough closes where the design intends: the part tree that a user edits by name and
+verb in \cref{sec:cli}, and that the GUI mirrors row for row in \cref{sec:gui}, is the same
+object the integrator interrogated several thousand times above --- through two interface
+methods, three calls per stage, one gated rebuild per burning step, and zero geometry work.

@@ -1,0 +1,197 @@
+\section{Glossary}\label{sec:glossary}
+
+This appendix defines the terms of art as they are used throughout this whitepaper, in
+alphabetical order. Every entry names a construct in the working tree and cites where it
+lives; the definitions are deliberately terse --- the load-bearing discussion is in the
+body sections cross-referenced from each entry.
+
+\begin{description}
+
+\item[aboutTo/did event pair] One mutation's change notification, fired twice: once with
+  \code{before == true} immediately before the write lands, once with \code{before ==
+  false} immediately after (\code{PartsModel::Event},
+  \src{core/model/PartsModel.h}{144}). The pairing exists because Qt's
+  \code{QAbstractItemModel} row-op contract demands \code{begin*} before the model
+  mutates and \code{end*} after; the stream is shaped so a Qt adapter is a pure
+  translation (\cref{sec:gui}).
+
+\item[Composite (mass / CM / inertia)] The aggregate of a node together with all its
+  descendants: total mass, mass-weighted center of mass, and the full
+  $\unit{kg\,m^2}$ inertia tensor about that CM, computed by the two-pass walk
+  \code{PartNode::computeCompositeAt} (\src{core/model/PartsModel.cpp}{171}) and served
+  by \code{compositeMass}/\code{compositeCm}/\code{compositeI}. Any node is a valid
+  sub-assembly root for these queries (\cref{sec:tree}).
+
+\item[Detached sub-tree] A \cppinline|std::unique_ptr<PartNode>| owned by no
+  \code{PartsModel}: the return value of \code{detach}, the product of
+  \code{PartNode::make}/\code{addChild}/\code{clone}, and the currency of serializer
+  load and clipboard-style workflows. It is a first-class value --- it re-enters a model
+  only through \code{attachSubtree} or \code{installRoot}
+  (\srcf{core/model/PartsModel.h}).
+
+\item[Gap (seat-signed)] The \code{gap} field of a \code{StationLink}: metres, with
+  meaning selected by the seat --- a forward standoff along \zfwd\ for \seat{Abut} and
+  \seat{OnSurface}, a non-negative insertion depth driving the child aft for
+  \seat{NestInBore}. \code{placeChild} applies it as the signed term in
+  $z_{\mathrm{child}} = z_p + \mathrm{signedGap} - z_c$
+  (\src{core/model/parts/Placement.h}{162}).
+
+\item[Install facade] The single path by which a whole design enters or leaves the model:
+  \code{RocketModel::installDesign} (\src{core/model/RocketModel.h}{87}) delegating to
+  \code{PartsModel::installRoot} (\src{core/model/PartsModel.h}{220}). It atomically
+  replaces the root (null clears), re-resolves the motor borrow, and applies the one
+  install side effect owned by \code{RocketModel}: a fresh airframe does not inherit a
+  manual reference-area override (\src{core/model/RocketModel.cpp}{121}).
+
+\item[Leaf] What a \code{Part} is: one component's mass, geometry-derived inertia, CM
+  offset, silhouette profile, and aero contribution --- and nothing else. Tree
+  structure, placement, and every composite quantity live outside the leaf, in
+  \code{PartNode}/\code{PartsModel} (\cref{sec:leaf}).
+
+\item[Live sum] The uncached recursive mass total
+  \code{PartNode::compositeMass(t)} (\src{core/model/PartsModel.cpp}{102}): this node's
+  \code{getMass(t)} plus every descendant's, recomputed on each call. It is both the ODE
+  mass divisor and the key the mass-delta gate compares against its stamp; it does no
+  tensor work, which is why it is cheap enough to evaluate every integrator stage.
+
+\item[Mass-delta gate] The cache gate for composite CM and inertia
+  (\code{PartNode::ensureCompositeCache}, \src{core/model/PartsModel.cpp}{114}): rebuild
+  when the structure was edited (\cppinline|massDirty_|) or when the live sum differs
+  from the stamped \cppinline|builtAtMass_| under exact \code{==} comparison. The NaN
+  sentinel forces the first build; after burnout the live sum repeats bit-for-bit and
+  the cache freezes (\cref{sec:caching}).
+
+\item[Motor borrow] The typed non-owning pointer \cppinline|part::Motor* motor_|
+  (\src{core/model/PartsModel.h}{261}) aiming into the owned tree, giving the motor
+  verbs $O(1)$ access to the one motor node. It is re-resolved only inside
+  \code{registerSubtree}/\code{unregisterSubtree}, the adopt/release seam every
+  structural verb funnels through, so no structural edit can leave it dangling
+  (\cref{sec:motor}).
+
+\item[\code{MutateHint}] The declared invalidation scope of an arbitrary leaf edit
+  through \code{mutatePart} (\src{core/model/PartsModel.h}{139}): \code{MassOnly}
+  dirties the mass chain alone, \code{Geometry} dirties both chains. The hint exists so
+  a mass-only edit never pays for a geometry re-resolve and envelope sweep.
+
+\item[No-design state] The representable empty model: \cppinline|root_| is null,
+  \code{hasDesign()} is false, \code{size()} is 0, and every verb fails cleanly rather
+  than operating on a placeholder rocket (\src{core/model/PartsModel.h}{161}). ``No
+  design'' is a real state of the system, not an error (\cref{sec:tree}).
+
+\item[\code{Part}] The pure-leaf base class of all rocket components
+  (\srcf{core/model/parts/Part.h}): mass, per-unit-mass inertia, CM offset,
+  length/radius profile, and Barrowman aero contribution, duplicated only via
+  \code{clone()} (type-preserving, fresh id). Its mass/inertia setters are private to
+  the \code{PartsModel} friend seam (\src{core/model/parts/Part.h}{133}), so
+  post-attach mutation cannot bypass cache invalidation.
+
+\item[\code{Part::Id}] The stable per-instance identity: a \cppinline|std::uint64_t|
+  assigned at construction (fresh even for a copy), never changed, never serialized ---
+  ids are meaningful only within one process run
+  (\src{core/model/parts/Part.h}{114}). Names are human-facing labels and need not be
+  unique; identity is id-only. \code{part::PartId} (\src{core/model/parts/Placement.h}{25})
+  is its dependency-free mirror in the placement layer.
+
+\item[\code{PartNode}] One node of the owned tree (\src{core/model/PartsModel.h}{42}):
+  it uniquely owns a \code{Part} leaf, stores the incoming \code{StationLink}, owns its
+  child nodes, and carries the two gated caches (composite mass properties; resolved
+  placements plus verdict). Reads hand out \code{const} references only.
+
+\item[\code{PartsModel}] The single owner of the node tree and the only mutation
+  authority (\src{core/model/PartsModel.h}{133}), owned by \code{RocketModel}. It holds
+  the nullable root, the $O(1)$ id index, the motor borrow, and the change callback;
+  every post-attach edit is one of its verbs.
+
+\item[Per-unit-mass tensor] The geometric inertia tensor a leaf stores and
+  \code{getI()} returns: units $\unit{m^2}$, taken about the part's own CM, independent
+  of mass (\src{core/model/parts/Part.h}{59}). The composite pass multiplies it by
+  \code{getMass(t)} and parallel-axis-shifts it, producing the full
+  $\unit{kg\,m^2}$ tensor. Storing geometry, not mass-weighted values, keeps a
+  time-varying mass (a burning motor) from invalidating the stored tensor.
+
+\item[Placement gate] The structural cache gate
+  (\code{PartNode::ensurePlacementCache}, \src{core/model/PartsModel.cpp}{144}):
+  geometry is re-resolved and re-swept only when \cppinline|placementDirty_| is set ---
+  a node attached or detached, a link or geometry edit --- and never on a mass change,
+  because geometry is invariant under a burn (\cref{sec:caching}).
+
+\item[Pose] A rigid placement in the root frame: a fore-plane origin on the axis plus an
+  orientation quaternion, identity in 3-DOF
+  (\src{core/model/parts/Placement.h}{79}). \code{Pose::compose} is the rigid-transform
+  composition law, degenerating to vector addition today and carrying 6-DOF at zero
+  schema cost.
+
+\item[Resolved placement (\code{Placed})] A part paired with its resolved \code{Pose}
+  and its seat parent's id (\src{core/model/parts/Placement.h}{98}), produced by the
+  depth-first resolve \code{resolveNodes} (\src{core/model/PartsModel.cpp}{29}) and
+  cached per node. The one resolve every consumer shares: composite pass, sweep, CLI
+  reporting, visualizer (\cref{sec:placement}).
+
+\item[Routed verb] A post-attach mutation path on \code{PartsModel} --- the structural
+  verbs \code{attach}, \code{attachSubtree}, \code{detach}, \code{installRoot}; the leaf
+  edits \code{setPartMass}, \code{setPartInertia}, \code{setLink}, \code{mutatePart};
+  and the motor verbs: each performs the write, dirties exactly the cache chains the edit
+  invalidated, and fires the paired events. Routing is what makes skipped invalidation
+  unrepresentable rather than merely discouraged (\cref{sec:philosophy}).
+
+\item[Seat kind] The closed three-value enum \code{SeatKind}
+  (\src{core/model/parts/Placement.h}{32}) naming the radial relationship of one
+  attachment --- \seat{Abut}, \seat{NestInBore}, \seat{OnSurface}. The seat selects both
+  the radial seam check and the sign convention of the gap. It is closed by design: a
+  rigid axisymmetric stack has only these three radial relationships.
+
+\item[Single-writer contract] The concurrency rule for every mutable-behind-const cache
+  in the model layer: one thread reads and writes; concurrent access --- even all-const
+  --- is a data race, because \code{const} accessors write cache fields
+  (\src{core/model/PartsModel.h}{39}). The motor's log-once burnout latch is under the
+  same contract (\src{core/model/MotorModel.h}{342}).
+
+\item[Solid-host rule] The capacity predicate \code{Part::innerCapacityAt}
+  (\src{core/model/parts/Part.h}{106}): the radius a host grants an intruder is its bore
+  for a bored part and its outer skin for a solid one; an offender of outer radius $r$
+  fits iff $r \le \mathrm{capacity} + \mathit{tol}$. One predicate, correct for both
+  host kinds, consumed by the envelope sweep.
+
+\item[Stamp-after-success] The failure discipline of the mass-delta gate: the stamp
+  (\cppinline|builtAtMass_|, cleared \cppinline|massDirty_|) is written only after
+  \code{computeCompositeAt} returns. A failed placement solve therefore throws out of
+  the build and again on every subsequent read --- the cache never launders a failure
+  into stale-but-plausible numbers (\src{core/model/PartsModel.cpp}{127}).
+
+\item[Static margin / datum] \code{compositeAero} re-expresses each part's
+  \cppinline|x_cp| (reported from that part's own CM) onto the sub-tree-root fore-plane
+  datum --- the same datum \code{compositeCm} uses --- so
+  $\mathrm{cp} - \mathrm{cg}$ is directly the static margin
+  (\src{core/model/PartsModel.cpp}{224}). One shared datum is the point; two datums
+  would make the margin a bookkeeping exercise.
+
+\item[Station (fractional)] A position along a part's axis as a fraction
+  $\code{station01} \in [0,1]$: $0$ the aft plane, $1$ the fore plane, mapped to
+  $z = (\code{station01}-1)\,L$ in the part's \zfwd\ frame and resolved against the live
+  \code{getLength()} on every read --- editing a length moves the seam
+  (\src{core/model/parts/Part.h}{102}). \code{stationAt} returns the resolved
+  \code{Station} landmark $\{z, r_{\mathrm{outer}}, r_{\mathrm{inner}}\}$, a derived
+  value never stored.
+
+\item[\code{StationLink}] The stored placement intent of one parent$\to$child edge
+  (\src{core/model/parts/Placement.h}{54}): parent fractional station, child fractional
+  station, seat-signed gap, \code{SeatKind}, and a per-seam rotation (identity in
+  3-DOF). A default link means ``child fore plane abuts parent aft plane,'' so the
+  natural nose$\to$body stack costs no authored numbers. It is the only spatial
+  relationship persisted; poses are always derived.
+
+\item[Sweep (envelope sweep)] The whole-tree interference diagnostic
+  \code{sweepOverlaps} (\src{core/model/parts/Placement.h}{178}): build a world axial
+  interval per part, sort ($O(N \log N)$), sample each offender at feature breakpoints,
+  and test its outer radius against the smallest-id covering host's capacity under the
+  solid-host rule, excluding the offender's descendants and direct seat parent. It runs
+  once per structural resolve, never per integration step (\cref{sec:placement}).
+
+\item[Verdict] The cached \code{SolveResult} of one structural resolve
+  (\src{core/model/parts/Placement.h}{123}): an \code{ok} flag plus located
+  \code{OverlapDiagnostic}s naming offender and host by id. \code{ok == false} makes
+  every composite read throw (\src{core/model/PartsModel.cpp}{184}) --- a
+  self-intersecting design is a hard, located failure, never a silently wrong mass or
+  tensor.
+
+\end{description}

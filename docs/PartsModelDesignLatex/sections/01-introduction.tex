@@ -1,0 +1,168 @@
+\section{Introduction: one tree, four consumers}\label{sec:intro}
+
+QtRocket is an open-source model-rocket simulator: a Qt6 Widgets GUI and a Qt-free command-line
+REPL built on a shared C++23 simulation core, with a standalone OpenGL viewer alongside them. In
+that core, a rocket is exactly one thing --- a tree of physical components. A nose cone sits on a
+body tube; fins and a motor mount attach to the tube; a motor seats in the mount. The tree is not a
+rendering convenience or a UI affordance: it is the physical description from which every quantity
+the simulator needs (mass, center of mass, inertia, aerodynamic coefficients, thrust) is derived,
+and every view the user sees is drawn.
+
+This document describes the architecture that carries that tree: a pure-leaf component class
+(\code{Part}), the owned node that composes leaves into assemblies (\code{PartNode}), the single
+mutation authority that owns the whole structure (\code{PartsModel}), and the bridge that presents
+the finished rocket to the numerics (\code{RocketModel}). This section establishes the shape of the
+design at survey depth --- what the tree is, who reads it, and which class answers for what --- and
+closes with a map of where each topic is developed in full.
+
+\subsection{A rocket is a tree}\label{sec:intro-tree}
+
+The leaves of the tree are concrete components, defined under \srcf{core/model/parts/}:
+\code{ConicalNoseCone}, \code{BodyTube}, \code{FinSet}, \code{HollowSphere}, and \code{Motor}, a
+zero-length node that wraps the time-aware \code{MotorModel} so that burning propellant mass is
+just another leaf in the composite sum (\cref{sec:motor}). Each leaf knows only itself: its own
+mass in $\unit{kg}$, its per-unit-mass inertia tensor about its own CM, its closed-form silhouette
+radii, and its Barrowman aerodynamic contribution (\cref{sec:leaf}). Units are SI throughout, and
+every part shares one local frame convention --- \zfwd, the part occupying $z \in [-L, 0]$
+(\cref{sec:philosophy}).
+
+The edges of the tree carry \emph{placement intent}, not coordinates: a \code{StationLink}
+(\srcf{core/model/parts/Placement.h}) names a fractional station on the parent, a fractional
+station on the child, a seat kind, and a gap in metres --- ``this rim seats against that rim,''
+``this tube nests in that bore.'' A single resolver turns intent into absolute geometry once per
+structural edit, and an envelope sweep passes an overlap verdict on the result (\cref{sec:placement}). Because
+stations are fractions of live length, resizing a part moves every seam that references it; nothing
+downstream stores a stale coordinate.
+
+Finally, the empty tree is a real state. \code{PartsModel::hasDesign()} is false until a design is
+installed, and every consumer is written against that possibility; there is no placeholder part
+standing in for ``nothing yet'' (\cref{sec:tree}).
+
+\subsection{Four consumers, one representation}\label{sec:intro-consumers}
+
+Four independent subsystems consume the tree, and none of them holds a private copy of it:
+
+\begin{enumerate}
+\item \textbf{The CLI editor} (\srcf{cli/Repl.cpp}) builds and inspects designs interactively:
+  \code{newdesign} installs a root, \code{addpart} resolves a parent by id, name, or the literal
+  \code{root} and calls the \code{attach} verb (\src{cli/Repl.cpp}{952}), \code{listparts} walks
+  the tree in attachment order printing composite mass and CG, \code{checkdesign} reports the
+  envelope sweep's overlap verdict, and \code{savedesign}/\code{loaddesign} round-trip the design through
+  the versioned XML serializer (\cref{sec:serialization,sec:cli}).
+\item \textbf{The GUI tree view} (\srcf{gui/RocketTreeView.h}) adapts the live tree to Qt:
+  \code{RocketPartModel} is a \code{QAbstractItemModel} whose rows \emph{are} the tree's children
+  spans, and which consumes the typed aboutTo/did event stream so that an attach or detach becomes
+  a surgical row insert or remove rather than a model reset (\cref{sec:gui}). Edits made elsewhere
+  in the GUI route through the same verbs --- the cannonball preset writes its mass via
+  \code{setPartMass} (\src{gui/CannonballTab.cpp}{130}).
+\item \textbf{The 3D visualizer} (\srcf{visualizer/RocketMesh.cpp}) meshes each part at its
+  resolved pose. It reads the root node's cached \code{resolvedPlacements()}
+  (\src{visualizer/RocketMesh.cpp}{433}) --- the same poses the composite mass pass integrates
+  over --- and reads \code{placementDiagnostics()} to paint overlap offenders in an error color
+  with a located message.
+\item \textbf{The flight integrator} (\srcf{core/sim/Propagator.cpp}) never sees parts at all. It
+  drives the \code{Propagatable} interface, evaluating
+  \cppinline|getForces(...) / getMass(t)| at every solver stage
+  (\src{core/sim/Propagator.cpp}{41}) and recording composite mass properties once per recorded
+  step. \code{RocketModel} answers every one of those calls from the root node's composite
+  queries, as \cref{lst:intro-massprops} shows (\cref{sec:flight}).
+\end{enumerate}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+void RocketModel::writeMassProperties(double t, StateData& st)
+{
+    // Via the gated accessors, so after burnout this reads the frozen cache. The three are mutually
+    // consistent at this t.
+    st.mass    = parts_.root()->compositeMass(t);
+    st.cg      = parts_.root()->compositeCm(t);
+    st.inertia = parts_.root()->compositeI(t);
+}
+\end{minted}
+\caption{The model side of the sim bridge delegates every mass property to the root node's cached
+composite queries (\srccap{core/model/RocketModel.cpp}{49}). The integrator flies whatever the
+tree says --- there is no second bookkeeping of mass anywhere in the sim path.}
+\label{lst:intro-massprops}
+\end{listing}
+
+\begin{keyinsight}[Why one representation matters]
+The pose the visualizer draws a coupler at and the CM the integrator flies are derived from the
+\emph{same} cached resolve on the \emph{same} node; the mass column in the GUI and the CLI's
+\code{listparts} read the same leaf values through the same \code{const} accessors. Consumers
+cannot disagree about what the rocket is, because no consumer owns a copy that could drift. Where
+representations must genuinely differ in shape --- Qt model indexes, GL vertex buffers --- they are
+throwaway projections rebuilt from the tree, never parallel sources of truth.
+\end{keyinsight}
+
+\begin{rejected}[Rejected --- per-consumer scene copies]
+The conventional alternative gives each front end its own mirror: the viewer keeps a scene graph,
+the GUI keeps a shadow item tree, and change-propagation code keeps them synchronized. Every such
+mirror is a place for the rocket to silently become two rockets --- a missed notification is not an
+error anyone sees, it is a viewer that draws a design the integrator is not flying. The design here
+spends its effort on making the one tree cheap to read (cached composites, a cached resolve,
+$O(1)$ id lookup) instead of on synchronizing copies, so the failure mode does not exist.
+\end{rejected}
+
+\subsection{Three roles and a bridge}\label{sec:intro-roles}
+
+The tree is carried by three classes with deliberately unequal jobs, plus one bridge above them.
+\Cref{fig:intro-architecture} places them among their consumers.
+
+\textbf{\code{Part}} (\src{core/model/parts/Part.h}{34}) is a pure leaf: one component's mass,
+geometry profile, and aero contribution, with no children, no parent, and no knowledge that trees
+exist. Its mutating setters are private to the \code{PartsModel} seam, so a leaf cannot be edited
+behind the caches' back. \Cref{sec:leaf} gives its full contract.
+
+\textbf{\code{PartNode}} (\src{core/model/PartsModel.h}{42}) is one node of the owned tree: it
+owns its \code{Part}, stores the incoming \code{StationLink}, owns its children, and caches the
+derived quantities of its sub-tree --- composite mass, CM, and inertia behind a mass-delta gate,
+and the resolved placements plus overlap verdict behind a placement gate. Any node is a valid
+sub-assembly root, so the same queries that describe the whole rocket describe a stage or a pod.
+\Cref{sec:tree} covers the structure, \cref{sec:caching} the two gates, and \cref{sec:placement}
+the resolve itself.
+
+\textbf{\code{PartsModel}} (\src{core/model/PartsModel.h}{133}) is the single owner and the only
+mutation authority. It holds the root, an $O(1)$ id index so stale references fail safe, and the
+motor slot with its at-most-one invariant (\cref{sec:motor}). Every structural edit is a typed
+verb --- \code{attach}, \code{attachSubtree}, \code{detach}, \code{installRoot} --- and the
+fallible ones report \cppinline|std::expected| errors rather than throwing on misuse. Every
+post-attach edit below the structural level is a routed verb --- \code{setPartMass} for mass,
+\code{setLink} to re-seat a seam, \code{mutatePart} for arbitrary leaf edits under a declared
+hint --- that writes and then dirties exactly the cache chain the edit touched. Around every mutation it fires a typed aboutTo/did event
+pair, which is precisely the shape Qt's row-operation contract requires (\cref{sec:gui}).
+
+\textbf{\code{RocketModel}} (\src{core/model/RocketModel.h}{27}) sits above as the rocket-level
+facade: it owns the \code{PartsModel}, implements \code{Propagatable} for the sim
+(\cref{sec:flight}), carries the drag configuration, and wraps design installation in
+\code{installDesign} so install-time policy (such as resetting a manual reference-area override)
+lives in one place.
+
+\begin{designrule}[One representation, many readers, one writer]
+Reads are \code{const} everywhere --- \code{children()}, \code{find()}, the composite queries, the
+resolved placements. The only write paths are \code{PartsModel} verbs. Consequently every consumer
+observes every edit, no edit can skip cache invalidation, and adding a fifth consumer is a matter
+of reading the same tree, not of joining a synchronization protocol.
+\end{designrule}
+
+\tikzfig{component-architecture}{One tree, four consumers. The front ends and the integrator
+(top and right) reach the owned part tree only through \code{RocketModel}'s facade and
+\code{PartsModel}'s verbs and \code{const} reads; the typed event stream (dashed, left) flows back
+out to the GUI adapter. \code{PartNode} calls the pure placement functions of
+\srcfcap{core/model/parts/Placement.h} only when a structural edit dirties its geometry
+cache.}{fig:intro-architecture}
+
+\subsection{Where each topic lives}\label{sec:intro-map}
+
+The rest of the document develops each role in the order the dependencies stack.
+\Cref{sec:philosophy} states the design rules the whole structure obeys --- one mutation
+authority, linear ownership, gated derived state --- and fixes the geometric conventions.
+\Cref{sec:leaf} specifies the \code{Part} leaf and its concrete types; \cref{sec:tree} the
+\code{PartNode} tree and \code{PartsModel}'s verbs, identity model, and typed errors.
+\Cref{sec:caching} details the two cache gates and why the ODE-hot path never re-resolves
+geometry; \cref{sec:placement} the station-link placement model, the per-edge pose math, and the
+envelope sweep. \Cref{sec:motor} covers the motor slot and its single-motor invariant;
+\cref{sec:serialization} the versioned \code{.qrd} design format. Two walkthroughs then trace the
+system end to end: a CLI editing session in \cref{sec:cli} and a full simulated flight in
+\cref{sec:flight}. \Cref{sec:gui} describes the Qt adapter built on the event stream,
+\cref{sec:tradeoffs} records the load-bearing trade-offs and rejected alternatives in one place,
+and \cref{sec:verification} documents the test architecture that pins all of it down.

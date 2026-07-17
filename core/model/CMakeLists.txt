@@ -22,6 +22,8 @@ add_library(model
    parts/PartFactory.cpp
    parts/PartFactory.h
    parts/Parts.h
+   PartsModel.cpp
+   PartsModel.h
    Propagatable.cpp
    Propagatable.h
    RocketModel.cpp

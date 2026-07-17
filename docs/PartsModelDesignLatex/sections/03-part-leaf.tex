@@ -1,0 +1,367 @@
+\section[The Part leaf]{The \code{Part} leaf}\label{sec:leaf}
+
+A \code{Part} (\srcf{core/model/parts/Part.h}) answers exactly four questions about one physical
+component: who it is (a stable id, a human-facing name, a type tag), what it weighs and how that
+mass is distributed (own mass, a per-unit-mass inertia tensor, a CM offset), what silhouette it
+presents along the axis (length and closed-form radius profiles), and what it contributes to the
+Barrowman stack (a normalized \code{AeroComponent}). It answers nothing else. There is no parent
+pointer, no child list, no placement, no cache, and no composite quantity anywhere on the class ---
+the tree structure and everything derived from it belong to \code{PartNode} and \code{PartsModel}
+(\cref{sec:tree}), and the derived state is cached there behind the two gates of
+\cref{sec:caching}. The leaf is the passive, physical vocabulary; the tree is the grammar.
+
+This division is enforced at the type level rather than by convention. A part is a
+unique-ownership value: assignment is deleted, the copy constructor is protected, and duplication
+exists only as the virtual \code{clone()}. Post-attach mutation exists only as two private setters
+whose sole friend is \code{PartsModel}, so an edit that skips cache invalidation is not merely
+discouraged --- it does not compile. \Cref{fig:leaf-class} shows the full contract and the five
+concrete leaves; the rest of this section walks it top to bottom.
+
+\classfig{class-part-leaf}{The \code{Part} leaf contract (\srcfcap{core/model/parts/Part.h}) and its
+five concrete types. Concrete boxes list only the members each type overrides;
+\code{PartsModel} appears only in its leaf-facing role, as the friend behind the routed
+\code{setMass}/\code{setI} seam (and, for \code{Motor}, the motor verbs).}{fig:leaf-class}{1.0}
+
+\subsection{Identity: id, name, type tag}\label{sec:leaf-identity}
+
+Every part carries a \code{Part::Id} (\cppinline|std::uint64_t|), drawn from a process-wide atomic
+counter at construction (\src{core/model/parts/Part.cpp}{17}). The counter starts at 1, reserving 0 as
+the ``none/invalid'' value that other layers use for a root's parent or a cleared event field; it
+increments with \cppinline|std::memory_order_relaxed| because uniqueness, not ordering, is the
+contract. Every constructor assigns a fresh id --- including the protected copy constructor
+(\src{core/model/parts/Part.cpp}{35}) --- so a clone is a new part, never an alias of its original.
+Ids are deliberately not serialized: they are meaningful only within a single run, and a design
+file round-trip (\cref{sec:serialization}) yields a structurally identical tree with new ids.
+
+The \code{name} is a human-facing label with no uniqueness requirement;
+\code{PartsModel::findByName} is a pre-order convenience, but identity is always the id. The type
+tag \code{typeName()} is the one pure identity virtual: a stable string
+(\code{"NoseCone"}, \code{"BodyTube"}, \code{"FinSet"}, \code{"HollowSphere"}, \code{"Motor"})
+that doubles as the part-factory key (\srcf{core/model/parts/PartFactory.h}), the design-file
+\code{<part type=...>} attribute, and the CLI \code{listparts} label. One vocabulary serves the
+factory, the file format, and the front-ends, so the three cannot drift apart.
+
+\subsection{Mass properties: the per-unit-mass split}\label{sec:leaf-mass}
+
+The leaf stores its own mass in kilograms and its inertia tensor \emph{per unit mass} --- a purely
+geometric tensor in $\unit{m^2}$, about the part's own CM (\src{core/model/parts/Part.h}{60}). The full
+mass-weighted tensors in $\unit{kg\,m^2}$ exist only as composites, assembled by the node walk of
+\cref{sec:tree}, which weights each part's geometric tensor by its live mass and shifts it to the
+composite CM with the parallel-axis theorem.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+/// Per-unit-mass (geometric) inertia tensor about this part's CM (m^2).
+virtual Matrix3 getI() const { return inertiaTensor; }
+
+/// CM relative to the component middle. Zero for symmetric parts, non-zero for a
+/// cone (CM at L/4 or L/3 from the base). Consumed by the composite walk as
+/// `-L/2 + getCenterMassOffset().z()`.
+Vector3 getCenterMassOffset() const { return cm; }
+
+/// This part's own mass at simulation time @p t (kg). Lets overrides model
+/// time-varying mass (e.g. a motor).
+virtual double getMass(double t [[maybe_unused]]) const
+{
+    return mass;
+}
+\end{minted}
+\caption{The mass-property surface of the leaf (\srccap{core/model/parts/Part.h}{59}--70): a geometric
+tensor, a middle-relative CM offset, and a time-parameterized mass.}\label{lst:leaf-mass}
+\end{listing}
+
+The split (\cref{lst:leaf-mass}) exists because mass is the only time-varying physical input in the model. The hook is
+\code{getMass(t)}: the base implementation ignores $t$ and returns the stored mass, and
+\code{Motor} overrides it to read its wrapped \code{MotorModel} live --- loaded weight before
+ignition, falling to the casing mass over the burn (\cref{sec:motor}). Since the composite walk
+re-weights resolved geometry by \code{getMass(t)} on every rebuild, this one virtual is what makes
+every composite quantity --- mass, CM, inertia --- a function of time.
+
+\begin{rejected}[Rejected --- mass-weighted leaf tensors]
+Storing $\unit{kg\,m^2}$ at the leaf would bind a snapshot of the mass into the tensor. Every mass
+edit would then require a paired tensor rescale --- two writes maintaining one invariant --- and a
+burning motor would need its stored tensor rewritten every timestep. Factoring the mass out
+entirely makes the two orthogonal: mass moves, geometry does not, and the tensor written at
+construction stays valid for the part's whole life. The price is one scalar multiply per part per
+composite rebuild, paid inside a walk that is already touching every part.
+\end{rejected}
+
+\begin{keyinsight}[Units at the leaf boundary]
+\code{Part::getI()} is per-unit-mass, $\unit{m^2}$, about the part's own CM. Composite tensors
+(\code{PartNode::compositeI}) are mass-weighted, $\unit{kg\,m^2}$, about the composite CM. The
+weighting is applied exactly once --- \cppinline|c.mass * c.part->getI()| inside the node walk ---
+so a leaf tensor is never double-weighted and a composite is never un-weighted.
+\end{keyinsight}
+
+The CM offset is deliberately expressed relative to the \emph{component middle}, not the fore
+plane. The composite walk locates each part's CM at
+\cppinline|-L/2 + getCenterMassOffset().z()| below its resolved fore-plane origin
+(\src{core/model/PartsModel.cpp}{199}); middle-relative storage makes the zero vector the correct
+value for every symmetric part (tube, sphere), so only genuinely asymmetric shapes record an
+offset, computed once in their constructors. A fore-plane-relative convention would instead force
+every symmetric part to store $-L/2$ and keep it synchronized with its length --- exactly the
+derived-from-geometry data this design refuses to store. The offset is non-virtual and set once at
+construction; its radial components are carried but unconsumed until 6-DOF force application.
+Placement itself never reads the CM: attachment is geometric (\code{StationLink},
+\cref{sec:placement}), and the CM participates only in the mass walk.
+
+\subsection{The aerodynamic contribution}\label{sec:leaf-aero}
+
+\code{getAero(refArea)} (\src{core/model/parts/Part.h}{75}) returns the part's Barrowman contribution
+as an \code{AeroComponent} --- $C_{N_\alpha}$, the weighted moment \code{cnAlphaXcp}, and a drag
+term --- normalized to the caller-supplied shared reference area so that contributions from
+different parts are directly additive. The default is aerodynamically inert
+(\cppinline|return {};|, $C_{N_\alpha} = 0$), and the value is a pure function of the part's
+geometry: computed on demand, never stored.
+
+\begin{designrule}[The own-CM aero datum]
+Each part reports its center of pressure as $x_{\mathrm{cp}}$ measured from \emph{its own CM}
+along $+z$. A leaf cannot know its station in the rocket --- that is placement, which lives in the
+tree --- but its own CM is the one landmark both sides can locate: the part derives it from its
+geometry, and the composite walk knows exactly where that CM lands
+(\src{core/model/PartsModel.cpp}{237}). The walk adds $C_{N_\alpha}\cdot z_{\mathrm{cm}}$ to each
+contribution, re-expressing every part on the sub-tree-root datum shared with
+\code{compositeCm} --- which is what makes $\mathrm{cp} - \mathrm{cg}$ the static margin with no
+frame conversion.
+\end{designrule}
+
+The component stores the product \code{cnAlphaXcp} rather than a raw $x_{\mathrm{cp}}$, so
+composing a CP is plain field addition and a zero-lift body drops out of the weighted average with
+no special case --- a \code{BodyTube} contributes $C_{N_\alpha} = 0$ and simply vanishes from the
+sum (\srcf{core/model/Aero.h}).
+
+\code{getReferenceArea()} is the second, decoupled half of the aero story: each part reports its
+own frontal disc ($\pi r^2$, or 0 for a part with no frontal disc), and the tree's
+\code{maxFrontalReferenceArea} takes the maximum over the sub-tree --- the shared Barrowman
+reference area that is then fed back into every \code{getAero} call. A part thus \emph{reports} an
+area once and \emph{receives} the winning area as a parameter; no leaf ever assumes it defines the
+rocket's reference.
+
+\subsection{The geometry profile}\label{sec:leaf-geometry}
+
+Every part describes itself in the same local frame: it occupies $z \in [-L, 0]$ with its fore
+plane at the origin and \zfwd{} (\src{core/model/parts/Part.h}{79}). \code{getLength()} defaults to 0,
+which is the contract for a geometrically inert node --- a \code{Motor} contributes mass but
+consumes no stack length --- and every concrete geometry type overrides it. The profile proper is
+two closed-form virtuals, \code{radiusOuterAt(zLocal)} and \code{radiusInnerAt(zLocal)}: a tube
+returns constants, a cone a linear taper, a sphere a circular arc. They are callable independently
+of any station bookkeeping because the envelope sweep of \cref{sec:placement} samples them across
+whole spans, not just at seams. \code{axialLength()} defaults to \code{getLength()} and exists as
+the override point for a part whose envelope span differs from its nominal length; no current part
+needs it, but the seam keeps ``envelope'' from silently aliasing ``length'' in the sweep.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+Station Part::stationAt(double station01) const
+{
+    // Clamp the fraction (degenerate guard) and map it into the +z = forward local
+    // frame: station 1 is the fore plane (z = 0, the origin), station 0 the aft
+    // plane (z = -length).
+    const double s = std::clamp(station01, 0.0, 1.0);
+    const double z = (s - 1.0) * getLength();
+    return Station{z, radiusOuterAt(z), radiusInnerAt(z)};
+}
+
+double Part::innerCapacityAt(double zLocal) const
+{
+    // Solid-host rule: a solid part is bounded by its outer skin (the poke-through
+    // test); a bored part by its inner wall. Branching here keeps the overlap sweep
+    // free of solidity special cases.
+    return isSolid() ? radiusOuterAt(zLocal) : radiusInnerAt(zLocal);
+}
+\end{minted}
+\caption{Fraction-to-landmark mapping and the solid-host rule
+(\srccap{core/model/parts/Part.cpp}{44}--58).}\label{lst:leaf-station}
+\end{listing}
+
+\code{stationAt(station01)} (\cref{lst:leaf-station}) turns a dimensionless fraction --- 0 the aft
+plane, 1 the fore plane --- into a resolved \code{Station} landmark: the axial coordinate plus the
+outer and inner radii read from the profile there. The fraction is clamped to $[0,1]$, the base
+mapping is $z = (s-1)\,L$, and because it is built entirely from \code{getLength()} and the radius
+virtuals, no symmetric part needs an override; a \code{Station} is derived on every read and never
+stored, so editing a length can never strand a stale landmark.
+
+\code{isSolid()} is inferred, not stored: the base asks whether the part has a bore at its fore
+plane (\cppinline|radiusInnerAt(0.0) <= 0.0|). Two classes of part must override the inference.
+A \code{HollowSphere}'s cavity vanishes at the poles, so the fore-plane probe would misreport a
+shell as solid; it answers from its inner radius directly. A shell \code{ConicalNoseCone} does not
+model an inner profile at all, so its solidity is \emph{authored} --- the constructor's
+\code{solid} flag is the answer. Getting this right matters because \code{isSolid()} selects the
+edge in \code{innerCapacityAt}: the radius a host offers an inserted child is its bore if it has
+one, and its outer skin (the poke-through bound) if it does not. Centralizing that branch in the
+base class keeps the envelope sweep entirely free of per-type solidity cases --- an offender of
+outer radius $r$ fits at a station iff $r \le$ \code{innerCapacityAt} $+$ tolerance, whatever the
+host is.
+
+\subsection[Duplication: clone() through a protected copy]{Duplication: \code{clone()} through a protected copy}\label{sec:leaf-clone}
+
+A part is duplicated one way: \code{clone()}, a pure virtual returning
+\cppinline|std::unique_ptr<Part>| (\src{core/model/parts/Part.h}{125}). Each concrete type implements
+it as \cppinline|new BodyTube(*this)| against its defaulted copy constructor, which chains to
+\code{Part}'s \emph{protected} copy constructor --- same mass properties, fresh id. The access
+choreography is the point: because the base copy constructor is protected and both assignment
+operators are deleted, external code cannot copy-construct a part at all, so slicing a
+\code{BodyTube} down to a base \code{Part} is unrepresentable rather than a lurking bug. The
+concrete types keep their own copy constructors and \code{clone()} overrides protected too, so
+even a caller holding the concrete type goes through the virtual. \code{PartNode::clone} builds on
+this to deep-copy whole sub-trees --- every leaf cloned with fresh ids, links copied verbatim
+(\cref{sec:tree}).
+
+\subsection{The routed-mutation seam}\label{sec:leaf-seam}
+
+After a part is attached to the tree, exactly two things about it may change: its mass and its
+tensor. Both writes are private, and their sole friend is \code{PartsModel}
+(\cref{lst:leaf-seam}). The public paths are the routed verbs
+\code{PartsModel::setPartMass} and \code{setPartInertia} (\src{core/model/PartsModel.cpp}{399}),
+which perform the plain write and then dirty the mass-cache chain up the tree --- write and
+invalidation fused in the only code that can do either.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+protected:
+    /// Copy for concrete clone() implementations only: same mass properties,
+    /// fresh id. Protected so external code can't copy or slice.
+    Part(const Part&);
+
+private:
+    friend class model::PartsModel;  // the sole post-attach mutation seam
+
+    /// Plain writes: PartsModel's routed verbs own cache invalidation.
+    void setMass(double m) { mass = m; }
+    void setI(const Matrix3& I) { inertiaTensor = I; }
+\end{minted}
+\caption{The copy and mutation seams of the leaf (\srccap{core/model/parts/Part.h}{127}--137).}
+\label{lst:leaf-seam}
+\end{listing}
+
+\begin{rejected}[Rejected --- protected setters]
+Protected access would admit every subclass to the seam, and a subclass can re-publish what it
+inherits: one public \cppinline|void setDensity(double)| wrapper that calls a protected
+\code{setMass} internally, and the invalidation contract is silently gone --- the caches of
+\cref{sec:caching} would keep serving mass properties for a part that no longer has them. Private
+$+$ \code{friend} names the one class that may write, and that class is the one that owns cache
+invalidation, so the seam cannot be widened by inheritance. \code{Motor} repeats the pattern one
+level down: its \code{setMotorModel} is itself private with \code{PartsModel} as friend, so even a
+motor swap is a routed verb (\cref{sec:motor}).
+\end{rejected}
+
+\subsection{The concrete leaves}\label{sec:leaf-concrete}
+
+Five concrete types cover the current vocabulary; \cref{tab:leaf-overrides} maps each against the
+virtuals it overrides. The umbrella header \srcf{core/model/parts/Parts.h} registers them for use
+sites, and \code{makePart}/\code{params} (\srcf{core/model/parts/PartFactory.h}) construct and reflect
+the geometric four from \code{typeName()} plus named parameters (\cref{sec:serialization,sec:cli}).
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Virtual} & \textbf{BodyTube} & \textbf{NoseCone} & \textbf{FinSet} & \textbf{Sphere} & \textbf{Motor}\\
+\midrule
+\code{typeName()} (pure)     & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$\\
+\code{clone()} (pure)        & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$\\
+\code{getLength()}           & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & ---\\
+\code{radiusOuterAt()}       & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & ---\\
+\code{radiusInnerAt()}       & $\bullet$ & --- & --- & $\bullet$ & ---\\
+\code{isSolid()}             & $\bullet$ & $\bullet$ & --- & $\bullet$ & ---\\
+\code{getReferenceArea()}    & $\bullet$ & $\bullet$ & $\bullet$ & --- & ---\\
+\code{getAero()}             & $\bullet$ & $\bullet$ & $\bullet$ & --- & ---\\
+\code{getMass(t)}            & --- & --- & --- & --- & $\bullet$\\
+\code{getI()}                & --- & --- & --- & --- & $\bullet$\\
+\code{axialLength()}         & --- & --- & --- & --- & ---\\
+\code{stationAt()}           & --- & --- & --- & --- & ---\\
+\bottomrule
+\end{tabular}
+\caption{Virtual overrides by concrete part. No type overrides \code{axialLength()} or
+\code{stationAt()}: every current envelope equals its nominal length, and the base
+fraction-to-landmark mapping serves all profiles. \code{Motor} overrides no geometry at all --- it
+is the mass-only, zero-length leaf.}\label{tab:leaf-overrides}
+\end{table}
+
+\paragraph{BodyTube} (\srcf{core/model/parts/BodyTube.h}) is a uniform-density hollow cylinder:
+$V = \pi(r_o^2 - r_i^2)L$, tensor from \code{InertiaTensors::Tube}, CM at the geometric center
+(zero offset). Its profile is two constants --- outer skin and bore --- and $r_i = 0$ degrades it
+to a solid rod, which its \code{isSolid()} reports directly. Aerodynamically it is the canonical
+zero-lift body: a constant-diameter cylinder produces no normal force, so \code{getAero} returns
+the inert component and the tube drops out of the composite CP average; its wetted area is
+exposed for an eventual skin-friction drag term.
+
+\paragraph{ConicalNoseCone} (\srcf{core/model/parts/ConicalNoseCone.h}) is a straight cone, uniform
+solid by default or a thin open-base lateral shell. It is the working example of the CM-offset
+machinery: the centroid sits $L/4$ (solid) or $L/3$ (shell) forward of the base, so the
+constructor bakes $\bar h - L/2$ --- that is, $-L/4$ or $-L/6$ from the middle --- into the base
+class via \code{coneCmOffset}, on top of any user-supplied offset. Its \code{getAero} carries the
+matching datum conversion (\cref{lst:leaf-cone}): the Barrowman cone CP sits $\tfrac{2}{3}L$ aft
+of the tip regardless of solidity, which lands at $L/3 - \bar h$ from the CM --- $+L/12$ for a
+solid cone, exactly 0 for a shell, whose CM and CP coincide. The outer profile is a linear taper
+with a guard so a degenerate zero-length cone reads as a flat disc rather than evaluating $0/0$;
+solidity is authored by the constructor flag, as \cref{sec:leaf-geometry} requires.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// CM relative to the component middle, in the +z = forward frame (tip at +L/2,
+// base at -L/2). The centroid is hbar forward of the base, i.e. hbar - L/2 from
+// the middle: -L/4 (solid), -L/6 (shell).
+Vector3 ConicalNoseCone::coneCmOffset(double L, bool solid)
+{
+    const double hbar = solid ? (L / 4.0) : (L / 3.0);
+    return Vector3{0.0, 0.0, hbar - L / 2.0};
+}
+
+model::AeroComponent ConicalNoseCone::getAero(double refArea) const
+{
+    // Barrowman cone: CNalpha = 2 at the base area (pi R^2), rescaled to refArea.
+    // The cone CP is 2/3 L aft of the tip (shape-independent). Report x_cp from the
+    // cone's own CM (the composite datum) in the +z = forward frame:
+    //   x_cp(from CM) = -L/6 - (hbar - L/2) = L/3 - hbar  ( = +L/12 solid, 0 shell ).
+    const double cnAlpha = 2.0 * (std::numbers::pi * baseRadius * baseRadius) / refArea;
+    const double hbar = solid ? (length / 4.0) : (length / 3.0);
+    const double xcpFromCm = length / 3.0 - hbar;
+    return {cnAlpha, cnAlpha * xcpFromCm, 0.0};
+}
+\end{minted}
+\caption{The cone's centroid offset and its own-CM aero datum conversion
+(\srccap{core/model/parts/ConicalNoseCone.cpp}{49}--68, lightly elided).}\label{lst:leaf-cone}
+\end{listing}
+
+\paragraph{FinSet} (\srcf{core/model/parts/FinSet.h}) models $N \ge 3$ identical trapezoidal
+flat-plate fins as \emph{one} analytic leaf rather than $N$ child parts. The tree shares a single
+body-frame orientation and never rotates child tensors, so an azimuthally-arrayed component cannot
+be represented as children at different clock angles; instead the $N$-fin rotate-and-sum is baked
+into the set's own per-unit-mass tensor (\code{InertiaTensors::TrapezoidalFinSet}), which is
+transversely isotropic for $N \ge 3$. $N < 3$ is truly anisotropic and unsupported --- the
+constructor warns and applies the $N \ge 3$ approximation rather than throwing. Its axial extent
+is the root chord (\cppinline|getLength() == rootChord|), and its silhouette is deliberately the
+mounting disc: \code{radiusOuterAt} returns \code{bodyRadius}, with the fin-tip radius
+$r_b + s$ exposed separately as extent (\code{getMaxRadius}). The same reasoning fixes its
+reference area: \code{getReferenceArea()} reports the body disc $\pi r_b^2$, \emph{not} a
+span-inflated disc, because that value competes in the tree's max-frontal-disc search --- fins are
+lifting surfaces, not frontal area, and letting a fin tip win the search would corrupt the
+normalization of every coefficient in the rocket. \code{getAero} is the full Barrowman fin-set
+term --- interference factor $1 + r_b/(s + r_b)$, referenced to the body cross-section and
+rescaled to the shared area --- with the CP converted from the root leading edge to the set's own
+mass centroid, and a degenerate guard that reports an inert component for $r_b = 0$ (fins on the
+axis make the $(s/d)^2$ term singular, and with no body there is no interference to model).
+
+\paragraph{HollowSphere} (\srcf{core/model/parts/HollowSphere.h}) is a thick-walled shell:
+$V = \tfrac{4}{3}\pi(r_o^3 - r_i^3)$, per-unit-mass tensor
+$\tfrac{2}{5}(r_o^5 - r_i^5)/(r_o^3 - r_i^3)\,\mathbf{1}$, axial extent the full diameter
+(pole to pole), centered at $z = -r_o$. It is the one part with genuinely curved closed forms ---
+outer silhouette $\sqrt{r_o^2 - (z + r_o)^2}$ and an inner cavity profile that vanishes outside
+the band $|z + r_o| \le r_i$ --- and it is the motivating case for the \code{isSolid()} override:
+its bore is zero at the fore plane, so only the direct $r_i > 0$ answer classifies a shell
+correctly.
+
+\paragraph{Motor} (\srcf{core/model/parts/Motor.h}) is surveyed here and specified in
+\cref{sec:motor}. It wraps a \code{MotorModel} by value and overrides exactly the two mass
+virtuals: \code{getMass(t)} reads the wrapped motor live, and \code{getI()} derives a solid-cylinder
+per-unit-mass tensor from the catalog diameter and length on every call (degrading to a
+zero-tensor point mass when the catalog omits geometry). It overrides no geometry virtual at all
+--- length 0, no silhouette, no aero --- so it participates in the composite as pure time-varying
+mass at its placed station, and its runtime mutations (in-place swap, ignition) go through
+\code{PartsModel}'s motor verbs via its own private-plus-friend seam.
+
+Taken together, the leaves hold every fact that is local to one component and nothing that is not.
+What a part weighs \emph{now}, where those masses sit relative to each other, and whether the
+assembly self-intersects are questions about the tree --- and the tree is where this document goes
+next (\cref{sec:tree}).

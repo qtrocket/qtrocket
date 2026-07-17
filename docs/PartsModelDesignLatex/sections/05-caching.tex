@@ -1,0 +1,363 @@
+\section{Composite mass properties and the two cache gates}\label{sec:caching}
+
+Every physical question the simulator asks of the rocket --- what does it weigh, where is its
+center of mass, what is its inertia tensor --- is a \emph{composite} question: a mass-weighted
+aggregation over the part tree of \cref{sec:tree}, evaluated at a simulation time $t$ because the
+motor's mass falls while it burns. These aggregations are answered by \code{PartNode}
+(\srcf{core/model/PartsModel.h}), and any node answers them for its own sub-tree, so a booster
+stack and a full rocket use the same code path. The design problem is that the same queries sit on
+two wildly different clocks. The integrator asks thousands of times per flight, at times chosen by
+an adaptive step controller that revisits and discards trial times freely. The designer asks after
+each structural edit, at human cadence. A single ``recompute when dirty'' flag cannot serve both,
+because during a flight nothing ever marks the tree dirty --- time itself is the thing that
+changes.
+
+The resolution is two independent caches per node, each invalidated by exactly the events that can
+change its output. The \emph{placement cache} (resolved poses plus the overlap verdict of
+\cref{sec:placement}) is keyed on structure: it rebuilds only when a part is attached, detached, or
+re-linked, and never during a flight, because geometry is invariant under mass loss. The
+\emph{composite cache} (CM and inertia tensor) is keyed on the one physical quantity that does
+change in flight: the composite mass itself. This section walks through the quantities, the two
+gates, the two-pass mathematics behind the cached values, the aero and reference-area aggregates
+that share the same resolve, and what the flight loop actually pays.
+
+\subsection{One live sum, two cached tensors}\label{sec:caching-quantities}
+
+\code{PartNode} exposes three time-aware composite quantities
+(\src{core/model/PartsModel.h}{70}):
+
+\begin{itemize}
+\item \code{compositeMass(t)} --- a deliberately \emph{uncached} recursive sum of
+      \code{Part::getMass(t)} over the sub-tree (\src{core/model/PartsModel.cpp}{102}). It is both
+      the ODE divisor ($a = F/m$) and the key of the mass-delta gate.
+\item \code{compositeCm(t)} --- the mass-weighted center of mass in the sub-tree root's
+      fore-plane frame, cached per node behind the gate.
+\item \code{compositeI(t)} --- the full mass-weighted inertia tensor
+      ($\unit{kg\,m^2}$) about the composite CM, cached behind the same gate.
+\end{itemize}
+
+The asymmetry is the point. The CM and tensor are worth caching: they require the resolved
+placements, an $O(N)$ weighted average, and $N$ parallel-axis shifts of $3\times3$ tensors. The
+mass sum is $N$ double additions with no tensor work at all --- cheaper than the Eigen expression
+it feeds --- so caching it would buy nothing. But the deeper reason it must stay live is
+structural:
+
+\begin{keyinsight}[The live sum is the tree's clock]
+Nothing notifies the part tree that simulation time advanced. No verb fires, no flag flips; the
+only place $t$ enters the mass properties is \code{Part::getMass(t)}. The gate therefore needs
+one authoritative, freshly-evaluated ``mass now'' to compare against its stamp. If
+\code{compositeMass} were itself cached, the gate would be handed its own stamp back:
+\code{mNow} would equal \cppinline|builtAtMass_| by construction, the comparison could never fail,
+and the CM and tensor would silently stop tracking the burn. The live sum is not an optimization
+left on the table --- it is the input that makes the cache correct.
+\end{keyinsight}
+
+\subsection{The mass-delta gate}\label{sec:caching-massgate}
+
+Both cached accessors funnel through \code{ensureCompositeCache} (\cref{lst:caching-ensure}). The
+gate condition is two-legged: \cppinline|massDirty_| is the structural leg, raised by every
+\code{PartsModel} verb whose edit can move mass (\cref{sec:tree}); the mass comparison is the
+flight leg, and it is an \emph{exact} floating-point equality.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+double PartNode::compositeMass(double t) const
+{
+    // ...
+    double m = part_->getMass(t);
+    for(const auto& child : children_)
+    {
+        m += child->compositeMass(t);
+    }
+    return m;
+}
+
+void PartNode::ensureCompositeCache(double t) const
+{
+    // ...
+    const double mNow = compositeMass(t);
+    if(massDirty_ || mNow != builtAtMass_)
+    {
+        const Composite c = computeCompositeAt(t);
+        compositeCm_ = c.cm;
+        compositeI_  = c.inertia;
+        builtAtMass_ = mNow;
+        massDirty_   = false;
+    }
+}
+\end{minted}
+\caption{The live sum and the mass-delta gate (\srccap{core/model/PartsModel.cpp}{102}). Stamps
+are written only after \code{computeCompositeAt} succeeds, so a failed placement solve is never
+absorbed by the cache (\cref{sec:caching-composite}).}\label{lst:caching-ensure}
+\end{listing}
+
+\cppinline|builtAtMass_| is initialized to \cppinline|quiet_NaN()|
+(\src{core/model/PartsModel.h}{116}). NaN compares unequal to everything, including itself, so the
+very first read builds unconditionally --- the sentinel makes the gate self-priming without a
+separate ``ever built'' flag.
+
+Exact equality looks fragile next to floating point folklore, but here it is precisely correct,
+because both sides of the comparison are produced by the \emph{same} deterministic computation:
+
+\begin{itemize}
+\item \textbf{Post-burnout the cache freezes.} After the propellant is spent,
+      \code{MotorModel::getMass} returns the stored casing mass verbatim for every $t$
+      (\src{core/model/MotorModel.cpp}{65}), and every other part's mass ignores $t$ entirely. The
+      recursive sum runs over a fixed tree in fixed child order, adding identical doubles in
+      identical sequence, so it reproduces \emph{bit-for-bit} on every read. The gate compares
+      equal, and the coast and descent phases --- the majority of most flights --- never rebuild.
+\item \textbf{During a burn the cache tracks.} Between recorded steps the interpolated mass curve
+      moves, the sum differs from the stamp, and the gate rebuilds --- once per recorded step,
+      as it must, because the CM and tensor genuinely moved.
+\item \textbf{The key is the physics, not the schedule.} In flight the motor is the only
+      time-varying contributor, so the total mass determines the composite state: equal totals at
+      two different times imply identical CM and tensor, and a rebuild would produce the value
+      already stored. Concurrent mass \emph{edits} that could confound the total are impossible
+      mid-read --- they route through verbs that raise \cppinline|massDirty_|, the gate's other
+      leg.
+\end{itemize}
+
+\begin{rejected}[Rejected --- tolerance comparison, and time as the key]
+An epsilon comparison (\,$|m_{\text{now}} - m_{\text{built}}| < \varepsilon$\,) would freeze the
+cache during any burn slow enough that per-step mass loss drops below $\varepsilon$ --- a silently
+stale CM on exactly the flights where sustainer motors matter. Exact \code{==} has no false-freeze
+mode: the only way the sum repeats is that the mass genuinely did not change.
+
+Keying the cache on time (``rebuilt at $t = 3.117$'') fails against the adaptive integrator.
+RK45 evaluates six Fehlberg stages per attempted step at intermediate node times
+(\src{core/sim/RK45Solver.h}{86}) and discards the whole attempt when the error estimate is out of
+tolerance; trial times are visited, abandoned, and never exactly revisited. A monotonic time stamp
+would be poisoned by a rejected attempt that probed \emph{ahead} of the eventually accepted step.
+The mass key is indifferent to all of this: a rebuild at a rejected trial mass is simply
+overwritten by the next read, and after burnout no time query of any kind can move the key.
+\end{rejected}
+
+\Cref{fig:caching-gate} traces the full read path, including the failure branch discussed in
+\cref{sec:caching-composite}.
+
+\tikzfig{activity-composite-gate}{The composite read path. The live mass sum is compared
+exact-\code{==} against the stamp (NaN sentinel on first read); a rebuild runs the placement gate
+first, refuses a failed overlap verdict by throwing, and stamps the cache only after
+success.}{fig:caching-gate}
+
+\subsection{The placement gate}\label{sec:caching-placementgate}
+
+The second cache holds the resolved placements --- one \code{Placed} pose per part of the
+sub-tree, in deterministic depth-first attachment order --- plus the overlap-sweep verdict, both
+produced by the resolver machinery of \cref{sec:placement}. \code{ensurePlacementCache}
+(\src{core/model/PartsModel.cpp}{144}) rebuilds both iff \cppinline|placementDirty_|, which is
+raised only by structural and link edits: attach, detach, \code{installRoot}, \code{setLink}, and
+\code{mutatePart} under the \code{Geometry} hint (\src{core/model/PartsModel.h}{139}). A mass or
+inertia edit --- \code{setPartMass}, \code{setPartInertia}, a motor swap, or the burn itself ---
+never touches it, because none of those can move a seam. The expensive $O(N \log N)$ envelope
+sweep therefore runs exactly once per edit, at human cadence, and the flight loop reuses its
+output thousands of times.
+
+\begin{designrule}[Two gates, two cadences]
+Each cache is invalidated by exactly the events that can change its output, and by nothing else.
+The placement cache ticks at \emph{editing} cadence: resolve and sweep once per structural or link
+edit, never during a flight, because geometry is invariant under mass loss. The composite cache
+ticks at \emph{simulation} cadence: rebuild once per recorded step while mass is changing, then
+never again. Burning propellant cannot trigger a geometry solve; dragging a fin cannot be missed
+by the mass gate.
+\end{designrule}
+
+The last clause needs one supporting rule. A link edit can be mass-neutral --- sliding a nose cone
+forward changes no part's mass, so the mass gate, keyed on the total, is structurally blind to it.
+\code{setLink} therefore dirties \emph{both} chains (\src{core/model/PartsModel.cpp}{443}): the
+placement chain because poses moved, and the mass chain because the composite CM and tensor depend
+on those poses. The two gates overlap by design wherever one alone would be blind. Dirty marking
+itself is an $O(\text{depth})$ walk up the parent pointers (\src{core/model/PartsModel.h}{103}),
+so an edit anywhere invalidates every enclosing sub-assembly, and sibling sub-trees keep their
+caches untouched.
+
+\subsection[computeCompositeAt: two passes over one resolve]{\code{computeCompositeAt}: two passes over one resolve}\label{sec:caching-composite}
+
+A gate-triggered rebuild calls \code{computeCompositeAt(t)}
+(\src{core/model/PartsModel.cpp}{171}), which re-weights the \emph{cached} geometry by the
+\emph{current} masses --- the placement gate has already guaranteed the resolved poses are
+current. The math is two passes over \code{resolvedPlacements}.
+
+\textbf{Pass 1 --- mass-weighted CM.} Each part $i$ stores its CM relative to its component
+middle (\cref{sec:leaf}), so its CM in local coordinates, its position in the sub-tree-root frame,
+and the composite CM are
+\begin{equation}
+\mathbf{c}^{\mathrm{loc}}_i =
+\begin{pmatrix} c_{i,x}\\[2pt] c_{i,y}\\[2pt] -\tfrac{L_i}{2} + c_{i,z} \end{pmatrix},
+\qquad
+\mathbf{r}_i = \mathbf{o}_i + q_i\,\mathbf{c}^{\mathrm{loc}}_i,
+\qquad
+\bar{\mathbf{r}}(t) = \frac{\sum_i m_i(t)\,\mathbf{r}_i}{\sum_i m_i(t)},
+\label{eq:caching-cm}
+\end{equation}
+where $\mathbf{o}_i$ and $q_i$ are the part's resolved fore-plane origin and orientation
+(identity in 3-DOF), and $L_i$ its length --- a part occupies $z \in [-L_i, 0]$ in its own frame,
+\zfwd.
+
+\textbf{Pass 2 --- parallel-axis tensor.} Each part's per-unit-mass geometric tensor
+$\mathbf{I}^{\mathrm{geo}}_i$ ($\unit{m^2}$, about its own CM; \cref{sec:leaf}) is weighted to a
+real tensor and shifted to the composite CM by the parallel-axis theorem:
+\begin{equation}
+\mathbf{I}(t) \;=\; \sum_i m_i(t)\,\mathbf{I}^{\mathrm{geo}}_i
+\;+\; m_i(t)\left[(\mathbf{d}_i\!\cdot\!\mathbf{d}_i)\,\mathbf{E}
+- \mathbf{d}_i\,\mathbf{d}_i^{\mathsf{T}}\right],
+\qquad
+\mathbf{d}_i = \mathbf{r}_i - \bar{\mathbf{r}}(t),
+\label{eq:caching-pat}
+\end{equation}
+with $\mathbf{E}$ the identity. The displacement term is even in $\mathbf{d}_i$, so the sign
+convention of the offset never matters. \Cref{lst:caching-passes} is the code, line for line the
+same shape as the equations.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+Matrix3 parallelAxisTerm(const Vector3& d)
+{
+    return d.dot(d) * Matrix3::Identity() - d * d.transpose();
+}
+// ...
+    // Pass 1: mass-weighted composite CM.
+    double  m        = 0.0;
+    Vector3 weighted = Vector3::Zero();
+    for(const part::Placed& pl : resolved_)
+    {
+        const double  pm       = pl.part->getMass(t);
+        const Vector3 cmOffset = pl.part->getCenterMassOffset();
+        const Vector3 cmLocal(cmOffset.x(), cmOffset.y(),
+                                     -pl.part->getLength() / 2.0 + cmOffset.z());
+        const Vector3 cmInRoot = pl.pose.origin + pl.pose.orient * cmLocal;
+        m        += pm;
+        weighted += pm * cmInRoot;
+        parts.push_back(Contribution{cmInRoot, pl.part, pm});
+    }
+    // Guard the divide: a fully massless sub-tree has no meaningful CM, so leave it at the origin.
+    Vector3 cm = Vector3::Zero();
+    if(m > 0.0)
+    {
+        cm = weighted / m;
+    }
+
+    // Pass 2: inertia about the composite CM. Shift each part's own mass-weighted tensor to cm via
+    // the parallel-axis theorem. 6-DOF adds the R*I*R^T rotation (identity today) here.
+    Matrix3 I = Matrix3::Zero();
+    for(const Contribution& c : parts)
+    {
+        const Vector3 d = c.cmInRoot - cm;
+        I += c.mass * c.part->getI() + c.mass * parallelAxisTerm(d);
+    }
+\end{minted}
+\caption{The two-pass composite walk (\srccap{core/model/PartsModel.cpp}{171}, elided). The
+massless-subtree guard keeps a zero-mass assembly --- legal while sketching a design --- from
+producing a $0/0$ CM; it reads as the origin instead.}\label{lst:caching-passes}
+\end{listing}
+
+Before either pass runs, the walk consults the cached overlap verdict, and this is where the
+design refuses to be quietly wrong:
+
+\begin{hardfail}[A self-intersecting design cannot be flown]
+When the envelope sweep of \cref{sec:placement} finds interpenetrating parts,
+\code{computeCompositeAt} throws \cppinline|std::runtime_error| carrying the first located
+diagnostic (\src{core/model/PartsModel.cpp}{184}) rather than integrating overlapping volumes into
+a plausible-looking but physically meaningless tensor. Because the stamps in
+\cref{lst:caching-ensure} land only after a successful build, \cppinline|massDirty_| stays raised
+and \emph{every} subsequent \code{compositeCm}/\code{compositeI} read re-throws --- the failure
+cannot be absorbed by asking twice. The repeat throws are cheap: \cppinline|placementDirty_| was
+cleared when the verdict was cached, so no re-sweep runs; the verdict itself is the cached
+diagnosis. The condition clears only the way it arose --- through a structural edit that re-opens
+the placement gate and produces a clean verdict.
+\end{hardfail}
+
+\subsection{Aero and area: aggregates on the same resolve}\label{sec:caching-aero}
+
+Two further aggregates fold over the same cached resolve. \code{compositeAero(refArea)}
+(\src{core/model/PartsModel.cpp}{224}) assembles the whole-rocket Barrowman profile. Each part
+reports an \code{AeroComponent} whose CP station $x_{cp,i}$ is measured from \emph{that part's own
+CM} (\srcf{core/model/Aero.h}), stored as the weighted moment $C_{N\alpha,i}\,x_{cp,i}$ so that a
+zero-lift body drops out of the average with no special case. The composite walk re-expresses
+every part onto the shared sub-tree-root datum by adding back the part's CM station:
+\begin{equation}
+z_{cm,i} = o_{i,z} - \tfrac{L_i}{2} + c_{i,z},
+\qquad
+x_{cp} = \frac{\sum_i C_{N\alpha,i}\left(x_{cp,i} + z_{cm,i}\right)}
+              {\sum_i C_{N\alpha,i}}.
+\label{eq:caching-datum}
+\end{equation}
+The added $z_{cm,i}$ exactly cancels the per-part CM datum that $x_{cp,i}$ was measured from, so
+the composite CP depends on external shape alone --- and it now lives on the same fore-plane datum
+as $\bar{\mathbf{r}}$ from \cref{eq:caching-cm}. That shared datum is the payoff: the static
+margin is literally \code{profile.cp() - cg}, one subtraction with no frame conversion. The
+profile is re-derived on each call rather than cached; it sits on no flight-loop path, and its
+only nontrivial input --- the resolved placements --- is already cached behind the placement gate.
+
+\code{maxFrontalReferenceArea} (\src{core/model/PartsModel.cpp}{243}) supplies the drag reference
+area as a \emph{maximum}, not a sum: the largest single frontal disc over the sub-tree, the
+Barrowman convention. Summing would double-count --- a nose cone in front of a body tube of the
+same caliber presents one disc to the flow, not two --- and a fin set deliberately reports only
+the disc of the body it mounts on (\src{core/model/parts/FinSet.h}{71}), so adding fins never
+inflates the reference area. \code{RocketModel} exposes it as
+\code{deriveReferenceAreaFromGeometry()} for front ends (\src{core/model/RocketModel.cpp}{44});
+the drag term itself always reads the stored \code{referenceArea} scalar, which
+\code{setReferenceArea} marks as a manual override (\src{core/model/RocketModel.h}{69}).
+
+\subsection{What the flight loop pays}\label{sec:caching-costs}
+
+The gates exist so that the composite machinery costs the integrator almost nothing.
+\Cref{tab:caching-costs} itemizes the work by event; \cref{fig:caching-timeline} shows the
+resulting cadence over a flight.
+
+\begin{table}[htbp]
+\centering
+\small
+% ragged-right wrapping columns: the long event labels and mono src citations don't justify
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.26\linewidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Event} & \textbf{Work} & \textbf{Cache traffic} \\
+\midrule
+Integrator stage (RK4: 4 per step; RKF45: 6 per attempt, re-run on rejection)
+  & Two live \code{compositeMass} sums: the gravity weight inside \code{getForces}
+    (\src{core/model/RocketModel.cpp}{73}) and the $F/m$ divide in the ODE
+    (\src{core/sim/Propagator.cpp}{41}). No tensor math.
+  & None. The stage path never reads the cached CM or tensor. \\
+\addlinespace
+Accepted, recorded step
+  & \code{writeMassProperties} snapshots mass, CG, and tensor into the state history
+    (\src{core/model/RocketModel.cpp}{49}, called at
+    \src{core/sim/Propagator.cpp}{132}): one more live sum plus the two gated reads.
+  & At most one gate rebuild while the motor burns; exactly zero after burnout. \\
+\addlinespace
+Structural / link edit
+  & Dirty walk to the root, $O(\text{depth})$ flag writes.
+  & Next read: one resolve + envelope sweep, then one composite rebuild. \\
+\bottomrule
+\end{tabularx}
+\caption{Per-event cost of the composite machinery. The hot path touches only the mass-only
+recursive sum; the tensor work runs once per recorded step during a burn and not at all
+afterward.}\label{tab:caching-costs}
+\end{table}
+
+The RKF45 interaction deserves emphasis because it is where a naive cache design breaks. A
+rejected attempt evaluates all six stages at trial times and throws the results away; as wired,
+those stages touch nothing but the live sum, so there is nothing to poison. And even a future
+consumer that read \code{compositeI} mid-stage would be safe, because the gate keys on the mass
+\emph{value}: a rebuild triggered at a discarded trial mass is just a valid cache entry for that
+mass, corrected by the next read that sees a different one. Correctness is independent of the step
+controller's accept/reject sequence --- a property a time-keyed cache cannot offer.
+
+\tikzfig{timeline-burn}{Gate cadence over one flight. During the burn the live sum differs from
+the stamp at every recorded step, so the gate opens once per step and the CM and tensor track the
+mass loss. From burnout on, the sum reproduces bit-for-bit, exact \code{==} holds, and every read
+is a frozen-cache hit.}{fig:caching-timeline}
+
+\subsection{The single-writer contract}\label{sec:caching-singlewriter}
+
+All of the above state --- both dirty flags, the stamp, the cached CM and tensor, the resolved
+placements and verdict --- is \code{mutable}, written behind \code{const} accessors. A
+\code{const PartNode\&} is therefore \emph{not} a promise of physical immutability; it is a
+promise of logical immutability under the model's single-writer discipline
+(\cref{sec:philosophy}). Concurrent access to a \code{PartsModel} --- even all-\code{const},
+even two readers racing the same \code{compositeI(t)} call --- is a data race, because either
+read may be the one that rebuilds. The contract is stated at the class boundary
+(\src{core/model/PartsModel.h}{36}) rather than paid for with per-node locks: QtRocket's
+consumers (the GUI thread, the CLI loop, one propagator at a time) are serialized by
+construction, and a mutex around every composite read would tax the hot path of
+\cref{tab:caching-costs} to defend against a caller the architecture already forbids.

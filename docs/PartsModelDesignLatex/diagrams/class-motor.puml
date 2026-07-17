@@ -1,0 +1,66 @@
+@startuml
+!include _style.iuml
+
+class Part <<abstract>> {
+  +getMass(t) : double
+  +getI() : Matrix3
+  +getLength() : double {base: 0}
+  +clone() : unique_ptr<Part>
+}
+
+class Motor <<concrete>> {
+  +typeName() : "Motor"
+  +getMass(t) : double {reads mm live}
+  +getI() : Matrix3 {motorTensor(mm)}
+  +getMotorModel() : const MotorModel&
+  -setMotorModel(motor : const MotorModel&)
+  -{static} motorTensor(m) : Matrix3
+  -mm : MotorModel {owned by value}
+}
+
+class MotorModel <<pod>> {
+  +data : MetaData {diameter, length, weights, ...}
+  +getMass(simTime) : double
+  +getThrust(simTime) : double {const}
+  +startMotor(startTime)
+  -ignitionTime : double
+  -burnOutOccurred : bool {mutable, log-once}
+  -massCurve : vector<pair<double,double>>
+}
+
+class ThrustCurve <<pod>> {
+  +getThrust(t) : double {linear interp}
+  +getMaxTime() : double
+}
+
+class PartsModel <<concrete>> {
+  +setMotor(motor, link = {}) : bool
+  +isMotorSet() : bool
+  +motorModel() : const MotorModel*
+  +motorNode() : const PartNode*
+  +thrust(t) : double {const end-to-end}
+  +startMotor(t) {the one runtime mutation}
+  -registerSubtree(n)
+  -unregisterSubtree(n)
+  -motor_ : part::Motor* {typed borrow}
+}
+
+Part <|-- Motor
+Motor *-- MotorModel : mm
+MotorModel *-- ThrustCurve : thrust
+
+PartsModel ..> Motor : <<friend>>\nprivate setMotorModel(),\nmm.startMotor(t)
+PartsModel --> Motor : motor_ non-owning borrow,\nre-resolved only inside\n(un)registerSubtree
+
+note right of MotorModel
+  getThrust is const: the burnout
+  latch is log-once observability,
+  never part of the returned value
+end note
+
+note bottom of Motor
+  no seeded copy is consulted:
+  mass and tensor derive from
+  mm at every query
+end note
+@enduml

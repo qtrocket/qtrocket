@@ -44,7 +44,7 @@ void ThrustCurve::setIgnitionTime(double t)
     //maxTime += ignitionTime;
 }
 
-double ThrustCurve::getThrust(double t)
+double ThrustCurve::getThrust(double t) const
 {
     // calculate t relative to the start time of the motor
     t -= ignitionTime;

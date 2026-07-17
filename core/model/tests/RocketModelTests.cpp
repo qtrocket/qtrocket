@@ -1,26 +1,30 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <utility>
 
+#include "model/PartsModel.h"
 #include "model/RocketModel.h"
 #include "model/parts/Parts.h"
 
 namespace
 {
+using model::PartNode;
+using model::PartsModel;
 using model::RocketModel;
 using model::part::Part;
 
-std::shared_ptr<model::part::BodyTube> bodyTube(const std::string& name)
+std::unique_ptr<model::part::BodyTube> bodyTube(const std::string& name)
 {
-    return std::make_shared<model::part::BodyTube>(name, 0.0, 0.019, 0.20, 680.0);
+    return std::make_unique<model::part::BodyTube>(name, 0.0, 0.019, 0.20, 680.0);
 }
-std::shared_ptr<model::part::FinSet> finSet(const std::string& name)
+std::unique_ptr<model::part::FinSet> finSet(const std::string& name)
 {
-    return std::make_shared<model::part::FinSet>(name, 3, 0.10, 0.05, 0.05, 0.04, 0.003, 0.019, 600.0);
+    return std::make_unique<model::part::FinSet>(name, 3, 0.10, 0.05, 0.05, 0.04, 0.003, 0.019, 600.0);
 }
 } // namespace
 
-TEST(RocketModelFacadeTest, SetRootReplacesTreeAndResetsReferenceAreaOverride)
+TEST(RocketModelFacadeTest, InstallDesignReplacesTreeAndResetsReferenceAreaOverride)
 {
     RocketModel r;
     r.setReferenceArea(0.05); // manual override on
@@ -28,129 +32,162 @@ TEST(RocketModelFacadeTest, SetRootReplacesTreeAndResetsReferenceAreaOverride)
 
     auto body = bodyTube("Tube");
     const double bodyMass = body->getMass(0.0);
-    r.setRoot(body);
+    r.installDesign(PartNode::make(std::move(body)));
 
     EXPECT_FALSE(r.isReferenceAreaOverridden());  // a new airframe drops the stale manual override
-    EXPECT_EQ(r.getTopPart()->typeName(), "BodyTube");
+    ASSERT_NE(r.parts().root(), nullptr);
+    EXPECT_EQ(r.parts().root()->part().typeName(), "BodyTube");
     EXPECT_DOUBLE_EQ(r.getMass(0.0), bodyMass);   // composite reflects the new root
 }
 
-TEST(RocketModelFacadeTest, SetRootIgnoresNullAndKeepsTreeValid)
+TEST(RocketModelFacadeTest, ClearDesignClearsTreeAndMotorAndFiresCallback)
 {
     RocketModel r;
-    r.setRoot(bodyTube("Tube"));
-    r.setRoot(nullptr);                      // logged no-op
-    ASSERT_NE(r.getTopPart(), nullptr);
-    EXPECT_EQ(r.getTopPart()->typeName(), "BodyTube");
+    r.installDesign(PartNode::make(bodyTube("Tube")));
+    r.setMotorModel(model::MotorModel{});
+    ASSERT_TRUE(r.isMotorSet());
+
+    int fired = 0;
+    r.setStructureChangedCallback([&fired]() { ++fired; });
+
+    r.clearDesign();
+    EXPECT_FALSE(r.parts().hasDesign());          // "no design" is a real state
+    EXPECT_EQ(r.parts().root(), nullptr);
+    EXPECT_FALSE(r.isMotorSet());                 // the motor borrow cannot outlive the tree
+    EXPECT_DOUBLE_EQ(r.getThrust(1.0), 0.0);      // safe, zero thrust
+    EXPECT_GT(fired, 0);                          // clearing is a structural change the GUI must see
 }
 
-TEST(RocketModelFacadeTest, AddPartAttachesUnderParentAndReportsSuccessOrFailure)
+TEST(RocketModelFacadeTest, AttachAddsUnderParentAndReportsTypedErrors)
 {
     RocketModel r;
-    r.setRoot(bodyTube("Body"));
-    const Part::Id rootId = r.getTopPart()->getId();
-    const double rootMass = r.getMass(0.0);
-
-    auto fins = finSet("Fins");
-    const double finsMass = fins->getMass(0.0);
-    EXPECT_TRUE(r.addPart(rootId, fins, model::part::abut(-0.10)));
-    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass); // composite grew by the fins
-
-    // Bad parent id -> false, and the tree is unchanged.
-    EXPECT_FALSE(r.addPart(999999u, bodyTube("Orphan"), model::part::abut()));
-    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass);
-}
-
-TEST(RocketModelFacadeTest, RemovePartRefusesRootAndDetachesChildren)
-{
-    RocketModel r;
-    r.setRoot(bodyTube("Body"));
-    const Part::Id rootId = r.getTopPart()->getId();
+    r.installDesign(PartNode::make(bodyTube("Body")));
+    const Part::Id rootId = r.parts().root()->id();
     const double rootMass = r.getMass(0.0);
 
     auto fins = finSet("Fins");
     const Part::Id finsId = fins->getId();
     const double finsMass = fins->getMass(0.0);
-    ASSERT_TRUE(r.addPart(rootId, fins, model::part::abut(-0.10)));
+    const auto attached = r.parts().attach(rootId, std::move(fins), model::part::abut(-0.10));
+    ASSERT_TRUE(attached.has_value());
+    EXPECT_EQ(*attached, finsId);                          // the moved-in part keeps its id
+    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass); // composite grew by the fins
 
-    // The root cannot be removed via removePart; the tree stays intact.
-    EXPECT_EQ(r.removePart(rootId), nullptr);
+    // Bad parent id -> typed error, and the tree is unchanged.
+    const auto orphan = r.parts().attach(999999U, bodyTube("Orphan"), model::part::abut());
+    ASSERT_FALSE(orphan.has_value());
+    EXPECT_EQ(orphan.error(), PartsModel::AttachError::NoSuchParent);
     EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass);
 
-    // Removing the fins returns the sub-tree and shrinks the composite back to the bare body.
-    auto detached = r.removePart(finsId);
-    ASSERT_NE(detached, nullptr);
-    EXPECT_EQ(detached->getId(), finsId);
+    // A null part is refused outright.
+    const auto null = r.parts().attach(rootId, nullptr, model::part::abut());
+    ASSERT_FALSE(null.has_value());
+    EXPECT_EQ(null.error(), PartsModel::AttachError::NullPart);
+    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass);
+}
+
+TEST(RocketModelFacadeTest, DetachRefusesRootAndReturnsTheSubtree)
+{
+    RocketModel r;
+    r.installDesign(PartNode::make(bodyTube("Body")));
+    const Part::Id rootId = r.parts().root()->id();
+    const double rootMass = r.getMass(0.0);
+
+    auto fins = finSet("Fins");
+    const Part::Id finsId = fins->getId();
+    const double finsMass = fins->getMass(0.0);
+    ASSERT_TRUE(r.parts().attach(rootId, std::move(fins), model::part::abut(-0.10)).has_value());
+
+    // The root cannot be detached; the tree stays intact.
+    const auto rootDetach = r.parts().detach(rootId);
+    ASSERT_FALSE(rootDetach.has_value());
+    EXPECT_EQ(rootDetach.error(), PartsModel::DetachError::IsRoot);
+    EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass + finsMass);
+
+    // Detaching the fins returns the owned sub-tree and shrinks the composite back to the bare body.
+    auto detached = r.parts().detach(finsId);
+    ASSERT_TRUE(detached.has_value());
+    ASSERT_NE(*detached, nullptr);
+    EXPECT_EQ((*detached)->id(), finsId);
     EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass);
 
-    // A genuinely absent id is a no-op returning nullptr (the tree is unchanged).
-    EXPECT_EQ(r.removePart(123456789u), nullptr);
+    // A genuinely absent id is a typed miss; the tree is unchanged.
+    const auto absent = r.parts().detach(123456789U);
+    ASSERT_FALSE(absent.has_value());
+    EXPECT_EQ(absent.error(), PartsModel::DetachError::NoSuchId);
     EXPECT_DOUBLE_EQ(r.getMass(0.0), rootMass);
 }
 
-TEST(RocketModelFacadeTest, AddPartAttachesUnderANonRootDescendant)
+TEST(RocketModelFacadeTest, AttachUnderANonRootDescendant)
 {
     RocketModel r;
-    r.setRoot(bodyTube("Body"));
-    const Part::Id rootId = r.getTopPart()->getId();
+    r.installDesign(PartNode::make(bodyTube("Body")));
+    const Part::Id rootId = r.parts().root()->id();
 
     auto mid = bodyTube("Mid");
     const Part::Id midId = mid->getId();
-    ASSERT_TRUE(r.addPart(rootId, mid, model::part::abut(-0.20))); // mid under the root
+    ASSERT_TRUE(r.parts().attach(rootId, std::move(mid), model::part::abut(-0.20)).has_value());
 
     auto leaf = finSet("Fins");
     const Part::Id leafId = leaf->getId();
     const double massBefore = r.getMass(0.0);
     const double leafMass = leaf->getMass(0.0);
-    EXPECT_TRUE(r.addPart(midId, leaf, model::part::abut(-0.10))); // leaf under the descendant `mid`
-    EXPECT_DOUBLE_EQ(r.getMass(0.0), massBefore + leafMass);       // composite includes the deep child
-    ASSERT_NE(r.findPart(leafId), nullptr);                        // and findPart reaches it
-    EXPECT_EQ(r.findPart(leafId)->getName(), "Fins");
+    EXPECT_TRUE(r.parts().attach(midId, std::move(leaf), model::part::abut(-0.10)).has_value());
+    EXPECT_DOUBLE_EQ(r.getMass(0.0), massBefore + leafMass); // composite includes the deep child
+    ASSERT_NE(r.parts().find(leafId), nullptr);              // and find() reaches it
+    EXPECT_EQ(r.parts().find(leafId)->part().getName(), "Fins");
 }
 
-TEST(RocketModelFacadeTest, RemovePartOfTheMotorBranchDropsTheMotor)
+TEST(RocketModelFacadeTest, DetachOfTheMotorNodeDropsTheMotor)
 {
-    // addPart of a Motor sub-tree must re-resolve motorPart (so isMotorSet sees it), and removePart of
-    // that branch must re-resolve back to null -- the removePart side of Guardrail 6.
+    // Attaching a Motor part must re-resolve the motor borrow (so isMotorSet sees it), a second
+    // motor is refused, and detaching the motor's node resolves the borrow back to null.
     RocketModel r;
-    r.setRoot(bodyTube("Body"));
-    const Part::Id rootId = r.getTopPart()->getId();
+    r.installDesign(PartNode::make(bodyTube("Body")));
+    const Part::Id rootId = r.parts().root()->id();
 
-    auto motor = std::make_shared<model::part::Motor>("M", model::MotorModel{});
+    auto motor = std::make_unique<model::part::Motor>("M", model::MotorModel{});
     const Part::Id motorId = motor->getId();
-    ASSERT_TRUE(r.addPart(rootId, motor, model::part::abut()));
-    EXPECT_TRUE(r.isMotorSet()); // addPart re-resolved and found the attached motor
+    ASSERT_TRUE(r.parts().attach(rootId, std::move(motor), model::part::abut()).has_value());
+    EXPECT_TRUE(r.isMotorSet());
 
-    auto detached = r.removePart(motorId);
-    ASSERT_NE(detached, nullptr);
-    EXPECT_FALSE(r.isMotorSet());            // removePart re-resolved -> no motor remains
+    const auto second =
+        r.parts().attach(rootId, std::make_unique<model::part::Motor>("M2", model::MotorModel{}),
+                         model::part::abut());
+    ASSERT_FALSE(second.has_value());
+    EXPECT_EQ(second.error(), PartsModel::AttachError::DuplicateMotor);
+
+    auto detached = r.parts().detach(motorId);
+    ASSERT_TRUE(detached.has_value());
+    EXPECT_FALSE(r.isMotorSet());            // no motor remains after the borrow re-resolves
     EXPECT_DOUBLE_EQ(r.getThrust(1.0), 0.0); // safe, zero thrust
 }
 
-TEST(RocketModelFacadeTest, SetRootReresolvesMotorPartSoThrustNeverDangles)
+TEST(RocketModelFacadeTest, InstallDesignReresolvesMotorBorrowSoThrustNeverDangles)
 {
-    // Guardrail 6: the borrowed motorPart belongs to whatever tree is installed. Replacing the tree
-    // must re-resolve it (to the new tree's motor, or null) so getThrust() can never read freed memory
+    // The borrowed motor pointer belongs to whatever tree is installed. Replacing the tree must
+    // re-resolve it (to the new tree's motor, or null) so getThrust() can never read freed memory
     // and isMotorSet() never reports a stale pointer.
     RocketModel r;
-    r.setRoot(bodyTube("Body"));
-    r.setMotorModel(model::MotorModel{}); // attaches a Motor child to the placeholder tree
+    r.installDesign(PartNode::make(bodyTube("Body")));
+    r.setMotorModel(model::MotorModel{}); // attaches a Motor node to the installed tree
     EXPECT_TRUE(r.isMotorSet());
 
-    // Install a NEW tree that itself contains a Motor node -> motorPart must re-borrow it (the old
-    // tree, and its Motor, are freed when topPart is replaced).
-    auto root2 = bodyTube("Body2");
-    root2->addChildPart(std::make_shared<model::part::Motor>("M2", model::MotorModel{}), model::part::abut());
-    r.setRoot(root2);
-    EXPECT_TRUE(r.isMotorSet());             // re-borrowed from the new tree, not the freed old one
+    // Install a NEW tree that itself contains a Motor node -> the borrow must re-resolve to it (the
+    // old tree, and its Motor, are freed by the replace).
+    auto root2 = PartNode::make(bodyTube("Body2"));
+    root2->addChild(PartNode::make(std::make_unique<model::part::Motor>("M2", model::MotorModel{})),
+                    model::part::abut());
+    r.installDesign(std::move(root2));
+    EXPECT_TRUE(r.isMotorSet());             // borrowed from the new tree, not the freed old one
     EXPECT_NO_THROW((void)r.getThrust(1.0)); // safe: no dangling pointer
 
-    // Install a motor-LESS tree -> motorPart must drop to null (a stale non-null would be the bug).
-    r.setRoot(bodyTube("Body3"));
+    // Install a motor-LESS tree -> the borrow must drop to null (a stale non-null would be the bug).
+    r.installDesign(PartNode::make(bodyTube("Body3")));
     EXPECT_FALSE(r.isMotorSet());
     EXPECT_DOUBLE_EQ(r.getThrust(1.0), 0.0); // no motor -> zero thrust, no crash
 
-    // setMotorModel after a motor-less setRoot re-attaches cleanly to the current tree.
+    // setMotorModel after a motor-less install re-attaches cleanly to the current tree.
     r.setMotorModel(model::MotorModel{});
     EXPECT_TRUE(r.isMotorSet());
 }

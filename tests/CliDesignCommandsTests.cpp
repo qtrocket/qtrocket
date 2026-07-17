@@ -1,6 +1,6 @@
 // End-to-end test of the CLI design commands: drive the real Repl through a build -> save ->
 // reload -> fly session and confirm the reloaded rocket has the same composite mass/CG and flies the
-// same. This is the user-visible proof of the P2 milestone.
+// same.
 
 /// \cond
 #include <filesystem>
@@ -120,6 +120,11 @@ TEST(CliDesignCommands, ParsingValidatesInputAndToleratesUnknownKeys)
     EXPECT_TRUE(ok(run(repl, "newdesign BodyTube outerRadius=0.019 length=0.2 density=680 wibble=3")));
     // A bad parent id is rejected.
     EXPECT_FALSE(ok(run(repl, "addpart 9zz BodyTube outerRadius=0.019 length=0.2 density=680")));
+    // An absent numeric parent id reports the typed attach error verbatim.
+    const std::string absentParent =
+        run(repl, "addpart 424242 BodyTube outerRadius=0.019 length=0.2 density=680");
+    EXPECT_NE(absentParent.find("ERR addpart: no part with id 424242"), std::string::npos)
+        << absentParent;
     // An unknown part type is rejected (by the factory).
     EXPECT_FALSE(ok(run(repl, "newdesign Wibble outerRadius=0.019")));
     // A missing required field is rejected (by the factory).

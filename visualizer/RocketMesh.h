@@ -91,9 +91,9 @@ Mesh buildFinSet(unsigned int finCount, double rootChord, double tipChord, doubl
 // ---- Tree walk --------------------------------------------------------------------------------
 
 /// @brief Convert a loaded rocket's part tree into a flat list of positioned RenderItems.
-///        Resolves placements once via model::part::resolvePlacements -- the same poses the
-///        simulator consumes, so the two can't diverge -- then translates each origin-centered
-///        primitive so its center lands half an axialLength aft of the resolved fore-plane origin.
+///        Reads the node tree's cached resolvedPlacements() -- the same poses the simulator
+///        consumes, so the two can't diverge -- then translates each origin-centered primitive
+///        so its center lands half an axialLength aft of the resolved fore-plane origin.
 ///        Concrete part types are dispatched by dynamic_cast to read their geometry.
 std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket);
 

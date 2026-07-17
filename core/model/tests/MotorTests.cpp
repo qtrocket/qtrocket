@@ -1,6 +1,5 @@
 /// \cond
 // C++ headers
-#include <cmath>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -9,11 +8,14 @@
 /// \endcond
 
 // qtrocket headers
+#include "model/PartsModel.h"
 #include "model/parts/Parts.h"   // pulls Motor.h + HollowSphere.h
 #include "model/tests/PlacementTestSupport.h"
 #include "model/MotorModel.h"
 #include "model/ThrustCurve.h"
 
+using model::PartNode;
+using model::PartsModel;
 using model::part::HollowSphere;
 using model::part::Motor;
 using model::part::Part;
@@ -43,7 +45,7 @@ model::MotorModel makeTestMotor(double totalWeight, double propWeight,
 
 // Independent closed-form composite inertia oracle for [body at origin] + [a single leaf at offset],
 // both with diagonal per-unit-mass tensors and CMs on the z-axis. Computed entirely separately from
-// Part's walk (this is the parallel-axis math by hand), so it is a genuine oracle for getCompositeI.
+// the node walk (this is the parallel-axis math by hand), so it is a genuine oracle for compositeI.
 Matrix3 expectedComposite(double mB, const Matrix3& IBpum,
                                    double mM, const Matrix3& IMpum, const Vector3& offset)
 {
@@ -55,8 +57,9 @@ Matrix3 expectedComposite(double mB, const Matrix3& IBpum,
 
 // A leaf whose OWN mass ramps linearly from startMass to endMass over [0, burnTime] then holds
 // endMass -- a stand-in for a burning motor -- and counts getMass() calls so a test can detect
-// composite recomputes (each getCompositeI(t) calls getMass once for the gate; a rebuild calls it
-// once more inside computeCompositeAt, so the counter jumps by 2 on a rebuild and 1 on a cache hit).
+// composite recomputes (each compositeI(t) query calls getMass once for the mass-delta gate; a
+// rebuild calls it once more inside the composite walk, so the counter jumps by 2 on a rebuild and
+// 1 on a cache hit).
 class CountingRampPart : public Part
 {
 public:
@@ -73,27 +76,29 @@ public:
     }
     std::string typeName() const override { return "CountingRampPart"; } // Part is abstract; concrete stub
 
+    std::unique_ptr<Part> clone() const override
+    { return std::unique_ptr<Part>(new CountingRampPart(*this)); }
+
     mutable int calls{0};
 
 protected:
     CountingRampPart(const CountingRampPart&) = default; // uses Part's protected copy ctor (fresh id)
-    std::shared_ptr<Part> cloneShallow() const override
-    { return std::shared_ptr<Part>(new CountingRampPart(*this)); }
 
 private:
     double startMass, endMass, burnTime;
 };
 
-// Build an ignited body+motor assembly (motor aft at -0.2 m by default). Returns the body root and
-// writes the borrowed motor pointer (the owning shared_ptr lives in the body's child list).
-std::shared_ptr<HollowSphere> makeAssembly(Motor*& motorOut, double offsetZ = -0.2)
+// Seed @p pm with a hollow-sphere body root plus an ignited test motor whose CM sits offsetZ along
+// +z of the body CM (aft when negative). Returns the motor's node, owned by pm.
+const PartNode* makeAssembly(PartsModel& pm, double offsetZ = -0.2)
 {
-    auto body = std::make_shared<HollowSphere>("body", 0.04, 0.05, 2700.0);
-    auto motor = std::make_shared<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
-    motorOut = motor.get();
-    motorOut->getMotorModel().startMotor(0.0);
-    body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, offsetZ));
-    return body;
+    auto body  = std::make_unique<HollowSphere>("body", 0.04, 0.05, 2700.0);
+    auto motor = std::make_unique<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
+    const model::part::StationLink link = model::part::test::cmToCm(*body, *motor, offsetZ);
+    pm.installRoot(PartNode::make(std::move(body)));
+    const auto id = pm.attach(pm.root()->id(), std::move(motor), link);
+    pm.startMotor(0.0);
+    return id ? pm.find(*id) : nullptr;
 }
 } // namespace
 
@@ -101,81 +106,110 @@ std::shared_ptr<HollowSphere> makeAssembly(Motor*& motorOut, double offsetZ = -0
 
 TEST(MotorTest, GetMassFollowsMotorModelBurn)
 {
-    Motor motor("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
-    EXPECT_NEAR(motor.getMass(0.0), 0.100, 1e-12); // pre-ignition: loaded total weight
-    motor.getMotorModel().startMotor(0.0);
-    EXPECT_GT(motor.getMass(1.0), 0.040);
-    EXPECT_LT(motor.getMass(1.0), 0.100);
-    EXPECT_NEAR(motor.getMass(2.0), 0.040, 1e-9); // burnout: empty casing mass
-    EXPECT_NEAR(motor.getMass(5.0), 0.040, 1e-9); // stays empty
+    auto mm = makeTestMotor(0.100, 0.060, 2.0, 80.0);
+    const Motor unlit("motor", mm);
+    EXPECT_NEAR(unlit.getMass(0.0), 0.100, 1e-12); // pre-ignition: loaded total weight
+
+    mm.startMotor(0.0);
+    const Motor lit("motor", mm); // wraps a copy, ignition epoch included
+    EXPECT_GT(lit.getMass(1.0), 0.040);
+    EXPECT_LT(lit.getMass(1.0), 0.100);
+    EXPECT_NEAR(lit.getMass(2.0), 0.040, 1e-9); // burnout: empty casing mass
+    EXPECT_NEAR(lit.getMass(5.0), 0.040, 1e-9); // stays empty
 }
 
 TEST(MotorTest, CompositeMassEqualsAirframePlusMotorAtTime)
 {
-    Motor* motor = nullptr;
-    auto body = makeAssembly(motor);
-    const double bodyMass = body->getMass(0.0); // body's own (structural) mass
+    PartsModel pm;
+    const PartNode* motorNode = makeAssembly(pm);
+    ASSERT_NE(motorNode, nullptr);
+    const double bodyMass = pm.root()->part().getMass(0.0); // body's own (structural) mass
     for(double t : {0.0, 1.0, 2.0})
     {
-        EXPECT_NEAR(body->getCompositeMass(t), bodyMass + motor->getMass(t), 1e-12);
+        EXPECT_NEAR(pm.root()->compositeMass(t), bodyMass + motorNode->part().getMass(t), 1e-12);
     }
 }
 
 TEST(MotorTest, CompositeCmShiftsForwardAsMotorBurns)
 {
-    Motor* motor = nullptr;
-    auto body = makeAssembly(motor, -0.2); // motor aft
-    const double cg0 = body->getCompositeCm(0.0)(2);
-    const double cg2 = body->getCompositeCm(2.0)(2);
-    EXPECT_LT(cg0, 0.0);   // loaded motor pulls the CG aft
+    PartsModel pm;
+    makeAssembly(pm, -0.2); // motor aft
+    const double cg0 = pm.root()->compositeCm(0.0)(2);
+    const double cg2 = pm.root()->compositeCm(2.0)(2);
+    // fore-plane datum: the sphere's own CM sits one radius aft of the +z pole, at -0.05
+    EXPECT_LT(cg0, -0.05); // loaded motor pulls the CG aft of the body's own CM
     EXPECT_GT(cg2, cg0);   // CG moves forward (toward the body) as propellant burns
 }
 
 TEST(MotorTest, CloneIsDeepIndependentAndTypePreserving)
 {
-    auto motor = std::make_shared<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
-    motor->getMotorModel().startMotor(0.0);
+    auto mm = makeTestMotor(0.100, 0.060, 2.0, 80.0);
+    mm.startMotor(0.0);
+    std::unique_ptr<Part> motor = std::make_unique<Motor>("motor", mm); // clone() is public on Part
+    const Part::Id originalId = motor->getId();
     auto copy = motor->clone();
 
     EXPECT_NE(dynamic_cast<Motor*>(copy.get()), nullptr); // type preserved (not sliced)
-    EXPECT_NE(copy->getId(), motor->getId());             // fresh id
+    EXPECT_NE(copy->getId(), originalId);                 // fresh id
 
     const double copyMassBefore = copy->getMass(1.0);
-    motor->setMotorModel(makeTestMotor(0.200, 0.120, 2.0, 80.0)); // mutate the original
-    EXPECT_NEAR(copy->getMass(1.0), copyMassBefore, 1e-12);       // clone untouched
+    // mutate the original through the routed swap (the only post-attach mutation path)
+    PartsModel pm;
+    pm.installRoot(PartNode::make(std::make_unique<HollowSphere>("body", 0.04, 0.05, 2700.0)));
+    const Part* original = motor.get();
+    ASSERT_TRUE(pm.attach(pm.root()->id(), std::move(motor)).has_value());
+    ASSERT_TRUE(pm.setMotor(makeTestMotor(0.200, 0.120, 2.0, 80.0)));
+    EXPECT_NEAR(original->getMass(0.0), 0.200, 1e-12);      // swap landed on the original
+    EXPECT_NEAR(copy->getMass(1.0), copyMassBefore, 1e-12); // clone untouched
 }
 
 TEST(MotorTest, ReplaceMotorChangesCompositeMass)
 {
-    Motor* motor = nullptr;
-    auto body = makeAssembly(motor);
-    const double massBefore = body->getCompositeMass(0.0);
-    const double izzBefore  = body->getCompositeI(0.0)(2, 2);
+    PartsModel pm;
+    makeAssembly(pm);
+    const double massBefore = pm.root()->compositeMass(0.0);
+    const double izzBefore  = pm.root()->compositeI(0.0)(2, 2);
 
-    motor->setMotorModel(makeTestMotor(0.200, 0.120, 2.0, 80.0)); // heavier
-    EXPECT_GT(body->getCompositeMass(0.0), massBefore);
-    EXPECT_NE(body->getCompositeI(0.0)(2, 2), izzBefore); // structural cache invalidated
+    ASSERT_TRUE(pm.setMotor(makeTestMotor(0.200, 0.120, 2.0, 80.0))); // heavier, in-place swap
+    EXPECT_GT(pm.root()->compositeMass(0.0), massBefore);
+    EXPECT_NE(pm.root()->compositeI(0.0)(2, 2), izzBefore); // swap dirties the composite cache
 }
 
-// ---- Composite inertia tensor (the new time-varying work) ---------------------------------------
+TEST(MotorTest, DetachMotorRestoresBodyOnlyComposite)
+{
+    PartsModel pm;
+    const PartNode* motorNode = makeAssembly(pm);
+    ASSERT_NE(motorNode, nullptr);
+    const double bodyMass = pm.root()->part().getMass(0.0);
+    pm.root()->compositeI(0.0); // warm the cache so detach must invalidate it
+
+    auto detached = pm.detach(motorNode->id());
+    ASSERT_TRUE(detached.has_value());
+    EXPECT_FALSE(pm.isMotorSet()); // the motor borrow is released with its sub-tree
+    EXPECT_NEAR(pm.root()->compositeMass(0.0), bodyMass, 1e-12);
+    const Vector3 cg = pm.root()->compositeCm(0.0);
+    EXPECT_NEAR(cg(0), 0.0, 1e-12);
+    EXPECT_NEAR(cg(1), 0.0, 1e-12);
+    EXPECT_NEAR(cg(2), -0.05, 1e-12); // back at the body's own CM (fore-plane datum)
+}
+
+// ---- Composite inertia tensor (the time-varying work) -------------------------------------------
 
 TEST(MotorInertiaTest, MatchesClosedFormDuringBurn)
 {
-    auto body = std::make_shared<HollowSphere>("body", 0.04, 0.05, 2700.0);
-    const double  mB    = body->getMass(0.0);
-    const Matrix3 IBpum = body->getI();
-    auto motor = std::make_shared<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
-    Motor* motorRaw = motor.get();
-    const Matrix3 IMpum = motorRaw->getI();
-    motorRaw->getMotorModel().startMotor(0.0);
+    PartsModel pm;
+    const PartNode* motorNode = makeAssembly(pm, -0.2);
+    ASSERT_NE(motorNode, nullptr);
+    const double  mB    = pm.root()->part().getMass(0.0);
+    const Matrix3 IBpum = pm.root()->part().getI();
+    const Matrix3 IMpum = motorNode->part().getI();
     const Vector3 offset{0.0, 0.0, -0.2};
-    body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, offset.z()));
 
     for(double t : {0.0, 1.0, 2.0})
     {
-        const double  mM       = motorRaw->getMass(t);
+        const double  mM       = motorNode->part().getMass(t);
         const Matrix3 expected = expectedComposite(mB, IBpum, mM, IMpum, offset);
-        const Matrix3 actual   = body->getCompositeI(t);
+        const Matrix3 actual   = pm.root()->compositeI(t);
         EXPECT_TRUE(actual.isApprox(expected, 1e-9))
             << "t=" << t << "\nexpected:\n" << expected << "\nactual:\n" << actual;
         EXPECT_NEAR(actual(0, 1), 0.0, 1e-12); // purely axial geometry -> no off-diagonals
@@ -184,24 +218,22 @@ TEST(MotorInertiaTest, MatchesClosedFormDuringBurn)
     }
 
     // Anchor against the independently hand-computed values (t=0, loaded).
-    EXPECT_NEAR(body->getCompositeI(0.0)(0, 0), 4.488506e-3, 1e-7);
-    EXPECT_NEAR(body->getCompositeI(0.0)(2, 2), 9.576700e-4, 1e-7);
+    EXPECT_NEAR(pm.root()->compositeI(0.0)(0, 0), 4.488506e-3, 1e-7);
+    EXPECT_NEAR(pm.root()->compositeI(0.0)(2, 2), 9.576700e-4, 1e-7);
 }
 
 TEST(MotorInertiaTest, CgConsistentWithTensorWalk)
 {
-    auto body = std::make_shared<HollowSphere>("body", 0.04, 0.05, 2700.0);
-    const double mB = body->getMass(0.0);
-    Motor* motor = nullptr;
-    auto root = makeAssembly(motor, -0.2);
-    (void)body;
+    PartsModel pm;
+    const PartNode* motorNode = makeAssembly(pm, -0.2);
+    ASSERT_NE(motorNode, nullptr);
+    const double mB = pm.root()->part().getMass(0.0);
 
     const double t = 1.0;
-    const Vector3 cg = root->getCompositeCm(t);
-    const double mM = motor->getMass(t);
-    // Composite CG is reported in the HollowSphere root's fore-plane (tip) datum, i.e. shifted from the
-    // root-own-CM datum by cmLocalZ_root = -outerRadius = -0.05 (the sphere CM sits a radius aft of its
-    // +z pole). The motor's -0.2 CM-to-CM offset is preserved by the shim.
+    const Vector3 cg = pm.root()->compositeCm(t);
+    const double mM = motorNode->part().getMass(t);
+    // Composite CG is reported on the root's fore-plane (tip) datum: the sphere's own CM sits a
+    // radius aft of its +z pole (-0.05), and the link preserves the -0.2 CM-to-CM gap.
     const Vector3 expectedCg =
         (mM * Vector3{0.0, 0.0, -0.2}) / (mB + mM) + Vector3{0.0, 0.0, -0.05};
     EXPECT_TRUE(cg.isApprox(expectedCg, 1e-9)) << "cg=" << cg.transpose();
@@ -209,42 +241,39 @@ TEST(MotorInertiaTest, CgConsistentWithTensorWalk)
 
 TEST(MotorInertiaTest, IzzDecreasesAndHasNoParallelAxisTerm)
 {
-    auto body = std::make_shared<HollowSphere>("body", 0.04, 0.05, 2700.0);
-    const double mB   = body->getMass(0.0);
-    const double IBzz = body->getI()(2, 2);
-    auto motor = std::make_shared<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
-    Motor* motorRaw = motor.get();
-    const double IMzz = motorRaw->getI()(2, 2);
-    motorRaw->getMotorModel().startMotor(0.0);
-    body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, -0.2));
+    PartsModel pm;
+    const PartNode* motorNode = makeAssembly(pm, -0.2);
+    ASSERT_NE(motorNode, nullptr);
+    const double mB   = pm.root()->part().getMass(0.0);
+    const double IBzz = pm.root()->part().getI()(2, 2);
+    const double IMzz = motorNode->part().getI()(2, 2);
 
     // Izz gets NO parallel-axis contribution (purely axial offset) but is NOT constant: it equals
     // mB*IBzz + mM(t)*IMzz and shrinks as the motor's own longitudinal term shrinks with mass.
     for(double t : {0.0, 1.0, 2.0})
     {
-        EXPECT_NEAR(body->getCompositeI(t)(2, 2), mB * IBzz + motorRaw->getMass(t) * IMzz, 1e-12);
+        EXPECT_NEAR(pm.root()->compositeI(t)(2, 2),
+                        mB * IBzz + motorNode->part().getMass(t) * IMzz, 1e-12);
     }
-    EXPECT_GT(body->getCompositeI(0.0)(2, 2), body->getCompositeI(1.0)(2, 2));
-    EXPECT_GT(body->getCompositeI(1.0)(2, 2), body->getCompositeI(2.0)(2, 2));
+    EXPECT_GT(pm.root()->compositeI(0.0)(2, 2), pm.root()->compositeI(1.0)(2, 2));
+    EXPECT_GT(pm.root()->compositeI(1.0)(2, 2), pm.root()->compositeI(2.0)(2, 2));
 }
 
 TEST(MotorInertiaTest, FrozenAtEmptyMassAfterBurnout)
 {
-    auto body = std::make_shared<HollowSphere>("body", 0.04, 0.05, 2700.0);
-    const double  mB    = body->getMass(0.0);
-    const Matrix3 IBpum = body->getI();
-    auto motor = std::make_shared<Motor>("motor", makeTestMotor(0.100, 0.060, 2.0, 80.0));
-    Motor* motorRaw = motor.get();
-    const Matrix3 IMpum = motorRaw->getI();
-    motorRaw->getMotorModel().startMotor(0.0);
+    PartsModel pm;
+    const PartNode* motorNode = makeAssembly(pm, -0.2);
+    ASSERT_NE(motorNode, nullptr);
+    const double  mB    = pm.root()->part().getMass(0.0);
+    const Matrix3 IBpum = pm.root()->part().getI();
+    const Matrix3 IMpum = motorNode->part().getI();
     const Vector3 offset{0.0, 0.0, -0.2};
-    body->addChildPart(motor, model::part::test::cmToCm(*body, *motor, offset.z()));
 
-    const Matrix3 atBurnout = body->getCompositeI(2.0);
+    const Matrix3 atBurnout = pm.root()->compositeI(2.0);
     // Bitwise-identical for every t >= burnout, including out-of-order probes.
     for(double t : {2.0, 2.0 + 1e-6, 12.0, 2.5})
     {
-        EXPECT_EQ((body->getCompositeI(t) - atBurnout).norm(), 0.0) << "t=" << t;
+        EXPECT_EQ((pm.root()->compositeI(t) - atBurnout).norm(), 0.0) << "t=" << t;
     }
     // ...and it equals the true empty-mass tensor (mM = 0.040), not a slightly-pre-burnout value.
     const Matrix3 expectedEmpty = expectedComposite(mB, IBpum, 0.040, IMpum, offset);
@@ -253,11 +282,15 @@ TEST(MotorInertiaTest, FrozenAtEmptyMassAfterBurnout)
 
 TEST(MotorInertiaTest, NoRecomputeAfterBurnout)
 {
-    // A single mass-varying leaf so getMass call counting is unambiguous: each getCompositeI(t) query
-    // calls getMass once for the gate (getCompositeMass) and, only on a rebuild, once more inside
-    // computeCompositeAt. So a rebuild costs 2 calls, a cache hit costs 1.
-    auto part = std::make_shared<CountingRampPart>(0.100, 0.040, 2.0);
-    auto delta = [&](double t) { int before = part->calls; part->getCompositeI(t); return part->calls - before; };
+    // A single mass-varying leaf so getMass call counting is unambiguous: each compositeI(t) query
+    // calls getMass once for the gate (compositeMass) and, only on a rebuild, once more inside the
+    // composite walk. So a rebuild costs 2 calls, a cache hit costs 1.
+    auto part = std::make_unique<CountingRampPart>(0.100, 0.040, 2.0);
+    CountingRampPart* raw = part.get();
+    PartsModel pm;
+    pm.installRoot(PartNode::make(std::move(part)));
+    auto delta = [&](double t)
+    { const int before = raw->calls; pm.root()->compositeI(t); return raw->calls - before; };
 
     delta(0.5);                 // first query always builds (NaN sentinel)
     EXPECT_EQ(delta(1.0), 2);   // mass changed during burn -> rebuild
@@ -271,11 +304,11 @@ TEST(MotorInertiaTest, NoRecomputeAfterBurnout)
 
 TEST(MotorInertiaTest, StructuralChangeInvalidatesAfterBurnout)
 {
-    Motor* motor = nullptr;
-    auto body = makeAssembly(motor);
-    const Matrix3 frozen = body->getCompositeI(5.0); // settle into the post-burnout frozen cache
+    PartsModel pm;
+    makeAssembly(pm);
+    const Matrix3 frozen = pm.root()->compositeI(5.0); // settle into the post-burnout frozen cache
 
-    motor->setMotorModel(makeTestMotor(0.200, 0.120, 2.0, 80.0)); // structural edit (setMass/setI)
-    const Matrix3 after = body->getCompositeI(5.0);
-    EXPECT_GT((after - frozen).cwiseAbs().maxCoeff(), 1e-9); // dirty flag forces a rebuild
+    ASSERT_TRUE(pm.setMotor(makeTestMotor(0.200, 0.120, 2.0, 80.0))); // in-place swap
+    const Matrix3 after = pm.root()->compositeI(5.0);
+    EXPECT_GT((after - frozen).cwiseAbs().maxCoeff(), 1e-9); // swap dirties the chain -> rebuild
 }

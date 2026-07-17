@@ -1,9 +1,8 @@
-// T1 -- geometry profile unit tests (implementation plan Part II Step 4, Part III T1). These pin the
-// closed-form extent profiles added to Part and the four concrete geometry types: the cone's linear
-// taper (and its zero-length divide guard), the tube's constant walls, the fin set's body disc (NOT
-// its tip extent), the hollow sphere's silhouette, the solid-host capacity rule, the station mapping
-// with its [0,1] clamp, and the zero-length point collapse. The profiles are unconsumed in Step 4, so
-// these tests are the only thing exercising them until the resolver/sweep land (Steps 5-6).
+// geometry profile unit tests. These pin the closed-form extent profiles on Part and the four
+// concrete geometry types: the cone's linear taper (and its zero-length divide guard), the tube's
+// constant walls, the fin set's body disc (not its tip extent), the hollow sphere's silhouette, the
+// solid-host capacity rule, the station mapping with its [0,1] clamp, and the zero-length point
+// collapse. The placement resolver and overlap sweep consume these profiles.
 
 #include <gtest/gtest.h>
 
@@ -141,9 +140,9 @@ TEST(GeometryProfileTests, StationAtClampsAndMaps)
 
 TEST(GeometryProfileTests, ZeroLengthCollapsesToPoint)
 {
-    // A bare node has getLength() == 0 (a geometrically inert node), so every station maps to z = 0 --
-    // the sweep treats it as a single point sample rather than dividing by a zero span. TestPart is the
-    // concrete stand-in for the (now abstract) base Part.
+    // A bare part has getLength() == 0 (geometrically inert, e.g. a Motor), so every station maps to
+    // z = 0 -- the sweep treats it as a single point sample rather than dividing by a zero span.
+    // TestPart is the concrete stand-in for the abstract base Part.
     const model::part::TestPart point("Point", Matrix3::Identity(), 1.0, Vector3::Zero());
     EXPECT_DOUBLE_EQ(point.axialLength(), 0.0);
     EXPECT_DOUBLE_EQ(point.stationAt(0.0).z, 0.0);

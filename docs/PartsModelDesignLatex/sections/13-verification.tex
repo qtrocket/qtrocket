@@ -1,0 +1,354 @@
+% !TeX root = ../PartsModel.tex
+\section{Verification strategy}\label{sec:verification}
+
+The preceding sections make strong claims: edits route through one authority and dirty exactly the
+right caches (\cref{sec:tree}), composite mass properties rebuild only when their inputs move and
+freeze bit-for-bit after burnout (\cref{sec:caching}), a self-intersecting design is a hard located
+failure on every read (\cref{sec:placement}), and the Qt adapter consumes the event stream without
+ever resetting the view for an ordinary edit (\cref{sec:gui}). Claims of that kind are cheap to
+state and easy to lose --- a one-line change to a routed verb can silently stop invalidating a
+cache, and nothing in a typical flight would notice for weeks. The test architecture exists to make
+each such claim \emph{fail loudly} the day it stops being true, and this section describes how the
+suites are organized to do that.
+
+Verification runs at three altitudes. Unit suites pin each behavioral seam of the model layer in
+isolation --- including the seams that are deliberately adversarial to observe, such as a cache
+gate that is blind to equal-mass edits by construction. Integration suites pin the assembled
+system numerically, against committed baselines and a fixture corpus built by the real CLI.
+Toolchain gates --- sanitizers, static analysis, and coverage --- pin the implementation itself.
+\Cref{tab:verification-suites} maps the test binaries to what each one holds still; all are
+registered with ctest under names matching \cppinline|qtrocket_*|, which is exactly what CI runs
+(\srcf{.github/actions/build-and-test/action.yml}).
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.34\linewidth}>{\raggedright\arraybackslash}p{0.61\linewidth}@{}}
+\toprule
+\textbf{Binary (ctest entry)} & \textbf{What it pins} \\
+\midrule
+\cppinline|model_tests|\newline(\cppinline|qtrocket_model_tests|) &
+The model layer seam by seam: \code{PartsModel} verbs, typed errors, cache gates, events, and the
+motor lifecycle (\code{PartsModelTests}); composite physics against closed forms
+(\code{PartCompositionTest}, \code{HollowSphereTest}); seat semantics, deterministic traversal, and
+the envelope sweep (\code{ResolverTests}, \code{SweepTests}, \code{DiagnosticsGateTests});
+Barrowman composition and datum algebra (\code{AeroTest}); one suite per concrete leaf
+(\code{BodyTubeTests}, \code{NoseConeTests}, \code{FinSetTests}, \code{MotorTests}); the factory,
+geometry profiles, inertia tensors, placement types, and the thrust-curve loaders. \\
+\addlinespace
+\cppinline|sim_tests|\newline(\cppinline|qtrocket_sim_tests|) &
+The numerics below the model: RK45 adaptive stepping, the US Standard Atmosphere, gravity and
+geoid models, integrator selection. \\
+\addlinespace
+\cppinline|propagator_tests|\newline(\cppinline|qtrocket_propagator_tests|) &
+\code{Propagator} termination guards and trajectory statistics, driven by a mock
+\code{Propagatable} --- no motor database, no Qt. \\
+\addlinespace
+\cppinline|integration_tests|\newline(\cppinline|qtrocket_integration_tests|) &
+The assembled system: \code{.qrd} round trips including motor-by-reference
+(\code{DesignRoundTrip}), the placement-invariance corpus baseline
+(\code{PlacementInvariance}), the frozen poke-through offender
+(\code{PokeThroughRegressionTests}), end-to-end flight physics, and motor-database persistence. \\
+\addlinespace
+\cppinline|cli_tests|\newline(\cppinline|qtrocket_cli_tests|) &
+Black-box REPL command contracts: build $\to$ save $\to$ reload $\to$ fly through the real
+\code{cli::Repl}, input validation, seat-vocabulary authoring, \code{checkdesign} reporting, and
+the process exit-code contract. \\
+\addlinespace
+\cppinline|design_matrix_tests|\newline(\cppinline[breaklines,breakanywhere]|qtrocket_design_matrix_tests|
+and the \code{heavy}-labeled full-ladder entry) &
+The fixture matrix: every committed design loads, round-trips its exact composite footer and tree
+structure, and flies its motor ladder to a nominal, impulse-monotonic apogee; concrete-part
+scaling laws; script-replay anti-drift (the \code{DesignRebuild} suite); the gram$\to$kg
+motor-mass regression guard. \\
+\addlinespace
+\cppinline|gui_model_tests|\newline(\cppinline|qtrocket_gui_model_tests|) &
+\code{RocketPartModel}'s \code{QAbstractItemModel} contract under the granular event stream, plus
+the surgical guarantees: persistent indexes survive unrelated edits, leaf edits emit
+\code{dataChanged}, only a design install resets (\cref{sec:gui}). \\
+\bottomrule
+\end{tabular}
+\caption{The test binaries and the claims each one keeps honest. Sources live next to what they
+test: \srcfcap{core/model/tests/}, \srcfcap{core/sim/tests/}, \srcfcap{tests/}, and
+\srcfcap{gui/tests/}.}\label{tab:verification-suites}
+\end{table}
+
+\subsection{Behavioral seams, not white-box hooks}\label{sec:verification-seams}
+
+The parts tree exposes no test-only surface. The single \code{friend} declaration in the leaf is
+the production mutation seam itself --- \code{PartsModel}
+(\src{core/model/parts/Part.h}{133}) --- and nothing in \srcf{core/model/PartsModel.h} grants a
+test access to the caches, the id index, or the dirty flags. Every test in
+\srcf{core/model/tests/PartsModelTests.cpp} observes the tree exactly the way the CLI, the GUI,
+and the integrator do: through routed verbs, \code{const} composite readers, and the event
+callback.
+
+\begin{designrule}[Tests pin behavior, not layout]
+A test may construct adversarial \emph{parts} --- subclasses of the public leaf that override its
+virtuals --- but it may not open the tree. If a property matters, there is a public observation
+that changes when it breaks; if no such observation exists, the property is not yet a contract and
+does not get a test.
+\end{designrule}
+
+This rule has teeth because the leaf is designed to be subclassed (\cref{sec:leaf}). The suites
+instrument by \emph{overriding virtuals and counting calls}: \code{CountingRampPart} counts
+\code{getMass()} queries so cache rebuilds become arithmetic
+(\src{core/model/tests/PartsModelTests.cpp}{67}); \code{CountingTube} counts
+\cppinline|radiusOuterAt()| queries, a virtual touched only by the resolver and the envelope
+sweep, so ``did the geometry cache rebuild?'' has a faithful witness
+(\src{core/model/tests/DiagnosticsGateTests.cpp}{64}); \code{RampMassTube} fakes a burning motor
+with a strictly increasing mass; \code{FixedAeroPart} returns a fixed aerodynamic contribution so
+the composition walk is tested independently of any real part's coefficients
+(\src{core/model/tests/AeroTests.cpp}{28}).
+
+\begin{rejected}[Rejected --- a test-access friend class]
+A \code{friend}ed accessor struct could read the private caches directly and assert on their
+contents. It is rejected because it verifies the wrong thing: a cache-layout assertion passes
+while observable behavior regresses (a stale value served with a perfectly healthy-looking cache),
+and it fails while behavior is correct (any refactor of the private layout). Worse, it freezes the
+interior of \code{PartNode} into the test suite, so the layout can never change without rewriting
+tests that were never entitled to see it. Call-counting through a public virtual costs a few lines
+per suite and measures precisely the contract: how many times the system \emph{asked}.
+\end{rejected}
+
+\subsection{Unit pins on the tree and its gates}\label{sec:verification-unit}
+
+\code{PartsModelTests} covers the authority's whole surface, but its center of gravity is the
+handful of cases the architecture is most exposed to. The structural verbs are pinned with their
+typed errors --- \code{NullPart}, \code{NoSuchParent}, \code{IsRoot}, \code{NoSuchId} --- and
+\code{AttachReportsTypedErrors} drives the single-motor invariant from both directions: a second
+\code{Motor} is rejected whether it arrives as the sub-tree root or buried inside an attached
+sub-tree (\code{DuplicateMotor}), and a failed attach leaves the tree untouched
+(\src{core/model/tests/PartsModelTests.cpp}{175}). Stale ids fail safe: after a detach, every id
+in the removed sub-tree leaves the index and \code{find} returns \code{nullptr} rather than a
+dangling node. Events are pinned as strict aboutTo/did pairs --- one mutation, two records,
+identical payload, \code{before} true then false --- across a full edit sequence of fourteen
+records (\src{core/model/tests/PartsModelTests.cpp}{496}). Deep clone yields fresh ids with
+verbatim per-edge links; traversal is pre-order in attachment order; and a direct
+\code{addChild} on an owned node is a rejected no-op, pinning the rule that owned trees mutate
+only through verbs (\src{core/model/tests/PartsModelTests.cpp}{562}).
+
+\begin{keyinsight}[Attacking the gate's blind spot]
+The mass-delta gate keys on one number: the live composite mass sum (\cref{sec:caching}). Any edit
+that changes geometry without changing mass is therefore \emph{invisible to the gate by
+construction} --- correctness rests entirely on each routed verb dirtying the cache chain. Three
+tests aim at exactly that blind spot: \code{SetPartInertiaChangesCompositeIAtEqualMass} swaps a
+part's per-unit-mass tensor at constant mass
+(\src{core/model/tests/PartsModelTests.cpp}{282}); \code{MotorSwapAtEqualMassChangesCompositeI}
+installs a same-mass, different-diameter motor and requires the composite $I_{zz}$ to grow
+(\src{core/model/tests/PartsModelTests.cpp}{297}); and \code{SetPartMassAndSetLinkInvalidateComposite}
+moves a link at constant mass and requires the composite CM to follow. If any verb ever stops
+dirtying, one of these fails on the next read --- the silent-staleness bug the design works
+hardest to exclude is also the one the suite works hardest to detect.
+\end{keyinsight}
+
+The gate itself is pinned by counting. Each \code{compositeI(t)} costs the counting part one
+\code{getMass} call for the gate sum, plus one more inside the rebuild --- so a rebuild reads as
+$2$ and a cache hit as $1$, and the gate's entire lifecycle becomes a sequence of small integers
+(\cref{lst:verification-counting}). The same technique pins the placement gate one level up:
+\code{DiagnosticsGateTests.GateDoesNotReFirePerStepDuringBurn} runs a ramp-mass ``burn'' that
+forces a genuine composite recompute every step, while the counted
+\cppinline|radiusOuterAt()| shows the resolve-and-sweep pass runs exactly once
+(\src{core/model/tests/DiagnosticsGateTests.cpp}{109}) --- per-step re-weighting, per-edit
+geometry, never the reverse.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+const auto delta = [&](double t)
+{ const int before = raw->calls; (void)root->compositeI(t); return raw->calls - before; };
+
+EXPECT_EQ(delta(0.0), 2); // first query always builds (NaN sentinel)
+EXPECT_EQ(delta(0.0), 1); // same t: gate sum only, no rebuild
+EXPECT_EQ(delta(5.0), 1); // different t, same mass: still no rebuild
+
+// ... and with mass ramping over a two-second burn:
+delta(0.5);               // first build
+EXPECT_EQ(delta(1.0), 2); // mass moved during the burn -> rebuild
+EXPECT_EQ(delta(3.0), 2); // crossing into post-burnout: final transition rebuild
+EXPECT_EQ(delta(3.5), 1); // frozen: mass constant -> gate sum only
+EXPECT_EQ(delta(3.2), 1); // out-of-order post-burnout probe: still frozen
+\end{minted}
+\caption{Cache rebuilds as arithmetic: the call-count delta distinguishes a rebuild ($2$) from a
+gate-only hit ($1$), so the gate's whole lifecycle --- first build, constant-mass hits, burn
+tracking, the burnout transition, and the out-of-order probe an adaptive integrator can issue ---
+is pinned in a dozen lines. From \srccap{core/model/tests/PartsModelTests.cpp}{316} and
+\srccap{core/model/tests/PartsModelTests.cpp}{336}.}\label{lst:verification-counting}
+\end{listing}
+
+\begin{sloppypar}
+\code{BurningMotorTracksAndFreezesBitwiseAfterBurnout} pins the freeze \emph{bitwise}, not
+approximately: it drives a real motor through its burn ---
+the composite CG walks forward as the aft-seated propellant depletes --- and then requires
+$\lVert I(t) - I_{\mathrm{frozen}}\rVert = 0$ exactly for every post-burnout read
+(\src{core/model/tests/PartsModelTests.cpp}{356}). The failure side is pinned with the same
+severity: \code{SelfIntersectingDesignThrowsOnEveryCompositeRead} builds an over-nested coupler,
+checks the located diagnostic names the right offender and host, and then reads the composite
+twice --- because the cache stamp is written only after a successful solve, a failed solve can
+never be swallowed by the cache, and \emph{every} read throws, not just the first
+(\src{core/model/tests/PartsModelTests.cpp}{385}). The one deliberate exception is asserted too:
+\code{compositeMass} is the hot ODE divisor, does no placement work, and stays readable.
+\end{sloppypar}
+
+Beneath the authority, \code{PartCompositionTest} pins the composite physics against closed
+forms a human can re-derive: a point-mass pair's transverse inertia is $\mu L^2$ about the
+mass-weighted CM, two tubes end to end equal one longer tube, a three-mass chain at depth two
+matches its flat reference, and \code{HollowSphereTest} checks the thick-shell tensor against the
+textbook expression (\srcf{core/model/tests/PartTests.cpp}). \code{ResolverTests} and
+\code{SweepTests} pin seat semantics and the envelope sweep --- abut stacks aft, nest-in-bore
+signs its gap aft, deterministic DFS order, the poke-through diagnostic located to offender and
+host, ties broken by smallest id --- and \code{AeroTest} pins the Barrowman composition seam:
+per-part $x_{cp}$ re-expressed on the sub-tree-root datum shared with \code{compositeCm} (so CP
+minus CG is the static margin), reference-area invariance, CP undefined for a body-only rocket,
+and the motor contributing mass but never aerodynamics
+(\srcf{core/model/tests/AeroTests.cpp}).
+
+\subsection{Assembled-system pins: round trips and the corpus baseline}\label{sec:verification-integration}
+
+\code{DesignRoundTrip} (\srcf{tests/DesignPersistenceTests.cpp}) pins the serialization contract
+of \cref{sec:serialization} through real files: geometry round-trips mass, CG, and structure; the
+reference-area override round-trips in both states (overridden and untouched --- a load must not
+manufacture an override that was never set); per-edge links round-trip field by field, the default
+link is elided on save and reloads as abut, and an unknown seat kind or unsupported major version
+is rejected leaving the in-memory rocket untouched. The motor round-trips \emph{by reference}:
+\code{MotorByNameRoundTripsAndPreservesMassCurve} proves the reloaded rocket's $m(t)$ matches at
+ignition, mid-burn, and post-burnout --- equality that can only hold if the database lookup
+reproduced the full burn curve --- while \code{MotorAbsentInDatabaseLoadsGeometryWithoutTheMotor}
+pins the degradation path: geometry loads, a warning logs, no motor is set.
+
+The corpus pins are numeric. \code{PlacementInvariance} loads all 24 committed fixtures
+airframe-only (an intentionally empty motor database, so the snapshot is pure geometry) and
+compares every integrator-facing quantity --- composite mass, CG, inertia, aero CP, and each
+part's resolved CM station in DFS order --- against the committed baseline
+\srcf{tests/data/placement-invariance-baseline.txt}. Doubles are stored at 17 significant digits
+so they round-trip to the identical IEEE-754 value (\cref{lst:verification-baseline}), and the
+comparison tolerance is $10^{-9}$ relative --- wide enough to admit ULP-level drift from
+re-associated arithmetic, orders of magnitude tighter than any real placement bug
+(\src{tests/PlacementInvarianceTests.cpp}{130}). The baseline has exactly one writer: a
+regeneration test gated behind \cppinline|QTROCKET_REGEN_PLACEMENT_BASELINE=1| that is skipped in
+every normal run, so a diff can only be silenced deliberately
+(\src{tests/PlacementInvarianceTests.cpp}{251}). A companion test reports the worst observed
+relative drift across the whole corpus on every run, so the margin between reality and the
+tolerance stays visible in the log.
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+format 2
+design large38_basic
+mass 0.16378115690911332
+cm 0 0 -0.25124370615147357
+inertia 0.0046368498312709906 0 0 0 0.0046368498312709906 0 0 0 9.3042721313888361e-05
+cp 1 -0.41986417012945754
+parts 3
+part 0 NoseCone 0 0 -0.089999999999999997 Nose
+\end{minted}
+\caption{One fixture's block of the committed placement baseline
+(\srcfcap{tests/data/placement-invariance-baseline.txt}): mass, CG, row-major inertia, CP, and
+each part's resolved CM station in the tip datum, printed at 17 significant digits for exact
+double round-trip.}\label{lst:verification-baseline}
+\end{listing}
+
+Two hand-computed pins guard the one place a baseline cannot: a sign error frozen \emph{into} the
+baseline. The solid cone's local CM is pinned to $-3L/4 = -0.225\m$ in the tip datum and the fin
+set's to its hand-derived trapezoid centroid, both at $10^{-12}$, with the expected values
+computed in the test from raw geometry rather than read back through the part
+(\src{tests/PlacementInvarianceTests.cpp}{480}). A reversed-frame defect in either part would
+survive the aggregate corpus pins --- consistently wrong is still consistent --- but not these.
+Finally, \code{PokeThroughRegressionTests} keeps the frozen self-intersecting fixture
+\srcf{tests/data/designs/xl75\_multi\_pokethrough.qrd} firing end-to-end through the file reader:
+without a committed offender, nothing outside the unit suites would ever drive the diagnostic
+path (\cref{sec:placement}).
+
+\subsection{Black-box command contracts}\label{sec:verification-cli}
+
+The CLI suites test the program a user actually runs, through the same \code{cli::Repl} the
+\code{qtrocket-cli} binary wraps (\cref{sec:cli}). \code{CliDesignCommands} drives a full
+build $\to$ save $\to$ reload $\to$ fly session and asserts on the printed output only: the
+composite footer matches after reload, \code{addpart} authors every seat vocabulary token and
+rejects malformed link tokens with an \code{ERR} line, \code{checkdesign} reports overlaps and
+air gaps, RASP \code{.eng} files import, and the process exit code reflects command failures ---
+the property that makes piped CLI scripts CI-consumable
+(\srcf{tests/CliDesignCommandsTests.cpp}).
+
+\cppinline|design_matrix_tests| scales that contract across the whole fixture matrix: the 24-design
+corpus is present and every file loads to a sane rocket; every fixture, saved and reloaded,
+reproduces its exact composite footer and tree structure; the concrete part types obey their
+scaling laws (tube mass linear in length and density, fin-set mass linear in fin count); and each
+reference airframe flies its motor ladder --- impulse classes \mbox{1/4A}$\,\to\,$M across seven
+diameter classes --- terminating nominally with a positive apogee that increases strictly with
+total impulse. Because high-impulse motors coast to tens of kilometers, the full ladder dominates
+suite runtime, so the binary is registered with ctest twice: the default entry flies one motor
+per class (a fast smoke that still covers every diameter), and a second entry, labeled
+\code{heavy}, re-runs only the flight sweeps with \cppinline|QTROCKET_FULL_LADDER=1| flying every
+motor (\src{tests/CMakeLists.txt}{97}). \code{ctest -LE heavy} is the development loop; CI runs a
+plain \cppinline|ctest -R 'qtrocket_*'|, covering both.
+
+The \code{DesignRebuild} suite (\srcf{tests/DesignRebuildTests.cpp}) closes the loop on the
+corpus itself: every committed fixture is the exact product of replaying its build script
+(\srcf{tests/data/designs/scripts/}) through the real REPL, so fixture and script cannot drift --- and \srcf{tests/data/designs/regenerate.sh} rebuilds
+the corpus through \code{qtrocket-cli} after a deliberate design change, with each script ending
+in \code{checkdesign} so a regeneration that produces overlaps fails at the source.
+
+\subsection{The Qt adapter contract}\label{sec:verification-gui}
+
+\cppinline|gui_model_tests| wires \code{RocketPartModel} to a \code{PartsModel} exactly as the
+tree view does and attaches a \code{QAbstractItemModelTester} in \code{Fatal} mode for the
+lifetime of every test, so each mutation streams through Qt's own protocol checker and any
+contract violation aborts the run (\srcf{gui/tests/RocketPartModelTests.cpp}). On top of that
+continuous check, the surgical guarantees of \cref{sec:gui} are pinned directly: a
+\code{QPersistentModelIndex} survives unrelated edits and dies with exactly its node, a leaf edit
+emits one \code{dataChanged} and no reset, and the only \code{modelReset} in an entire edit
+sequence is a design install. The binary runs headless under \code{QCoreApplication} --- the
+model under test is widget-free, so no platform plugin is required and the suite runs in the
+same CI lane as everything else.
+
+\subsection{The corpus transcript diff}\label{sec:verification-corpus}
+
+\begin{qrcallout}{Flying the corpus as a physics-preservation gate}
+The pieces above compose into a verification technique that is more than the sum of the suites:
+because the simulation core is deterministic, the composite readers freeze bit-for-bit
+(\cref{sec:caching}), and \code{qtrocket-cli} exits nonzero on any \code{ERR}, a scripted flight
+over the \srcf{tests/data/designs} fixtures produces a byte-stable transcript ---
+\code{loaddesign}, \code{setmotor}, \code{launch}, apogee statistics. Any change that is not supposed to alter
+physics --- a cache restructuring, an ownership change, a performance pass --- can therefore be
+gated by flying the full corpus before and after and diffing the transcripts
+\emph{byte-for-byte}. A clean diff is a far stronger statement than ``the tests still pass'': it
+says every load, every resolve, and every integration step produced the identical bits.
+\end{qrcallout}
+
+The committed placement baseline (\cref{sec:verification-integration}) is the always-on,
+$t{=}0$ subset of this idea; the transcript diff is its on-demand, full-flight form. The two are
+kept honest by the same discipline: baselines and fixtures are regenerated only for a
+deliberate, explained change --- never to silence a diff --- and the regeneration paths are
+gated (an environment variable for the baseline, an explicit script for the corpus) so they
+cannot run by accident.
+
+\subsection{Toolchain gates}\label{sec:verification-toolchain}
+
+Three gates guard the implementation independently of any assertion. The \code{asan-clang} preset
+builds the entire tree --- FetchContent dependencies included --- under
+AddressSanitizer and UndefinedBehaviorSanitizer in a separate \code{build-asan/} directory, with
+\cppinline|-fno-sanitize-recover=all| making every UBSan finding fatal
+(\src{CMakeLists.txt}{20}); a passing \cppinline|ctest --preset asan-clang -R 'qtrocket_*'| is
+therefore a genuinely clean run, not a run whose warnings scrolled by. This matters specifically
+for the ownership design of \cref{sec:tree}: linear \cppinline|unique_ptr| ownership and
+detach-returns-the-subtree are exactly the shapes where a lifetime bug would hide, and ASan turns
+any such bug into a hard failure in the same suites that pin behavior.
+
+Static analysis is layered. The root \srcf{.clang-tidy} enables a curated, signal-dense set for a
+numerics codebase --- the \code{bugprone}, \code{clang-analyzer}, \code{concurrency},
+\code{performance}, and \code{portability} families plus selected \code{misc},
+\code{modernize}, and \code{readability} checks --- with \code{WarningsAsErrors} set to everything, so a finding fails
+the run. Test directories carry a one-line override (\srcf{tests/.clang-tidy} and siblings)
+inheriting the parent config and disabling only \code{bugprone-unchecked-optional-access}:
+gtest's \cppinline|ASSERT_*| guards abort the test on failure, but the check's flow analysis
+cannot see that abort path, so every guarded \cppinline|std::optional| dereference in a test is a
+false positive --- while the check stays armed for production code, where the same pattern would
+be a real defect. \srcf{scripts/run-tidy.sh} runs the identical configuration CI runs, over every
+hand-written translation unit.
+
+Coverage closes the loop on the suites themselves. The \code{coverage-clang} preset builds
+LLVM source-based instrumented binaries in a separate \code{build-coverage/} tree, and the
+\code{coverage} target runs the full \cppinline|qtrocket_*| suite, merges the raw profiles, and
+writes a text summary and an HTML report (\srcf{cmake/RunLlvmCoverage.cmake}). Its role is
+honesty about the pins: a behavioral seam that the suites never actually exercise shows up as an
+uncovered region in the very file that claims to be pinned --- the one failure mode a green test
+run cannot report about itself.

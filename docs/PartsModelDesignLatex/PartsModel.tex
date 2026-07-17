@@ -1,0 +1,114 @@
+% =============================================================================
+%  PartsModel -- The Owned Part Tree
+%  A technical design whitepaper for QtRocket.
+%
+%  Build:  make            (renders PlantUML class diagrams, then compiles)
+%  or:     latexmk -pdf -shell-escape PartsModel.tex   (after `make diagrams`)
+% =============================================================================
+\documentclass[11pt,letterpaper]{article}
+\input{preamble}
+
+\begin{document}
+
+% ----------------------------- Title page ------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[qrDeep] (current page.north west) rectangle ([yshift=-3.2cm]current page.north east);
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\Large]
+    at ([xshift=1in,yshift=-1.05cm]current page.north west) {QtRocket};
+  \node[anchor=north west,text=qrRule,font=\sffamily\small]
+    at ([xshift=1in,yshift=-1.7cm]current page.north west)
+    {Open-source model-rocket simulator \textbullet\ simulation-core design series};
+  \fill[qrTeal] ([yshift=-3.2cm]current page.north west) rectangle ([yshift=-3.32cm]current page.north east);
+\end{tikzpicture}
+
+\vspace*{5.2cm}
+{\sffamily
+  {\color{qrGray}\large Technical Design Whitepaper}\\[0.3em]
+  {\color{qrDeep}\fontsize{30}{34}\selectfont\bfseries PartsModel}\\[0.35em]
+  {\color{qrBlue}\LARGE\bfseries The Owned Part Tree:\\[0.15em] Leaf Parts, One Mutation Authority,\\[0.15em] Gated Composite Mass Properties}\\[1.1em]
+  {\color{qrInk}\large How a rocket is represented, edited, persisted, displayed,\\
+   and flown --- from a pure-leaf \code{Part} through the node tree\\
+   that owns it to the integrator that consumes it.}\par
+}
+
+\vfill
+\noindent\begin{tikzpicture}\draw[qrRule,line width=0.6pt] (0,0)--(\dimexpr\linewidth-0.6pt\relax,0);\end{tikzpicture}
+
+\vspace{0.7em}
+\noindent{\sffamily\small\color{qrGray}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+  \textbf{Status} & As built --- implemented and gate-verified on branch \code{PartsModel}\\
+  \textbf{Scope}  & \code{core/model} (\code{PartsModel}, \code{parts}, \code{DesignSerializer}), \code{cli}, \code{gui} tree view, \code{visualizer}\\
+  \textbf{Target} & QtRocket simulation core (C++23)\\
+  \textbf{Audience} & Maintainers and future contributors of the simulation core\\
+\end{tabularx}}
+\end{titlepage}
+
+% ----------------------------- Abstract --------------------------------------
+\pagenumbering{roman}
+\setcounter{page}{2}
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+A rocket in QtRocket is a tree of physical components, and nearly everything the program does ---
+editing a design in the CLI, painting the GUI tree view, rendering the 3D visualizer, integrating a
+flight --- is a walk over that tree. This whitepaper documents the architecture that carries all of
+those roles: a strict three-way decomposition into \textbf{\code{Part}}, a pure leaf that knows one
+component's mass, geometry profile, and aerodynamic contribution and nothing else;
+\textbf{\code{PartNode}}, the owned tree node that binds a leaf to its placement link, its children,
+and the cached composite quantities of its sub-tree; and \textbf{\code{PartsModel}}, the single
+mutation authority that owns the root, indexes every node by stable id, enforces the single-motor
+invariant, and narrates every edit through a typed aboutTo/did event stream.
+
+The load-bearing commitments are few and strict. Ownership is linear (\code{unique\_ptr}
+end-to-end), so attaching a part \emph{is} surrendering it: double-attachment, ownership cycles, and
+retained mutable aliases are unrepresentable rather than checked. Reads hand out \code{const}
+references; the only post-attach writes are routed verbs on \code{PartsModel} that perform the edit
+and then invalidate exactly the caches the edit dirtied. Composite mass, CM, and inertia rebuild
+behind a mass-delta gate keyed on a live mass sum --- cheap enough to run every integrator stage,
+exact enough to freeze bit-for-bit after burnout --- while geometry resolves once per structural
+edit and never during a burn. Structural errors are typed values, a self-intersecting design is a
+hard located failure on every read, and ``no design'' is a representable state, not a placeholder.
+
+The document specifies each class contract with UML (PlantUML) and the control flow with activity
+and component diagrams (Ti\emph{k}Z), walks the two execution paths end to end --- a CLI design
+session from \code{newdesign} to \code{savedesign}, and a simulated flight from ignition through
+the burn to the post-burnout cache freeze --- and records the design decisions and their rejected
+alternatives with the rationale that selected them.
+
+\vspace{0.5em}
+\begin{designrule}[Three non-negotiable rules]
+\textbf{1. One authority mutates.} Every post-attach edit is a \code{PartsModel} verb that writes
+and then dirties the correct cache chain; reads are \code{const}. \textbf{2. Ownership is linear.}
+Nodes own leaves and children uniquely; the type system, not a runtime check, forbids aliasing.
+\textbf{3. Derived state is gated, never trusted.} Composite quantities rebuild when their inputs
+moved and freeze when they did not --- and a failed geometry solve throws on \emph{every} read.
+\end{designrule}
+
+\clearpage
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+% ----------------------------- Sections --------------------------------------
+\input{sections/01-introduction}
+\input{sections/02-philosophy}
+\input{sections/03-part-leaf}
+\input{sections/04-node-tree}
+\input{sections/05-caching}
+\input{sections/06-placement}
+\input{sections/07-motor}
+\input{sections/08-serialization}
+\input{sections/09-cli-walkthrough}
+\input{sections/10-flight-walkthrough}
+\input{sections/11-gui}
+\input{sections/12-tradeoffs}
+\input{sections/13-verification}
+
+\clearpage
+\appendix
+\input{sections/A1-glossary}
+\input{sections/A2-invariants}
+
+\end{document}

@@ -14,14 +14,14 @@ namespace model::part
 {
 
 /**
- * @brief Minimal concrete Part for unit tests: a bare composition node that carries an explicitly
- *        supplied mass and (per-unit-mass) inertia tensor, with no derived geometry.
+ * @brief Minimal concrete Part for unit tests: a bare leaf that carries an explicitly supplied mass
+ *        and (per-unit-mass) inertia tensor, with no derived geometry.
  *
- * Part is abstract -- typeName() and cloneShallow() are pure -- so a test that needs a generic node
- * (a point mass, a synthetic tube, an anonymous tree node) instantiates this stand-in instead of the
- * base. The composition math these tests exercise (mass aggregation, CM, parallel-axis inertia) is
- * geometry-agnostic, so a node with hand-picked mass properties is exactly the right tool and there is
- * no need to borrow a real geometry type.
+ * Part is abstract -- typeName() and clone() are pure -- so a test that needs a generic part (a point
+ * mass, an anonymous tree leaf) instantiates this stand-in instead of the base. The composite math
+ * these tests exercise (mass aggregation, CM, parallel-axis inertia) is geometry-agnostic, so a part
+ * with hand-picked mass properties is exactly the right tool and there is no need to borrow a real
+ * geometry type.
  */
 class TestPart : public Part
 {
@@ -30,15 +30,14 @@ public:
 
     std::string typeName() const override { return "TestPart"; }
 
-protected:
-    /// @brief Uses Part's protected copy ctor (own mass properties, fresh id, no children), so clone()
-    ///        reproduces a TestPart.
-    TestPart(const TestPart&) = default;
-
-    std::shared_ptr<Part> cloneShallow() const override
+    std::unique_ptr<Part> clone() const override
     {
-        return std::shared_ptr<Part>(new TestPart(*this));
+        return std::unique_ptr<Part>(new TestPart(*this));
     }
+
+protected:
+    /// Uses Part's protected copy ctor: same mass properties, fresh id.
+    TestPart(const TestPart&) = default;
 };
 
 } // namespace model::part

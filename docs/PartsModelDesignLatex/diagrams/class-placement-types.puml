@@ -1,0 +1,97 @@
+@startuml class-placement-types
+' Value types + free functions of core/model/parts/Placement.h -- pure geometry:
+' no time, no mass, no tree access. The tree walk that drives them lives in PartsModel.
+!include _style.iuml
+title model::part placement layer --- value types and free functions
+
+class "abut() / nestInBore() / seatOnWall()" as Verbs <<freefn>> {
+  +abut(gap = 0.0) : StationLink
+  +nestInBore(depth) : StationLink
+  +seatOnWall(parentStation01) : StationLink
+}
+
+class StationLink <<pod>> {
+  +parentStation01 : double = 0.0
+  +childStation01 : double = 1.0
+  +gap : double = 0.0
+  +seat : SeatKind = Abut
+  +childRot : Quaternion = Identity
+}
+note left of StationLink
+  The stored intent. Stations
+  are fractions of live length
+  (0 = aft, 1 = fore), resolved
+  against getLength() on every
+  read: a length edit moves
+  the seam.
+end note
+
+enum SeatKind <<enumc>> {
+  Abut
+  NestInBore
+  OnSurface
+}
+note right of SeatKind
+  Closed set: the seat picks the
+  seam's radial check and fixes
+  the gap's sign.
+end note
+
+class Station <<pod>> {
+  +z : double
+  +rOuter : double
+  +rInner : double
+}
+
+class "placeChild()" as PlaceChild <<freefn>> {
+  +placeChild(parentPose, parent, child, link) : Pose
+}
+
+class Pose <<pod>> {
+  +origin : Vector3 = Zero
+  +orient : Quaternion = Identity
+  --
+  +compose(childInThis : Pose) : Pose
+}
+
+class Placed <<pod>> {
+  +part : const Part*
+  +pose : Pose
+  +parentId : PartId
+}
+note left of Placed
+  Emitted in depth-first
+  attachment order, parent
+  before child: parentId
+  always names an earlier
+  entry (0 = sub-tree root).
+end note
+
+class "radialSeamCheck() / sweepOverlaps()" as Diag <<freefn>> {
+  +radialSeamCheck(parent, child, link, tol) : optional<OverlapDiagnostic>
+  +sweepOverlaps(placed, tol) : SolveResult
+}
+
+class SolveResult <<pod>> {
+  +ok : bool = true
+  +diagnostics : vector<OverlapDiagnostic>
+}
+
+class OverlapDiagnostic <<pod>> {
+  +offender : PartId
+  +host : PartId
+  +zWorld : double
+  +penetration : double
+  +message : std::string
+}
+
+Verbs ..> StationLink : <<produce>>
+StationLink *-- SeatKind : seat
+PlaceChild ..> StationLink : reads
+PlaceChild ..> Station : stationAt()
+PlaceChild ..> Pose : <<produces>>
+Placed *-- Pose : pose
+Diag ..> Placed : reads
+Diag ..> SolveResult : <<produces>>
+SolveResult *-- "0..*" OverlapDiagnostic : diagnostics
+@enduml

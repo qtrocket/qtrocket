@@ -1,0 +1,350 @@
+\section{Design decisions and rejected alternatives}\label{sec:tradeoffs}
+
+The preceding sections describe the machinery; this one defends it. Every load-bearing
+choice in the part-tree design is collected here as a decision record: the decision, the
+rationale that wins, and the alternatives that lose --- with the specific failure that
+disqualifies each. The entries are grouped by theme (ownership, caching, mutation,
+the motor, the error and event surface, concurrency), but each stands alone and is
+grounded in the code it defends.
+
+A pattern recurs throughout and is worth naming up front: wherever a correctness property
+can be made \emph{unrepresentable} --- by ownership type, by access control, by a typed
+verb --- the design prefers that to a runtime check, and prefers a runtime check to a
+convention. The alternatives below mostly lose because they defend the same property at a
+weaker rung of that ladder.
+
+\subsection{Ownership and structure}\label{sec:tradeoffs-ownership}
+
+\paragraph{Linear ownership.}
+Every \code{PartNode} owns its \code{Part} and its children through
+\cppinline|std::unique_ptr| (\srcf{core/model/PartsModel.h}); \code{PartFactory} produces
+\cppinline|std::unique_ptr<Part>| (\src{core/model/parts/PartFactory.h}{60}); and
+\code{PartsModel::attach} consumes one by value, so ownership transfer is visible in the
+signature and enforced by the move. No \cppinline|std::shared_ptr<Part>| exists anywhere
+in the production tree. The consequence is that a part has exactly one owner at all
+times: double-attach, membership in two models, and post-attach aliasing are compile
+errors, not audited conventions.
+
+\begin{rejected}[Rejected --- shared-pointer interior]
+Holding parts by \cppinline|std::shared_ptr| and handing copies to consumers loses on two
+counts, both silent. First, a retained alias is an unrouted write path: the composite
+mass-delta gate (\cref{sec:caching}) backstops a mass edit --- the live sum moves on the
+next read --- but the gate keys on composite mass \emph{alone}
+(\src{core/model/PartsModel.cpp}{122}), so an equal-mass tensor edit through an alias
+(a same-mass, different-diameter motor is the canonical case) flies a stale composite
+inertia tensor with no error, ever. Widening the gate to notice tensor edits would mean
+recomputing the tensor in order to validate the tensor --- the cache doing the work it
+exists to skip. The staleness class therefore cannot be closed by checking; it must be
+closed structurally, by making the alias uncompilable. Second, one shared part becomes
+attachable under two models: each composite counts the same mass, and an edit routed
+through one model leaves the other's caches stale with no event. Linear ownership deletes
+both failure classes at the type level.
+\end{rejected}
+
+\paragraph{A recursive owned node tree, not a flat arena.}
+The tree is stored as it is shaped: each node holds a vector of owned children and a
+parent back-pointer, and \code{Part::Id} --- process-unique, never reused, fresh on every
+clone --- doubles as the O(1) index key (\srcf{core/model/PartsModel.h}).
+
+\begin{rejected}[Rejected --- flat arena with generational ids]
+Contiguous node records indexed by integer slot, parent indexes, generation counters, and
+a cached preorder were evaluated as an alternative storage scheme. The arena has the
+cleanest invalidation story on paper --- structural edits bump a generation exhaustively,
+by construction --- but it loses three ways. (1)~Slot reuse makes a bare index silently
+wrong after freelist recycling; every retained handle must carry a generation stamp to
+dodge the ABA hazard, and the handles that matter most --- GUI selection and undo ---
+are held across arbitrary edits. \code{Part::Id} as a never-reused counter is immune
+outright: a stale id fails the O(1) lookup safely instead of resolving to a stranger.
+(2)~A payload-free generation bump can never drive Qt's granular row operations, which
+need $\{parent, row\}$ \emph{before} the edit (\cref{sec:gui}); the event stream the GUI
+consumes carries exactly that payload (\src{core/model/PartsModel.h}{143}).
+(3)~Contiguity pays only when cache misses dominate traversal, i.e.\ at node counts
+orders of magnitude beyond a rocket's. A design is tens of parts; the hot-path walk
+touches each node once per integrator stage regardless of layout. The arena's genuinely
+good ideas --- typed mutation verbs, exhaustive invalidation on structural edits,
+stamp-after-success --- appear in the tree design without the storage cost.
+\end{rejected}
+
+\subsection{Cache placement and the gate}\label{sec:tradeoffs-caching}
+
+\paragraph{Per-node caches.}
+Every \code{PartNode} carries its own composite-mass-properties cache and its own
+resolved-placement cache (\srcf{core/model/PartsModel.h}), not just the root.
+
+\begin{rejected}[Rejected --- root-only caching]
+Caching only at the root halves the field count and nothing else. Every composite query
+is defined on \code{PartNode} precisely so that \emph{any} node is a valid sub-assembly
+root --- the API surface that stage composites (multi-stage designs are planned) and
+detached-subtree preview consume. Root-only caching turns each such query into a full
+recompute with nowhere to memoize. Meanwhile the invalidation logic is identical either
+way: the dirty walk already marks every ancestor to the root
+(\srcf{core/model/PartsModel.h}), so per-node caching adds no invalidation complexity ---
+only a few hundred bytes of \code{mutable} state across the whole tree.
+\end{rejected}
+
+\paragraph{The mass-delta gate compares exactly.}
+The composite CM/tensor cache rebuilds iff the node is structurally dirty or the live
+mass sum differs from the stamp by exact \code{==}, with a NaN sentinel forcing the first
+build (\src{core/model/PartsModel.cpp}{122}). The key is the composite mass itself ---
+already computed every stage as the ODE divisor (\src{core/sim/Propagator.cpp}{41}), so
+the gate costs nothing beyond a comparison. The division of labor is deliberate: the gate
+covers \emph{time} variation (a burning motor), routing covers \emph{edits} --- because
+an equal-mass edit is invisible to any mass-keyed gate, as
+\cref{sec:tradeoffs-routing} develops.
+
+\begin{rejected}[Rejected --- an epsilon tolerance on the gate]
+An approximate comparison trades the bit-exact post-burnout freeze for a tunable with no
+principled value. After burnout the live sum repeats bit-for-bit, so exact \code{==}
+freezes the cache with zero false rebuilds; during the slow tail of a burn, per-stage
+mass deltas shrink below any fixed epsilon, so an epsilon gate silently freezes the CM
+and tensor \emph{while mass is still draining} --- a stale-cache class with no error and
+no way to pick the threshold that avoids it.
+\end{rejected}
+
+\begin{rejected}[Rejected --- time-keyed caching]
+Caching keyed on the query time $t$ assumes $t$ is monotone and unique. The adaptive
+RK45 integrator violates both: stages evaluate at repeated intermediate times, and a
+rejected step re-queries times already seen. A $t$-keyed cache therefore either thrashes
+(rebuild per stage --- exactly the hot-path cost the cache exists to avoid) or serves a
+value built \emph{before an edit} at the same $t$. Keying on the live mass sum is immune
+to both, and doubles as a physical statement: for a fixed structure, the composite CM and
+tensor change only when the mass distribution does.
+\end{rejected}
+
+\subsection{Routed mutation}\label{sec:tradeoffs-routing}
+
+\paragraph{Verbs on the model, private setters on the leaf.}
+Every post-attach write path is a \code{PartsModel} verb --- \code{setPartMass},
+\code{setPartInertia}, \code{setLink}, \code{mutatePart}, and the motor verbs --- each of
+which writes and then dirties the correct cache chain before returning. \code{Part}'s
+setters are \code{private} with \code{PartsModel} as the sole friend
+(\src{core/model/parts/Part.h}{133}), so no other code can reach them.
+\code{MutateHint} declares whether an arbitrary edit is mass-only or geometric, so a mass
+edit never re-runs the placement resolve and envelope sweep. \Cref{lst:tradeoffs-setlink}
+shows the pattern at its most instructive point: a seat edit moves resolved poses, and
+with them the composite CM and tensor, at possibly unchanged mass --- so the verb dirties
+\emph{both} chains, because no gate downstream could detect the change.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+bool PartsModel::setLink(part::Part::Id child, const part::StationLink& link)
+{
+    PartNode* n = find(child);
+    if(n == nullptr || n == root_.get())
+    {
+        return false; // a root has no incoming edge
+    }
+    const Event e{Event::LinkChanged, child, n->parent_->id(), n->rowInParent()};
+    emitEvent(e, true);
+    n->link_ = link;
+    // A seat edit is geometry: resolved poses move and the composite CM/tensor move with them --
+    // the mass gate alone cannot see an equal-mass geometry change, so both chains dirty.
+    n->parent_->markMassDirty();
+    n->parent_->markPlacementDirty();
+    emitEvent(e, false);
+    return true;
+}
+\end{minted}
+\caption{A routed verb writes, then dirties the chains the write actually
+invalidates (\srccap{core/model/PartsModel.cpp}{431}).}
+\label{lst:tradeoffs-setlink}
+\end{listing}
+
+\begin{keyinsight}[The gate is a backstop, not a router]
+The mass-delta gate catches mass drift from any source, but it is structurally blind to
+equal-mass edits --- a tensor write, a seat move, a same-mass motor swap. Routing is
+therefore load-bearing correctness, not style: it is the only invalidation-complete
+option, and linear ownership (\cref{sec:tradeoffs-ownership}) is what makes the routed
+surface exhaustive by construction.
+\end{keyinsight}
+
+\begin{rejected}[Rejected --- an observer or back-pointer on \code{Part}]
+Giving the leaf a pointer to its node so its setters self-invalidate reintroduces tree
+knowledge into the class whose contract is precisely that it has none
+(\cref{sec:leaf}): every detached part would need null-check discipline on every setter.
+Worse, a public self-invalidating setter bypasses the model's event stream --- caches
+would refresh but no \code{Mutated} event would fire, so the GUI's mass column goes stale
+over a perfectly fresh cache. Invalidation and notification must travel together, and
+only a model-level verb sees both.
+\end{rejected}
+
+\begin{rejected}[Rejected --- immutable parts, replace-on-edit]
+Modeling every edit as clone-with-new-value plus node swap makes staleness
+unrepresentable, but at the cost of identity: \code{Part::Id} is fresh per instance, so
+every mass edit churns the id. GUI selection (keyed on
+\code{QModelIndex::internalId}, \src{gui/RocketTreeView.cpp}{140}), the model's typed
+motor borrow, and any held undo handle would all invalidate on a slider drag, and a
+scalar edit would masquerade as a structural detach/attach with event noise to match.
+Stable identity across in-place edits is exactly what mutable-behind-verbs buys.
+\end{rejected}
+
+\begin{rejected}[Rejected --- polled version counters]
+A per-part version integer bumped by public setters, aggregated and compared on read,
+turns every composite query into an $O(N)$ version sweep on the per-stage hot path ---
+paid on every read, forever, to detect edits that arrive through a handful of call
+sites. And a version bump says \emph{that} something changed, not \emph{what}: placement
+work would re-run on mass edits, or a second per-aspect counter would reinvent
+\code{MutateHint} with strictly more state.
+\end{rejected}
+
+\begin{rejected}[Rejected --- \code{protected} leaf setters]
+Protected access lets any subclass re-export a public mutator that skips invalidation
+and events; a motor type wrapping its own state is the obvious candidate. Private plus a
+single named friend (\src{core/model/parts/Part.h}{133}) makes the compiler enforce the
+seam against subclasses too.
+\end{rejected}
+
+\subsection{The motor}\label{sec:tradeoffs-motor}
+
+\paragraph{Live-derived state.}
+\code{part::Motor} owns its \code{MotorModel} by value and derives everything at query
+time: \code{getMass(t)} and \code{getI()} read the wrapped model live
+(\src{core/model/parts/Motor.h}{46}). No seeded copy of the motor's mass or tensor
+exists anywhere, so \code{PartsModel::setMotor}'s swap path reduces to \emph{replace the
+wrapped model, dirty the mass chain} (\srcf{core/model/PartsModel.cpp}) --- and the
+stale-seed divergence class has no representation to occupy.
+
+\begin{rejected}[Rejected --- seeded base-field copies]
+Seeding the leaf's mass/tensor fields from the motor at construction and re-seeding on
+swap creates a write path that must \emph{remember} to invalidate --- and the one swap
+most likely to be forgotten is the one the mass gate can never catch: equal mass,
+different diameter, stale tensor, no error. Live derivation deletes the state that could
+go stale instead of testing for its staleness.
+\end{rejected}
+
+\begin{keyinsight}[Burn-dependent grain inertia is enabled, not gated out]
+The live-derivation contract deliberately declines to pin the motor's tensor constant.
+Propellant-grain inertia that tracks the burn is desirable future modeling, and when it
+arrives \code{getI()} grows a time parameter mirroring \code{getMass(t)} --- the
+composite walk already has $t$ in hand at the call site. A design that froze the tensor
+by contract would buy nothing today and cost that feature later.
+\end{keyinsight}
+
+\paragraph{Persisted as a database reference.}
+A design file records its motor as a common-name reference plus the seat link on its edge
+(\src{core/model/DesignSerializer.cpp}{205}); load re-resolves the name against the motor
+database, and a miss degrades to design-without-motor with a logged warning
+(\src{core/model/DesignSerializer.cpp}{257}) rather than a failed load. A \code{Motor}
+appearing as an ordinary tree \code{<part>} element is rejected outright
+(\src{core/model/DesignSerializer.cpp}{155}), so the reference is the one channel.
+
+\begin{rejected}[Rejected --- inlining the thrust curve]
+Embedding the full curve in the design file creates two sources of truth that skew as
+the database updates, bloats every file with data the database already owns, and leaves
+the motor's identity ambiguous (no key to re-resolve corrections against). Motors are
+per-flight database entities; the airframe file names one, it does not contain one ---
+and a missing name must not brick the airframe, hence degrade-with-warning rather than
+throw.
+\end{rejected}
+
+\paragraph{Zero-span nodes host nothing.}
+The envelope sweep excludes any candidate host whose axial span is zero
+(\src{core/model/parts/Placement.cpp}{183}); the \code{Motor} node, with the base
+zero-length geometry (\srcf{core/model/parts/Part.h}), is the standing example. The
+solid-host rule samples radii across the host's interior span; a point mass has no
+interior stations to sample, and admitting it as a host would let it shadow the real
+enclosing part --- an offender ``fitting'' against a point.
+
+\begin{rejected}[Rejected --- a synthetic motor envelope]
+Inventing a nonzero casing envelope for the \code{Motor} node so it can participate in
+the sweep would collide with the mount geometry the airframe already models --- the same
+volume claimed twice --- and would oblige every future point-mass-like part (ballast,
+electronics) to carry fake geometry just to stay out of the sweep's way. Exclusion by
+span is one comparison and states the physics plainly.
+\end{rejected}
+
+\subsection{Errors, events, and the empty design}\label{sec:tradeoffs-errors}
+
+\paragraph{Typed \code{std::expected} errors.}
+Structural verbs return their cause: \code{attach} yields
+\code{std::expected<Id, AttachError>} with \code{NullPart} / \code{NoSuchParent} /
+\code{DuplicateMotor}, and \code{detach} yields the detached subtree or
+\code{NoSuchId} / \code{IsRoot} (\src{core/model/PartsModel.h}{136}). The CLI switches
+on the enumerator and prints a precise message per cause (\src{cli/Repl.cpp}{955});
+tests pin each enumerator directly. On success, \code{detach}'s value \emph{is} the
+subtree --- the natural undo/clipboard token --- so the error channel and the payload
+share one signature.
+
+\begin{rejected}[Rejected --- \code{bool} returns or logged no-ops]
+A verb that fails silently (or with only a log line) forces callers to \emph{probe} for
+failure --- counting children before and after the call --- and to guess at the cause in
+their own error text, which then diverges per call site. A boolean is barely better: it
+answers ``did it work'' but not ``why not,'' so the CLI cannot distinguish a bad parent
+id from a second motor, and a test cannot pin the rejection it intends to provoke.
+\end{rejected}
+
+\paragraph{Dual aboutTo/did events.}
+Every mutation fires its \code{Event} twice --- once with \code{before == true}, once
+after (\src{core/model/PartsModel.h}{143}) --- carrying
+$\{kind, id, parentId, row\}$. This is the exact shape Qt's model contract needs:
+\code{beginInsertRows}/\code{beginRemoveRows} must run \emph{before} the structure
+changes, while the pre-edit rows are still queryable, and the matching \code{end*} call
+runs after (\src{gui/RocketTreeView.cpp}{32}). The core stays Qt-free; it simply emits
+an event shape a Qt adapter can consume losslessly (\cref{sec:gui}).
+
+\begin{rejected}[Rejected --- a single post-hoc notification]
+A lone ``something changed'' callback after the fact can never satisfy the
+\code{begin*}/\code{end*} protocol, so a Qt view built on it must fall back to
+\code{beginResetModel}/\code{endResetModel} on every edit --- destroying selection and
+expansion state on each keystroke of a mass field. The design keeps a coarse post-hoc
+callback \emph{as well} (\srcf{core/model/RocketModel.h}) for consumers that only
+repaint; the dual stream is a superset, not a compromise.
+\end{rejected}
+
+\paragraph{A nullable root.}
+``No design'' is a real state and is represented directly: \code{hasDesign()} is a null
+test on the root (\src{core/model/PartsModel.h}{161}). Every consumer is forced to
+confront the empty state explicitly, which is what makes the CLI's contract crisp:
+\code{ERR addpart: no design (use newdesign first)} (\src{cli/Repl.cpp}{906}), and
+likewise for \code{checkdesign} and \code{listparts}.
+
+\begin{rejected}[Rejected --- a placeholder root part]
+A mandatory synthetic root makes the empty state unrepresentable rather than handled:
+\code{hasDesign()} degrades to recognizing a magic part, the serializer must persist or
+special-case it, the composite walk and the sweep process a part that is not part of the
+rocket, and the CLI's verified \code{no design} error contract dissolves into
+heuristics. A null pointer is one comparison and cannot be mistaken for geometry.
+\end{rejected}
+
+\subsection{Concurrency: single-writer now, snapshots later}\label{sec:tradeoffs-threading}
+
+The model is single-writer by contract, and the contract is stated where it binds: in the
+\code{PartsModel} class documentation and at the \code{PartNode} cache fields
+(\srcf{core/model/PartsModel.h}). The \code{const} composite accessors are
+\emph{reads that write} --- they rebuild and re-stamp \code{mutable} caches --- and even
+\code{thrust(t)} writes a \code{mutable} log-once burnout latch inside a \code{const}
+call chain (\src{core/model/MotorModel.h}{342}). Concurrent access, all-\code{const}
+included, is therefore a data race by design, and the signatures must not be read as a
+thread-safety promise.
+
+\begin{rejected}[Rejected --- a lock or mutex]
+The reads-that-write pattern defeats reader-writer locking outright: any read may need
+to become the writer, so a shared/exclusive lock degenerates to exclusive on every
+composite read --- a mutex acquisition per RK45 stage, on the hottest path in the
+program (the propagator divides by \code{getMass(t)} every stage,
+\src{core/sim/Propagator.cpp}{41}). Locking also fails the consumers it claims to serve:
+a CM and a tensor are physically meaningful only as a pair from the same rebuild, and a
+per-call mutex gives no such multi-value consistency unless held across grouped reads
+--- inviting GUI-holds-lock stutter and callback re-entrancy deadlocks. Its one genuine
+advantage, zero-staleness reads, is worthless to a GUI repainting from millisecond-old
+frames.
+\end{rejected}
+
+\begin{designrule}[If threading arrives: snapshot, do not share]
+The direction of record for a future worker-thread simulation is snapshotting: fly a
+\code{PartNode::clone()} of the design on the worker --- edits during a flight then
+apply to the \emph{next} launch, the sane semantics regardless of threading --- and
+publish telemetry as immutable \code{StateData} frames. Batch work (motor-ladder sweeps,
+Monte Carlo) takes one clone per flight and is embarrassingly parallel. Each thread owns
+its data; only the handoff synchronizes. The one known design obligation for that day:
+\code{Part::Id} is fresh on clone, so mapping results back onto the edited tree needs a
+clone-time id correspondence. Until a real concurrency requirement exists, the
+single-writer contract stays documented at the cache sites so threading work reopens it
+deliberately instead of trusting \code{const}.
+\end{designrule}
+
+Taken together, the record reads as one decision made twelve ways: put each invariant
+inside the smallest boundary that can actually defend it --- the type system where
+possible, a friend seam or a typed verb where not --- and spend runtime checks only on
+what structure cannot express. \Cref{sec:verification} closes the loop by showing how
+the test suite pins each of these choices in place.

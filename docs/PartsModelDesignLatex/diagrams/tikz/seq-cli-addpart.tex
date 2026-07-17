@@ -1,0 +1,74 @@
+% One addpart command, end to end: Repl parse -> PartsModel verb -> event pair -> observers.
+% Three lanes: cli (Repl), model (PartsModel + RocketModel bridge), observers.
+\begin{tikzpicture}[node distance=5mm and 10mm,
+  lact/.style={act, text width=36mm},
+  levt/.style={comp, text width=34mm, inner sep=5pt},
+  lcon/.style={consumer, text width=34mm, dashed}]
+
+  % ---- cli lane -------------------------------------------------------------
+  \node[io, text width=40mm] (c1)
+    {addpart Airframe FinSet \ldots{} seat=OnSurface};
+  \node[lact, below=of c1] (c2)
+    {resolve parent token:\\ parts().findByName(\allowbreak``Airframe'') $\to$ id 2};
+  \node[lact, below=of c2] (c3)
+    {parseDesignTokens $\to$ PartParams + link tokens;\\ linkFromTokens $\to$ StationLink};
+  \node[lact, below=of c3] (c4)
+    {makePart(``FinSet'', params) $\to$ fresh leaf Part};
+  \node[lact, below=of c4] (c5)
+    {parts().attach(parentId, part, link)};
+  \node[oknode, text width=36mm, below=58mm of c5] (c6)
+    {OK addpart: FinSet id=3 under 2};
+  \node[failnode, text width=36mm, below=4mm of c6] (c7)
+    {ERR addpart: factory throw or typed AttachError};
+
+  % ---- model lane -----------------------------------------------------------
+  \node[lact, right=14mm of c5] (m1)
+    {validate: find(parent); scan the incoming sub-tree for a second Motor};
+  \node[levt, below=of m1] (m2)
+    {emit Event\{Attached, id, parent, row\}, before = true};
+  \node[lact, below=of m2] (m3)
+    {mutate + register: adopt into id index and motor borrow, push child row, mark mass + placement dirty};
+  \node[levt, below=of m3] (m4)
+    {emit the same Event, before = false};
+  \node[resolver, text width=24mm, right=8mm of m3] (b)
+    {RocketModel event bridge};
+
+  % ---- observers lane -------------------------------------------------------
+  \node[lcon, right=8mm of b, yshift=14mm] (o1)
+    {aboutTo $\to$ beginInsertRows (Qt row op)};
+  \node[lcon, below=10mm of o1] (o2)
+    {did $\to$ endInsertRows; coarse structureChanged refresh};
+  \node[text width=34mm, align=center, font=\sffamily\scriptsize\itshape,
+        text=qrGray, below=4mm of o2] (o3)
+    {in a CLI session no consumer registers; both callbacks are null and skipped};
+
+  % ---- flows ----------------------------------------------------------------
+  \draw[flow] (c1) -- (c2);
+  \draw[flow] (c2) -- (c3);
+  \draw[flow] (c3) -- (c4);
+  \draw[flow] (c4) -- (c5);
+  \draw[flow] (c5.east) -- (m1.west) node[flowlbl, midway, above] {verb call};
+  \draw[flow] (m1) -- (m2);
+  \draw[flow] (m2) -- (m3);
+  \draw[flow] (m3) -- (m4);
+  \draw[flow] (m4.south) |- (c6.east)
+    node[flowlbl, pos=0.6, below] {std::expected id};
+  \draw[flow, dashed] (c4.west) -- ++(-0.6,0) |- (c7.west)
+    node[flowlbl, pos=0.35, left] {throws};
+  \draw[flow, dashed] (m1.west) -- ++(-0.55,0) |- (c7.east)
+    node[flowlbl, pos=0.8, above] {unexpected(AttachError)};
+  \draw[flow] (m2.east) -- (b.north west) node[flowlbl, pos=0.4, above, sloped] {aboutTo};
+  \draw[flow] (m4.east) -- (b.south west) node[flowlbl, pos=0.4, below, sloped] {did};
+  \draw[flow] (b.north east) -- (o1.west);
+  \draw[flow] (b.south east) -- (o2.west);
+
+  % ---- lane boxes -----------------------------------------------------------
+  \coordinate (ctop) at ($(c1.north)+(0,0.55)$);
+  \coordinate (mtop) at ($(m1.north)+(0,0.55)$);
+  \coordinate (otop) at ($(o1.north)+(0,0.55)$);
+  \begin{pgfonlayer}{background}
+    \titledbox{(c1)(c2)(c3)(c4)(c5)(c6)(c7)(ctop)}{}{qrBlue}{cli --- Repl}
+    \titledbox{(m1)(m2)(m3)(m4)(b)(mtop)}{}{qrTeal}{model --- PartsModel + RocketModel}
+    \titledbox{(o1)(o2)(o3)(otop)}{}{qrDeep}{observers}
+  \end{pgfonlayer}
+\end{tikzpicture}

@@ -10,7 +10,8 @@
 /// \endcond
 
 // qtrocket headers
-namespace model::part { class Part; }
+#include "model/PartsModel.h"
+
 namespace model { class RocketModel; }
 
 class RocketPartModel : public QAbstractItemModel
@@ -27,7 +28,13 @@ public:
 
     explicit RocketPartModel(QObject* parent = nullptr);
 
-    void setRootPart(model::part::Part* root);
+    /// Bind to @p parts (borrowed; may be null to empty the view) and reset.
+    void setParts(const model::PartsModel* parts);
+
+    /// Consume one typed aboutTo/did event: attach/detach become surgical row inserts/removes,
+    /// leaf and link edits become dataChanged on the affected row, and only a design install is a
+    /// full reset -- so selection, expansion, and scroll survive ordinary edits.
+    void onPartsEvent(const model::PartsModel::Event& e, bool before);
 
     // QAbstractItemModel interface reqs
     QModelIndex index(int row, int column, const QModelIndex& parent) const override;
@@ -38,13 +45,14 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
 private:
-    /// The Part behind an index; the root for an invalid (top-level parent) index.
-    model::part::Part* partForIndex(const QModelIndex& index) const;
+    /// The node behind an index, resolved by id through the PartsModel index -- a stale index fails
+    /// the lookup (nullptr) instead of dereferencing a dead pointer. Root for an invalid index.
+    const model::PartNode* nodeForIndex(const QModelIndex& index) const;
 
-    /// The row @p part occupies within its own parent's child list (0 for the root).
-    int rowOfPart(model::part::Part* part) const;
+    /// Column-0 index for the node with @p id; invalid if absent. Rows come from the live tree.
+    QModelIndex indexForId(model::part::Part::Id id) const;
 
-    model::part::Part* m_root{nullptr};
+    const model::PartsModel* m_parts{nullptr};
 };
 
 /// @brief A QTreeView named for its role: an exploded view of the rocket's components and their
@@ -57,16 +65,13 @@ public:
     RocketTreeView(QWidget* parent = nullptr);
     ~RocketTreeView() override;
 
-    /// Show @p rocket's part tree and keep it live: roots the model at the rocket's top part and
-    /// registers a structure-changed callback so add/remove (and motor changes) refresh the view.
-    /// Re-pointing replaces any prior binding; nullptr detaches. The rocket must outlive this view.
+    /// Show @p rocket's part tree and keep it live: binds the model to the rocket's PartsModel and
+    /// subscribes to the typed event stream so edits update surgically (a design install resets and
+    /// re-expands). Re-pointing replaces any prior binding; nullptr detaches. The rocket must
+    /// outlive this view.
     void setRocketModel(model::RocketModel* rocket);
 
 private:
-    /// Re-root the model at the rocket's current top part and reset; the callback the rocket fires.
-    /// Re-fetches getTopPart() each time so a setRoot() that swaps the root pointer is handled.
-    void onRocketStructureChanged();
-
     RocketPartModel* m_partModel{nullptr};
     model::RocketModel* m_rocket{nullptr};
 };

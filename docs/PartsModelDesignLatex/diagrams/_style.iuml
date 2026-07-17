@@ -1,0 +1,76 @@
+' ============================================================================
+'  _style.iuml -- shared PlantUML theme for the Part Placement class diagrams
+'  (.iuml extension keeps it out of the Makefile's diagrams/*.puml glob)
+'
+'  NOTE: this PlantUML build rejects the `skinparam class<<stereo>> { }` block
+'  form (exit 200). Per-stereotype colours therefore use the supported
+'  `Property<<stereo>>` suffix form inside a single `skinparam class { }` block.
+' ============================================================================
+skinparam backgroundColor transparent
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 7
+skinparam nodesep 14
+skinparam ranksep 28
+skinparam classAttributeIconSize 0
+skinparam ArrowColor #1A2733
+skinparam ArrowThickness 1.0
+hide empty members
+
+skinparam class {
+  FontColor #1A2733
+  FontSize 13
+  AttributeFontColor #1A2733
+  AttributeFontSize 11
+  StereotypeFontColor #FFFFFF
+  StereotypeFontSize 11
+  BorderThickness 1.0
+
+  ' --- default (un-stereotyped) ---
+  BackgroundColor #F6F8FA
+  BorderColor #1F5C99
+  HeaderBackgroundColor #123A63
+
+  ' --- abstract base ---
+  BackgroundColor<<abstract>> #EAF0F6
+  BorderColor<<abstract>> #123A63
+  HeaderBackgroundColor<<abstract>> #123A63
+
+  ' --- concrete part ---
+  BackgroundColor<<concrete>> #F6F8FA
+  BorderColor<<concrete>> #1F5C99
+  HeaderBackgroundColor<<concrete>> #1F5C99
+
+  ' --- POD / value type ---
+  BackgroundColor<<pod>> #ECF6F6
+  BorderColor<<pod>> #0E7C7B
+  HeaderBackgroundColor<<pod>> #0E7C7B
+
+  ' --- new value type (introduced by this design) ---
+  BackgroundColor<<newtype>> #ECF6F6
+  BorderColor<<newtype>> #0E7C7B
+  HeaderBackgroundColor<<newtype>> #0E7C7B
+
+  ' --- enum ---
+  BackgroundColor<<enumc>> #FAF1E8
+  BorderColor<<enumc>> #B5651D
+  HeaderBackgroundColor<<enumc>> #B5651D
+
+  ' --- free functions / interface ---
+  BackgroundColor<<freefn>> #EDF5EE
+  BorderColor<<freefn>> #2E7D32
+  HeaderBackgroundColor<<freefn>> #2E7D32
+
+  ' --- legacy / being removed ---
+  BackgroundColor<<legacy>> #F8ECEC
+  BorderColor<<legacy>> #A4232B
+  HeaderBackgroundColor<<legacy>> #A4232B
+}
+
+skinparam note {
+  BackgroundColor #FFF8E6
+  BorderColor #B5651D
+  FontColor #1A2733
+  FontSize 11
+}
