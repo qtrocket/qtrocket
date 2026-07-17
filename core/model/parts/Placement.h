@@ -17,7 +17,7 @@ namespace model::part
 {
 
 // A resolved placement refers to its Part by non-owning pointer. This header must not include Part.h
-// -- Part.h includes this one (for StationLink in childParts), so the dependency points one way.
+// -- Part.h includes this one (for Station, returned by stationAt), so the dependency points one way.
 class Part;
 
 /// Mirror of Part::Id (Part.h), declared here so this header stays free of the Part hierarchy;
@@ -152,18 +152,15 @@ inline StationLink seatOnWall(double parentStation01)
 }
 
 // --- The resolver -------------------------------------------------------------------------------
-// The single authority for absolute placement: intent (StationLink) in, geometry (Pose) out. Both
-// the simulator and the visualizer consume its output, so the two cannot disagree.
+// The single authority for absolute placement: intent (StationLink) in, geometry (Pose) out. The
+// tree walk lives with the tree (PartsModel resolves its node tree and caches the result); the
+// per-edge geometry below is pure leaf math, so every consumer shares one resolve.
 
 /// @brief Resolve one child's pose in the root frame from its parent's resolved pose and the link
 ///        binding them. Pure geometry: line the parent station up with the child station, apply the
 ///        seat-signed gap (childOriginZ = p.z + signedGap - c.z); coaxial in 3-DOF (x = y = 0).
 Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
                 const StationLink& link);
-
-/// @brief Depth-first walk of the ownership tree from @p rootPose, one Placed per part in attachment
-///        order. Each non-root link is read from its parent's childParts pairing. No CM, time, or mass.
-std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose);
 
 // --- Diagnostics --------------------------------------------------------------------------------
 

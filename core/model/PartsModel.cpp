@@ -512,7 +512,7 @@ void PartsModel::startMotor(double t)
 {
     if(motor_ != nullptr)
     {
-        motor_->getMotorModel().startMotor(t);
+        motor_->mm.startMotor(t); // friend seam: ignition is a routed runtime mutation
     }
 }
 

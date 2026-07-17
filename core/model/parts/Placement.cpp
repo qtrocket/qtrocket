@@ -54,24 +54,6 @@ Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
     return parentPose.compose(childInParent);
 }
 
-std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose)
-{
-    std::vector<Placed> out;
-    const auto dfs = [&](auto&& self, const Part& part, const Pose& pose, PartId parentId) -> void
-    {
-        out.push_back(Placed{&part, pose, parentId});
-        for(const auto& [child, link] : part.getChildParts())
-        {
-            if(child)
-            {
-                self(self, *child, placeChild(pose, part, *child, link), part.getId());
-            }
-        }
-    };
-    dfs(dfs, root, rootPose, PartId{0});
-    return out;
-}
-
 std::optional<OverlapDiagnostic> radialSeamCheck(const Part& parent, const Part& child,
                                                                  const StationLink& link, double tol)
 {

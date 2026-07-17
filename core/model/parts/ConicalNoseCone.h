@@ -65,7 +65,7 @@ public:
 
 protected:
     ConicalNoseCone(const ConicalNoseCone&) = default;
-    std::unique_ptr<Part> cloneShallow() const override
+    std::unique_ptr<Part> clone() const override
     { return std::unique_ptr<Part>(new ConicalNoseCone(*this)); }
 
 private:
