@@ -57,18 +57,18 @@ Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
 std::vector<Placed> resolvePlacements(const Part& root, const Pose& rootPose)
 {
     std::vector<Placed> out;
-    const auto dfs = [&](auto&& self, const Part& part, const Pose& pose) -> void
+    const auto dfs = [&](auto&& self, const Part& part, const Pose& pose, PartId parentId) -> void
     {
-        out.push_back(Placed{&part, pose});
+        out.push_back(Placed{&part, pose, parentId});
         for(const auto& [child, link] : part.getChildParts())
         {
             if(child)
             {
-                self(self, *child, placeChild(pose, part, *child, link));
+                self(self, *child, placeChild(pose, part, *child, link), part.getId());
             }
         }
     };
-    dfs(dfs, root, rootPose);
+    dfs(dfs, root, rootPose, PartId{0});
     return out;
 }
 
@@ -137,17 +137,15 @@ SolveResult sweepOverlaps(const std::vector<Placed>& placed, double tol)
         intervals.push_back(Interval{pl.part, pl.part->getId(), originZ, originZ - span, originZ});
     }
 
-    // Tree structure (childId -> parentId), recovered from the resolved parts, to exclude the legit
-    // neighbours of an offender: itself, its descendants, and its direct seat parent.
+    // Tree structure (childId -> parentId), read from Placed::parentId, to exclude the legit
+    // neighbours of an offender: itself, its descendants, and its direct seat parent. The sweep
+    // needs no access to the ownership tree itself.
     std::map<PartId, PartId> parentOf;
     for(const Placed& pl : placed)
     {
-        for(const auto& [c, link] : pl.part->getChildParts())
+        if(pl.parentId != 0)
         {
-            if(c)
-            {
-                parentOf[c->getId()] = pl.part->getId();
-            }
+            parentOf[pl.part->getId()] = pl.parentId;
         }
     }
     const auto isDescendantOf = [&](PartId h, PartId ancestor)

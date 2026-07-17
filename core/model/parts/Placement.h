@@ -92,12 +92,14 @@ struct Pose
 
 /**
  * @brief A part paired with its resolved pose in the root frame. Non-owning. Returned in
- *        deterministic depth-first (attachment) order, so the overlap sweep is reproducible.
+ *        deterministic depth-first (attachment) order -- parent before child -- so the overlap
+ *        sweep is reproducible and parentId always names an earlier entry.
  */
 struct Placed
 {
     const Part* part{nullptr};
     Pose        pose{};
+    PartId      parentId{0};  ///< id of the seat parent in the resolved tree; 0 for the root
 };
 
 /**
