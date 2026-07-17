@@ -1,0 +1,263 @@
+\section{Design philosophy and invariants}\label{sec:philosophy}
+
+The part tree is the most widely shared piece of state in QtRocket: the ODE loop reads its
+mass properties per integrator stage (\cref{sec:flight}), the serializer walks it
+(\cref{sec:serialization}), the CLI addresses into it (\cref{sec:cli}), and the Qt tree view
+mirrors it row-for-row (\cref{sec:gui}). A structure with that many consumers cannot rely on
+discipline; it needs invariants that hold \emph{by construction}. This section states the
+eight commitments that shape every type and function in the design. Each one is chosen to move
+a class of defect from ``a bug someone must remember not to write'' to ``a state the program
+cannot represent'' --- or, where full unrepresentability is impossible, to a hard, located
+failure instead of a silently wrong number.
+
+The commitments are stated here as rules, before any type is introduced, because their value
+is precisely that they constrain everything downstream: the leaf contract
+(\cref{sec:leaf}), the tree and its verbs (\cref{sec:tree}), the cache gating
+(\cref{sec:caching}), the motor slot (\cref{sec:motor}), and the GUI adapter
+(\cref{sec:gui}) are all forced to be mutually consistent with them.
+
+\begin{designrule}[The eight invariants]
+\textbf{1. One mutation authority.} Reads hand out \code{const Part\&}; every post-attach
+write is a \code{PartsModel} verb that writes and then invalidates the correct cache chain. \\[2pt]
+\textbf{2. Linear ownership.} Nodes own their \code{Part} and their children by
+\cppinline|std::unique_ptr|; double-attach, cycles, and retained aliases are uncompilable. \\[2pt]
+\textbf{3. Derived state is gated.} Caches rebuild iff their inputs moved, and a gate is
+stamped only after a successful build. \\[2pt]
+\textbf{4. One id space.} \code{Part::Id} --- process-unique, fresh on clone, never
+serialized --- is the only identity that survives across edits. \\[2pt]
+\textbf{5. Typed errors.} Structural verbs return \cppinline|std::expected|; a failed
+mutation is a value the caller can switch on, never a silent no-op. \\[2pt]
+\textbf{6. ``No design'' is representable.} The root is nullable and \code{hasDesign()}
+reports it; there is no placeholder part. \\[2pt]
+\textbf{7. Single-writer by contract.} The \code{const} accessors memoize through mutable
+caches; all access comes from one thread at a time, and the contract is documented where it
+can be broken. \\[2pt]
+\textbf{8. Events are aboutTo/did pairs.} Every mutation fires one notification before and
+one after the tree changes, carrying the row coordinates Qt's
+\code{beginInsertRows}/\code{endInsertRows} contract requires.
+\end{designrule}
+
+\subsection{One authority, one owner}\label{sec:philosophy-authority}
+
+The first two invariants are one idea seen from two sides: \emph{who may write} and
+\emph{who may hold}. \code{PartsModel} is the single mutation authority
+(\src{core/model/PartsModel.h}{133}): reads hand out \code{const Part\&}, and the only
+post-attach write paths are its routed verbs --- \code{setPartMass}, \code{setPartInertia},
+\code{setLink}, \code{mutatePart}, the structural \code{attach}/\code{detach} family, and the
+motor verbs (\cref{sec:tree}). Each verb performs the plain write and then dirties exactly
+the cache chains that write can invalidate. The leaf cooperates by construction: \code{Part}'s
+setters are \emph{private}, exposed only through a single friend seam.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+private:
+    friend class model::PartsModel;  // the sole post-attach mutation seam
+
+    /// Plain writes: PartsModel's routed verbs own cache invalidation.
+    void setMass(double m) { mass = m; }
+    void setI(const Matrix3& I) { inertiaTensor = I; }
+\end{minted}
+\caption{The mutation seam on the leaf (\srccap{core/model/parts/Part.h}{133}). The setters
+carry no invalidation duty and no virtual dispatch; routing and invalidation are entirely the
+authority's job.}\label{lst:philosophy-seam}
+\end{listing}
+
+\begin{keyinsight}[Invalidation cannot be skipped, by construction]
+Cache invalidation is the classic ``must remember'' duty: one forgotten dirty-flag write and a
+composite tensor is silently stale for the rest of the session. Here the compiler carries the
+duty. Client code cannot reach \code{setMass} at all --- the only path to a leaf write runs
+through a \code{PartsModel} verb, and every verb pairs the write with its invalidation
+(\src{core/model/PartsModel.cpp}{399}). The one deliberately open door, \code{mutatePart},
+requires the caller to declare a \code{MutateHint} (\src{core/model/PartsModel.h}{139}) so
+that even the escape hatch states which chains its edit can dirty --- a mass-only edit never
+re-runs the geometry sweep.
+\end{keyinsight}
+
+Ownership is equally linear. Each \code{PartNode} owns its \code{Part} and its children
+through \cppinline|std::unique_ptr| (\src{core/model/PartsModel.h}{108}); \code{PartsModel}
+owns the root; \code{RocketModel} owns the model. A part therefore has exactly one owner at
+every instant of its life, and the transfer points are visible in the signatures:
+\code{attach} \emph{consumes} a \cppinline|std::unique_ptr<part::Part>|, and \code{detach}
+\emph{returns} the owned sub-tree to the caller as a first-class value
+(\src{core/model/PartsModel.h}{216}) --- the natural undo and clipboard memento. Duplication
+has exactly one spelling, \code{clone()}, and the assignment operators are deleted so a
+subclass can never be sliced into a base \code{Part} (\src{core/model/parts/Part.h}{56}).
+
+\begin{rejected}[Rejected --- shared ownership with runtime membership checks]
+The alternative is a \cppinline|std::shared_ptr| forest in which the tree checks, at attach
+time, that a part is not already attached elsewhere. This demotes every ownership violation
+from a compile error to a runtime bug class: double-attach becomes a check that must be
+written (and reached), a cycle becomes a traversal that must terminate, and --- worst --- a
+\emph{retained alias} remains perfectly legal: any client that keeps its
+\cppinline|shared_ptr| after attaching can write through it forever, past every routed verb,
+producing precisely the unsanctioned mutation invariant~1 exists to eliminate. Under
+\cppinline|unique_ptr| the retained alias is uncompilable rather than unsanctioned. The
+mass-delta gate of \cref{sec:caching} remains as a backstop for any residual
+\cppinline|const_cast|-class bypass, but the front door is closed by the type system, not by
+review.
+\end{rejected}
+
+\subsection{Derived state is gated}\label{sec:philosophy-gates}
+
+Composite mass properties, resolved placements, and the overlap verdict are all
+\emph{derived} state: pure functions of the leaves, the links, and (for mass) the query time.
+Invariant~3 says derived state may be cached only behind a gate that provably tracks its
+inputs. The design has exactly two gates, one per kind of input motion: the \emph{mass-delta
+gate} rebuilds the composite CM and tensor when the live mass sum moves (a burning motor) or
+a mass edit lands, and the \emph{placement gate} re-resolves geometry and re-runs the envelope
+sweep only when a node or link changes --- geometry is invariant under a burn, so the hot ODE
+path never pays for a re-resolve. \Cref{sec:caching} develops both gates in full.
+
+What belongs to the philosophy is the stamping rule, because it is a correctness property and
+not an optimization:
+
+\begin{keyinsight}[Stamps land only after success]
+\code{ensureCompositeCache} computes the rebuild \emph{first} and writes the gate stamps
+(\cppinline|builtAtMass_|, clearing \cppinline|massDirty_|) only after
+\code{computeCompositeAt} returns (\src{core/model/PartsModel.cpp}{122}). The ordering is
+load-bearing: a self-intersecting design makes the composite build throw
+(\src{core/model/PartsModel.cpp}{184}), and because nothing was stamped, the throw recurs on
+\emph{every} read. A cache that recorded the failed build as done would convert a hard,
+located failure into a stale tensor served indefinitely --- the worst outcome available to a
+simulator, a plausible wrong number.
+\end{keyinsight}
+
+\subsection{One id space}\label{sec:philosophy-id}
+
+Every consumer that must refer to a part across edits --- GUI selection, CLI commands, event
+payloads, the model's own index --- uses the same handle: \code{Part::Id}, a
+\cppinline|std::uint64_t| minted from a process-wide atomic counter at construction
+(\src{core/model/parts/Part.cpp}{16}). The counter starts at 1 so that 0 is reserved as
+``none/invalid,'' which the event payloads exploit for roots and clearing resets
+(\src{core/model/PartsModel.h}{147}). Three properties make one id space sufficient:
+
+\begin{itemize}
+  \item \textbf{Fresh on clone.} Every constructor mints a new id, including the protected
+  copy constructor that backs \code{clone()} (\src{core/model/parts/Part.cpp}{37}). Two parts
+  never share an id, however identical their names and mass properties.
+  \item \textbf{Never serialized.} Ids are meaningful only within a single run
+  (\src{core/model/parts/Part.h}{113}); a loaded design mints fresh ids. Persisting them
+  would import cross-file collision handling into every load path for no benefit --- nothing
+  outside the process ever needs the handle.
+  \item \textbf{Fails safe when stale.} \code{PartsModel::find} is an $O(1)$ id-keyed lookup
+  that returns \code{nullptr} for an absent id (\src{core/model/PartsModel.h}{167}). A
+  consumer holding the id of a detached part gets a testable miss, where a retained pointer
+  would dangle.
+\end{itemize}
+
+\begin{designrule}[Names are labels; ids are identity]
+Part names are human-facing and deliberately non-unique; \code{findByName} exists for
+console convenience and is documented as pre-order first-match
+(\src{core/model/PartsModel.h}{179}). No correctness property anywhere in the system hangs
+on a name. There is also no second handle type --- no node pointer or row index offered as an
+identity --- because every additional handle kind is one more thing a consumer can hold
+stale. One id space means one staleness story, and it is fail-safe.
+\end{designrule}
+
+\subsection{Typed errors, and a mutation that cannot silently fail}\label{sec:philosophy-errors}
+
+Structural verbs return \cppinline|std::expected|: \code{attach} and \code{attachSubtree}
+yield the new id or an \code{AttachError} (\code{NullPart}, \code{NoSuchParent},
+\code{DuplicateMotor}); \code{detach} yields the owned sub-tree or a \code{DetachError}
+(\code{NoSuchId}, \code{IsRoot}) (\src{core/model/PartsModel.h}{136}). The leaf-edit verbs,
+whose only failure mode is an unknown id, return \code{bool}. In every case failure is a
+value at the call site: the CLI switches on the error code and prints the precise cause
+(\src{cli/Repl.cpp}{957}), and a test can assert the exact rejection rather than probing for
+side effects.
+
+\begin{rejected}[Rejected --- logged void no-ops]
+The tempting minimal interface --- \code{void attach(...)} that logs and returns on failure
+--- makes failure invisible at the call site. A caller that must know whether the attach
+happened is reduced to diffing the tree's size before and after, and even then the
+\emph{cause} is gone: was the parent id wrong, the part null, the motor slot occupied? The
+log knows; the program does not. Errors-as-values costs one \cppinline|std::expected| in the
+signature and buys call sites that are impossible to write incorrectly by accident: for
+\code{detach}, the success value \emph{is} the detached sub-tree, so a caller cannot take the
+value while ignoring the possibility of failure --- they arrive in the same object.
+\end{rejected}
+
+The \code{DuplicateMotor} rejection illustrates why the errors are typed rather than boolean:
+the single-motor invariant is enforced at the doors through which a part can join an owned
+tree --- \code{attach} and \code{attachSubtree}, which scans the entire incoming sub-tree
+(\src{core/model/PartsModel.cpp}{319}) --- and the caller is told
+\emph{that} the motor slot is the objection, not merely that ``something'' failed
+(\cref{sec:motor}).
+
+\subsection{The empty state is real}\label{sec:philosophy-empty}
+
+A freshly started session, or one whose design was cleared, has no rocket. The design
+represents that state honestly: the root is nullable
+(\src{core/model/PartsModel.h}{259}), \code{hasDesign()} reports it
+(\src{core/model/PartsModel.h}{161}), \code{size()} is 0, and every query fails safe ---
+\code{find} misses, the pre-order walk visits nothing. Consumers respond in their own idiom;
+the CLI's contract is an explicit \code{ERR \ldots: no design} on commands that need one
+(\cref{sec:cli}).
+
+\begin{rejected}[Rejected --- a mandatory placeholder part]
+The alternative is to guarantee a non-null root by installing a placeholder part in an empty
+model. This trades an honest null for a dishonest object: the placeholder has \emph{some}
+mass, \emph{some} geometry, and a simulation will happily consume both --- flying a rocket
+that does not exist and returning plausible numbers for it. Every consumer must then ask
+``is this the placeholder?'' before trusting the tree, which is exactly the null check again,
+now spelled as a magic-value comparison with strictly worse failure modes when someone
+forgets it. \code{hasDesign()} is the same predicate with a compiler-visible spelling and no
+physics attached.
+\end{rejected}
+
+\subsection{Single-writer by contract}\label{sec:philosophy-threading}
+
+The composite accessors are \code{const} but not concurrently callable, and the design says
+so out loud rather than letting the signatures imply otherwise. \code{compositeCm},
+\code{compositeI}, \code{placementDiagnostics}, and \code{resolvedPlacements} all memoize
+through \code{mutable} caches (\src{core/model/PartsModel.h}{114}), and the motor's log-once
+burnout latch writes inside \code{const} \code{thrust(t)}
+(\src{core/model/MotorModel.h}{342}). Concurrent access --- even all-\code{const} --- is
+therefore a data race outright. The contract is single-writer: all access from one thread at
+a time, stated in the class documentation and again at the cache fields
+(\src{core/model/PartsModel.h}{39}), so that any future threading work reopens the question
+deliberately instead of trusting \code{const}.
+
+\begin{keyinsight}[The race is deeper than torn reads]
+Even a hypothetically race-free interleaving would be wrong: the composite CM and the
+composite tensor are only meaningful as a \emph{pair} from the same rebuild --- the tensor is
+expressed about that CM. Two threads interleaving through the gate could pair a CM from one
+rebuild with a tensor from another: two individually valid values forming a physically
+meaningless answer. Any concurrency story must therefore preserve multi-value consistency,
+not merely atomicity of individual reads.
+\end{keyinsight}
+
+The recorded direction, should a real concurrency requirement appear, is
+\emph{snapshotting}: each thread flies its own \code{PartNode::clone()} and only the handoff
+synchronizes. \Cref{sec:tradeoffs-threading} develops that plan and the rejected locking
+alternative.
+
+\subsection{Events shaped for the strictest subscriber}\label{sec:philosophy-events}
+
+Every mutation --- structural, link, leaf edit, motor swap, and whole-tree reset --- fires a
+change notification as an \emph{aboutTo/did pair}: the same \code{Event} value delivered
+once with \code{before == true} immediately before the tree changes and once with
+\code{before == false} immediately after (\src{core/model/PartsModel.h}{143}). The payload
+is \code{\{kind, id, parentId, row\}} --- the affected node, its (ex-)parent, and its row
+within that parent.
+
+That shape is dictated by the most demanding subscriber the model must serve. Qt's
+\code{QAbstractItemModel} contract requires \code{beginInsertRows}/\code{beginRemoveRows}
+to be called \emph{before} the underlying data changes, with parent-and-row coordinates, and
+the matching \code{end} call after. Because the event stream fires exactly that way, the GUI
+adapter is a one-to-one mapping with no bookkeeping of its own: \code{aboutTo} maps to
+\code{begin*}, \code{did} maps to \code{end*}, and the payload supplies the coordinates
+verbatim (\src{gui/RocketTreeView.cpp}{29}; \cref{sec:gui}). Subscribers with weaker needs
+--- a view that repaints wholesale --- simply ignore the \code{before} leg. The registration
+is a single callback slot rather than a multicast list
+(\src{core/model/PartsModel.h}{248}): the model layer stays Qt-free, one subscriber exists,
+and the callback fires synchronously on the mutating thread, which the single-writer
+contract already pins.
+
+\medskip
+
+None of these invariants is free-standing: the leaf's private seam (\cref{sec:leaf}) exists
+to serve invariant~1, the verbs of \cref{sec:tree} are shaped by invariants~1, 2, and~5, the
+gates of \cref{sec:caching} are invariant~3 made concrete, and the trade-off discussion of
+\cref{sec:tradeoffs} weighs what each rule costs. The test suite exercises them directly ---
+rejected attaches, stale-id misses, the empty state, and the after-success stamping rule are
+all asserted behaviors, not aspirations (\cref{sec:verification}).

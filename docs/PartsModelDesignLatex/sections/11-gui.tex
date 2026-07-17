@@ -1,0 +1,296 @@
+\section{GUI integration: the Qt item model over the event stream}\label{sec:gui}
+
+The GUI is the one Qt-dependent layer in the program, and the part tree it displays lives in a
+layer that is deliberately Qt-free (\cref{sec:philosophy}). The bridge between the two is
+\code{RocketPartModel} (\src{gui/RocketTreeView.h}{17}), a \code{QAbstractItemModel} that adapts
+the \code{PartsModel} of \cref{sec:tree} to Qt's model/view protocol. The adapter is deliberately
+stateless: its only member is a borrowed \cppinline|const model::PartsModel*|, so there is no
+shadow copy of the tree that could drift out of sync with the authority. Structure queries
+(\code{index}, \code{parent}, \code{rowCount}, \code{data}) derive every answer live from the
+owned tree, and change notification arrives over the same typed aboutTo/did event stream
+(\src{core/model/PartsModel.h}{143}) that every mutation verb narrates. \code{RocketTreeView}, a
+\code{QTreeView} that owns its \code{RocketPartModel}, completes the picture: it binds the adapter
+to a rocket and registers the event forwarding.
+
+The section covers the three design commitments in turn --- id-based index identity, live
+derivation of structure, and surgical translation of events into Qt row operations --- then the
+subscription chain that delivers the events, the routed-edit pattern that lets any widget mutate
+the tree without knowing the view exists, and the headless test binary that pins the
+\code{QAbstractItemModel} contract. \Cref{fig:gui-class} shows the participants.
+
+\classfig{class-gui-model}{The GUI adapter stack. Plain boxes are Qt classes.
+\code{RocketPartModel} holds only a borrowed pointer to the \code{PartsModel} and derives all
+structure live; change notification flows \code{PartsModel} $\to$ \code{RocketModel} (the single
+subscriber) $\to$ \code{RocketPartModel} as typed aboutTo/did pairs.}{fig:gui-class}{0.92}
+
+\subsection[Index identity: internalId carries Part::Id]{Index identity: \code{internalId} carries \code{Part::Id}}\label{sec:gui-identity}
+
+Every \code{QModelIndex} needs a payload that identifies the row's node across the index's
+lifetime. \code{RocketPartModel} stores the node's \code{Part::Id} in
+\code{QModelIndex::internalId} --- a stable integer --- and resolves it back to a node through the
+tree's O(1) id index on every access (\cref{lst:gui-nodeforindex}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+const PartNode* RocketPartModel::nodeForIndex(const QModelIndex& index) const
+{
+    if (!m_parts)
+        return nullptr;
+    if (!index.isValid())
+        return m_parts->root();
+    return m_parts->find(static_cast<model::part::Part::Id>(index.internalId()));
+}
+
+QModelIndex RocketPartModel::indexForId(model::part::Part::Id id) const
+{
+    const PartNode* node = m_parts ? m_parts->find(id) : nullptr;
+    if (!node)
+        return {};
+    return createIndex(node->rowInParent(), 0, static_cast<quintptr>(id));
+}
+\end{minted}
+\caption{Both directions of the identity scheme
+(\srccap{gui/RocketTreeView.cpp}{134}): an index resolves to a node by id lookup, and an event's
+node id resolves to the column-0 index Qt's row operations need.}\label{lst:gui-nodeforindex}
+\end{listing}
+
+\begin{keyinsight}[A stale index fails a lookup, not a dereference]
+Views hold indexes across arbitrary user actions, so some of them \emph{will} outlive the nodes
+they name. With an id payload, a stale index simply fails the \code{find()}
+(\src{gui/RocketTreeView.cpp}{140}) and the accessor returns null data --- \code{data()} yields an
+empty \code{QVariant}, \code{rowCount()} yields zero. And because ids are minted from a
+process-wide atomic counter and never reused --- every \code{Part} construction, including the
+copy constructor behind \code{clone()}, draws a fresh id (\src{core/model/parts/Part.cpp}{16}) ---
+a stale id can never alias a \emph{different} live row. Failure degrades to blankness, never to
+misdirection.
+\end{keyinsight}
+
+\begin{rejected}[Rejected --- a node pointer in \code{internalPointer}]
+Qt's conventional payload is a \cppinline|void*| to the backing item. Here that pointer would be a
+\code{PartNode*} into a tree whose nodes are destroyed by \code{detach} and \code{installRoot}
+(\cref{sec:tree}); any index surviving such an edit would dereference freed memory on its next
+paint. The id costs one hash lookup per access --- negligible at tens of parts --- and buys
+memory-safety by construction rather than by careful invalidation.
+\end{rejected}
+
+\subsection{Structure derived live}\label{sec:gui-structure}
+
+The four structure overrides never consult stored rows; they walk the authoritative tree at call
+time. \code{rowCount} on the invisible root returns 1 when a design is loaded and 0 otherwise
+--- ``no design'' renders as an empty view, the same first-class state the rest of the program
+represents (\cref{sec:tree}) --- and on any other index returns the node's
+\code{children().size()}. Children hang only off column 0, per Qt convention
+(\src{gui/RocketTreeView.cpp}{89}). \code{index(row, col, parent)} reads the child span of the
+parent node; \code{parent(index)} follows the node's parent pointer and derives the row with
+\code{rowInParent()}, a linear scan over the sibling span
+(\src{core/model/PartsModel.cpp}{55}) that is trivially cheap at realistic part counts. Because
+rows are always computed, there is no bookkeeping to fall out of step when the tree changes.
+
+\code{data()} exposes three display columns: \textbf{Name} (the part's human-facing name),
+\textbf{Type} (its \code{typeName()}), and \textbf{Mass} --- the part's \emph{own} mass at
+$t = 0$ in $\unit{kg}$ (\src{gui/RocketTreeView.cpp}{115}), not the sub-tree composite. The tree
+view answers ``what is this component''; the gated composites of \cref{sec:caching} answer ``what
+does the rocket weigh'' and belong to the simulation path, not a per-paint widget query.
+
+\subsection{Consuming the aboutTo/did stream}\label{sec:gui-events}
+
+\begin{designrule}[Qt's row-op protocol is a bracketing protocol]
+\code{QAbstractItemModel} requires each structural change to be announced \emph{before} it
+happens --- \code{beginInsertRows}/\code{beginRemoveRows} with the exact parent index and row
+range, while the model still answers queries about the pre-edit tree --- and confirmed with the
+matching \code{end} call after the change lands. The event stream fires as aboutTo/did pairs
+around every mutation verb for precisely this reason: the aboutTo edge arrives while the tree is
+still un-mutated (so \code{indexForId(parentId)} and the carried row resolve against the old
+structure), and the did edge arrives once the write is complete. The event shape is Qt's contract,
+expressed without Qt.
+\end{designrule}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+void RocketPartModel::onPartsEvent(const model::PartsModel::Event& e, bool before)
+{
+    using Event = model::PartsModel::Event;
+    switch (e.kind)
+    {
+        case Event::Reset:
+            if (before) { beginResetModel(); } else { endResetModel(); }
+            break;
+        case Event::Attached:
+            if (before) { beginInsertRows(indexForId(e.parentId), e.row, e.row); }
+            else        { endInsertRows(); }
+            break;
+        case Event::Detached:
+            if (before) { beginRemoveRows(indexForId(e.parentId), e.row, e.row); }
+            else        { endRemoveRows(); }
+            break;
+        case Event::Mutated:
+        case Event::LinkChanged:
+            // In-place edit: no rows move; refresh the affected row's cells
+            // once the write landed.
+            if (!before)
+            {
+                const QModelIndex left  = createIndex(e.row, 0, static_cast<quintptr>(e.id));
+                const QModelIndex right = createIndex(e.row, ColumnCount - 1,
+                                                      static_cast<quintptr>(e.id));
+                emit dataChanged(left, right);
+            }
+            break;
+    }
+}
+\end{minted}
+\caption{The complete event consumer (\srccap{gui/RocketTreeView.cpp}{21}). Each event kind maps
+onto exactly one Qt notification pattern; \cref{tab:gui-events} tabulates the
+mapping.}\label{lst:gui-onpartsevent}
+\end{listing}
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Event kind} & \textbf{aboutTo edge (\code{before})} & \textbf{did edge} \\
+\midrule
+\code{Reset}       & \code{beginResetModel()} & \code{endResetModel()}; view re-expands \\
+\code{Attached}    & \code{beginInsertRows(parentIdx, row, row)} & \code{endInsertRows()} \\
+\code{Detached}    & \code{beginRemoveRows(parentIdx, row, row)} & \code{endRemoveRows()} \\
+\code{Mutated}     & --- (no rows move) & \code{dataChanged} across the node's row \\
+\code{LinkChanged} & --- (no rows move) & \code{dataChanged} across the node's row \\
+\bottomrule
+\end{tabular}
+\caption{Event kind $\times$ edge $\to$ Qt call. \code{parentIdx} is
+\code{indexForId(e.parentId)}, resolved on the aboutTo edge against the not-yet-mutated
+tree.}\label{tab:gui-events}
+\end{table}
+
+Three details of the mapping (\cref{lst:gui-onpartsevent}, \cref{tab:gui-events}) are load-bearing. First, the event payload is a \emph{location}, not
+a data snapshot: \code{\{kind, id, parentId, row\}} is exactly what
+\code{beginInsertRows}/\code{beginRemoveRows} require, and the emitting verbs compute the row from
+the live tree at emission time --- an attach appends, so its event carries the parent's current
+child count as the insertion row (\src{core/model/PartsModel.cpp}{339}); a detach carries the
+victim's \code{rowInParent()} before removal. Second, a sub-tree attach is a \emph{single} insert
+of its root row: the event names only the sub-tree root, and Qt discovers descendants lazily
+through \code{rowCount}/\code{index}, so the payload never needs to enumerate them. Third,
+\code{Mutated} and \code{LinkChanged} act only on the did edge --- an in-place edit moves no rows,
+so there is nothing to bracket, and \code{dataChanged} is by design an after-the-fact
+notification. The emitted range spans all columns of the row because a routed edit may change any
+displayed cell, and the indexes are built directly from the payload
+(\code{createIndex(e.row, $\cdot$, e.id)}) with no lookup at all.
+
+\subsection{What granularity buys}\label{sec:gui-granularity}
+
+Because ordinary edits become surgical row operations, everything the user has invested in the
+view survives them: \code{QPersistentModelIndex}es (and therefore selection) survive inserts and
+removes by construction, expansion state is untouched, and the scroll position does not jump.
+The only event that resets the view is \code{Event::Reset} --- a design install or clear
+(\cref{sec:serialization}) --- after which the view deliberately calls \code{expandAll()}
+(\src{gui/RocketTreeView.cpp}{183}): a freshly-installed design starts fully expanded, while every
+smaller edit preserves whatever the user had. That re-expansion is view policy, so it lives in
+\code{RocketTreeView}'s forwarding lambda, not in the reusable adapter.
+
+\begin{rejected}[Rejected --- reset on every change]
+A subscriber that answers every event with \code{begin}/\code{endResetModel} is trivially correct
+and a fifth the code. It loses because a reset invalidates every index: each edit would
+collapse the tree, drop the selection, and yank the scroll position --- hostile exactly in the
+tight edit loops where the view matters most. The granular consumer is also the enabling layer for
+what comes next: drag-reparent maps onto \code{beginMoveRows} over the same event vocabulary, and
+command-pattern undo needs stable ids and surviving selection to restore context after an
+undone edit. Neither can be built over a reset-only subscriber.
+\end{rejected}
+
+\subsection{The subscription chain and its lifetime}\label{sec:gui-chain}
+
+\code{PartsModel} keeps exactly one change callback (latest registration wins,
+\src{core/model/PartsModel.h}{248}), and \code{RocketModel} claims it in its constructor
+(\src{core/model/RocketModel.cpp}{20}), making itself the single subscriber on the tree it owns.
+The bridge then fans out over two channels: the typed stream is forwarded verbatim to whatever
+granular consumer registered via \code{setPartsEventCallback}
+(\src{core/model/RocketModel.h}{101}) --- in the GUI, the tree view --- and every completed
+mutation (did edge) is folded into the coarse \code{setStructureChangedCallback}
+(\src{core/model/RocketModel.h}{96}), a payload-less ``something changed'' signal for consumers
+that only refresh derived read-outs. Both are \cppinline|std::function| seams: the model layer
+notifies Qt-shaped consumers without linking Qt, which is what keeps \cref{sec:cli}'s headless
+CLI and the test binaries free of any GUI dependency.
+
+The view side of the chain is established once at startup, when \code{MainWindow} binds the
+\code{QtRocket} singleton's rocket into the tree view (\src{gui/MainWindow.cpp}{33}).
+\code{RocketTreeView::setRocketModel} (\src{gui/RocketTreeView.cpp}{167}) seeds the adapter with
+the current tree (a bind is itself a reset), then registers the forwarding lambda; re-pointing to
+a different rocket detaches the previous registration first, and binding \code{nullptr} empties
+the view. The teardown ordering is the one lifetime subtlety: the rocket, owned by the
+\code{QtRocket} singleton, outlives the view, and the registered lambda captures \code{this} ---
+so the view's destructor clears the callback before dying
+(\src{gui/RocketTreeView.cpp}{159}). Leaving it registered would leave the model holding a
+dangling widget pointer for the rest of the process.
+
+\subsection{Edit widgets route through the verbs}\label{sec:gui-routed}
+
+No widget edits a \code{Part} directly; widgets call the routed verbs of \cref{sec:tree}, and the
+event stream does the rest. \code{CannonballTab} is the canonical example --- its trajectory
+calculation pushes the mass field into the design through \code{setPartMass}
+(\src{gui/CannonballTab.cpp}{130}):
+
+\begin{minted}{cpp}
+if(rocket->parts().hasDesign())
+{
+    // routed edit: invalidates the composite caches and refreshes the tree view's mass column
+    rocket->parts().setPartMass(rocket->parts().root()->id(), mass);
+}
+\end{minted}
+
+One call buys three guarantees: the write lands through the single mutation authority, the mass
+cache chain is dirtied so the next simulation sees the new value (\cref{sec:caching}), and the
+\code{Mutated} event refreshes the tree view's mass column --- with no coupling between the two
+widgets, neither of which knows the other exists. Any future property editor follows the same
+pattern: call a verb, let the stream propagate.
+
+\subsection{Verification: the model contract under test}\label{sec:gui-verification}
+
+The adapter has its own headless test binary, \cppinline|gui_model_tests| (registered with ctest
+as \cppinline|qtrocket_gui_model_tests|), which compiles \srcf{gui/RocketTreeView.cpp} against
+\cppinline|qtrocket_core| and runs under a \code{QCoreApplication} --- the model under test is
+widget-free, so the suite needs no platform plugin and runs on a displayless CI runner
+(\src{gui/tests/CMakeLists.txt}{5}). The fixture wires \code{RocketModel} to
+\code{RocketPartModel} exactly as \code{RocketTreeView} does, minus the widget, and then attaches
+a \code{QAbstractItemModelTester} in \code{Fatal} reporting mode for the duration of every test
+(\src{gui/tests/RocketPartModelTests.cpp}{41}): Qt's own protocol checker rides the full edit
+sequence --- install, attaches, mass edit, link edit, detach, clear, reinstall --- and aborts the
+test on any begin/end violation at the instant it fires.
+
+Beyond the protocol, the surgical guarantees are pinned directly: a
+\code{QPersistentModelIndex} survives unrelated attaches and leaf edits unchanged, dies exactly
+when its node is detached, and its held id can never alias a live row
+(\src{gui/tests/RocketPartModelTests.cpp}{87}); structural edits emit one insert and one remove
+with zero resets, and only a design install resets
+(\src{gui/tests/RocketPartModelTests.cpp}{130}). \Cref{lst:gui-testpin} shows the pin that a leaf
+edit is a \code{dataChanged}, never a reset.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+TEST_F(RocketPartModelTests, LeafEditEmitsDataChangedNotReset)
+{
+    rocket.installDesign(model::PartNode::make(bodyTube("Root")));
+    const auto rootId = rocket.parts().root()->id();
+
+    QSignalSpy dataChanged(&partModel, &QAbstractItemModel::dataChanged);
+    QSignalSpy resets(&partModel, &QAbstractItemModel::modelReset);
+
+    ASSERT_TRUE(rocket.parts().setPartMass(rootId, 0.321));
+
+    ASSERT_EQ(dataChanged.count(), 1);
+    const auto args = dataChanged.takeFirst();
+    const auto left = args.at(0).toModelIndex();
+    EXPECT_EQ(static_cast<model::part::Part::Id>(left.internalId()), rootId);
+    // ...
+    EXPECT_EQ(resets.count(), 0);
+}
+\end{minted}
+\caption{A routed mass edit reaches the view as exactly one \code{dataChanged} on the right node
+--- and zero resets (\srccap{gui/tests/RocketPartModelTests.cpp}{111}).}\label{lst:gui-testpin}
+\end{listing}
+
+Together with the suite-wide gates of \cref{sec:verification}, this closes the loop the section
+opened with: a Qt-free tree, one subscriber, a stateless adapter, and a protocol checker
+confirming that the translation from typed events to Qt row operations is exact. The same layer
+is the substrate for the interactive editing that follows --- drag-reparent expressed as
+\code{beginMoveRows} over the same event vocabulary, and undo built on \code{detach}'s owned
+sub-tree return value (\cref{sec:tree}) with selection restored through the stable ids this
+section already carries.

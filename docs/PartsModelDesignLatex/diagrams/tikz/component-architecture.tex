@@ -1,0 +1,73 @@
+% component-architecture.tex -- one tree, four consumers: the layered component view.
+% Top: the front ends (gui / cli / visualizer). Middle: RocketModel as the Propagatable
+% bridge, with sim::Propagator as its sole caller. Bottom: the owned part tree
+% (PartsModel -> PartNode -> Part) with the placement free functions as a pure-math neighbor.
+\begin{tikzpicture}
+  % ---- consumers (top layer) ----------------------------------------------
+  \node[consumer, text width=42mm] (gui) at (0,0)
+    {\textbf{gui}\\[1pt]{\scriptsize RocketTreeView / RocketPartModel\\ CannonballTab}};
+  \node[consumer, text width=24mm] (cli) at (5.0,0)
+    {\textbf{cli}\\[1pt]{\scriptsize Repl}};
+  \node[consumer, text width=30mm] (viz) at (11.4,0)
+    {\textbf{visualizer}\\[1pt]{\scriptsize RocketMesh}};
+
+  % ---- bridge layer --------------------------------------------------------
+  \node[comp, text width=56mm] (rm) at (3.6,-3.0)
+    {\textbf{RocketModel}\\[1pt]{\scriptsize Propagatable bridge \textbullet\ installDesign facade}};
+  \node[comp, text width=32mm] (prop) at (11.4,-3.0)
+    {\textbf{sim::Propagator}\\[1pt]{\scriptsize runUntilTerminate()}};
+
+  % ---- the owned part tree -------------------------------------------------
+  \node[resolver, text width=62mm] (pm) at (3.6,-5.6)
+    {PartsModel\\[1pt]{\scriptsize\mdseries mutation authority \textbullet\ id index\\ motor slot \textbullet\ events}};
+  \node[comp, text width=54mm] (pn) at (3.6,-7.5)
+    {\textbf{PartNode tree}\\[1pt]{\scriptsize StationLink edge \textbullet\ children\\ cached composites}};
+  \node[comp, text width=38mm] (leaf) at (3.6,-9.3)
+    {\textbf{Part leaves}\\[1pt]{\scriptsize mass \textbullet\ silhouette \textbullet\ aero}};
+  \node[comp, text width=36mm] (place) at (11.4,-7.5)
+    {\textbf{placement free functions}\\[1pt]{\scriptsize placeChild() \textbullet\ sweepOverlaps()}};
+
+  % ---- module boxes (behind the nodes) ------------------------------------
+  % named coordinates give each box headroom for its title (fit rejects inline shifts)
+  \coordinate (consTop)  at ([yshift=5.5mm]cli.north);
+  \coordinate (treeTop)  at ([yshift=5.5mm]pm.north);
+  \coordinate (propTop)  at ([yshift=5.5mm]prop.north);
+  \coordinate (placeTop) at ([yshift=5.5mm]place.north);
+  \begin{pgfonlayer}{background}
+    \titledbox{(gui)(cli)(viz)(consTop)}{}{qrDeep}{Consumers}
+    \titledbox{(pm)(pn)(leaf)(treeTop)}{}{qrBlue}{The owned part tree}
+    \titledbox{(prop)(propTop)}{}{qrGray}{core/sim}
+    \titledbox{(place)(placeTop)}{}{qrTeal}{Placement.h}
+  \end{pgfonlayer}
+
+  % ---- ownership spine -----------------------------------------------------
+  \draw[uses] (rm.south) -- node[flowlbl, pos=0.28]{owns \textbullet\ parts()} (pm.north);
+  \draw[uses] (pm.south) -- node[flowlbl]{owns root} (pn.north);
+  \draw[uses] (pn.south) -- node[flowlbl]{owns} (leaf.north);
+  \draw[dep]  (pn.east)  -- node[flowlbl, align=center]{on structural\\ change} (place.west);
+
+  % ---- flight path ---------------------------------------------------------
+  \draw[uses] (prop.west) -- node[flowlbl, align=center]{Propagatable:\\ getForces / getMass}
+    (prop.west -| rm.east);
+
+  % ---- cli: facade calls + mutation verbs ---------------------------------
+  \draw[uses] (cli.south) -- node[flowlbl, pos=0.45]{installDesign() / launch()}
+    (cli.south |- rm.north);
+  \draw[uses] (cli.south east) .. controls (7.0,-2.4) and (7.0,-4.6) ..
+    node[flowlbl, pos=0.25]{verbs: attach / detach / setLink} (pm.east);
+
+  % ---- visualizer: read-only geometry -------------------------------------
+  \draw[dep] (viz.south) .. controls (8.6,-1.8) and (8.0,-5.4) ..
+    node[flowlbl, pos=0.62, anchor=west, xshift=1mm, align=center]
+    {reads: resolvedPlacements()\\ placementDiagnostics()}
+    (pn.north east);
+
+  % ---- gui: verbs down, rows read, events back up -------------------------
+  \draw[uses] (gui.south) .. controls (0.5,-3.4) ..
+    node[flowlbl, pos=0.2, align=center]{verbs: setPartMass()\\ setMotor()} (pm.north west);
+  \draw[dep] ([xshift=-7mm]gui.south) .. controls (-1.6,-3.9) ..
+    node[flowlbl, pos=0.4, align=center]{reads: children()\\ find()} ([yshift=2mm]pm.west)
+    ;
+  \draw[dep] ([yshift=-2mm]pm.west) .. controls (-4.4,-6.2) and (-4.4,-1.0) ..
+    node[flowlbl, pos=0.5, align=center]{events\\ (aboutTo / did)} (gui.west);
+\end{tikzpicture}

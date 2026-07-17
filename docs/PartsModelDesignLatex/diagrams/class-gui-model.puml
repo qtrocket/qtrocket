@@ -1,0 +1,75 @@
+@startuml
+!include _style.iuml
+
+' Qt classes are drawn plain (no stereotype); QtRocket classes carry stereotypes.
+
+class QAbstractItemModel {
+  {abstract} index(row, col, parent)
+  {abstract} parent(index)
+  {abstract} rowCount(parent)
+  {abstract} data(index, role)
+  #beginInsertRows() / endInsertRows()
+  #beginRemoveRows() / endRemoveRows()
+  #beginResetModel() / endResetModel()
+}
+
+class QTreeView {
+  +setModel(QAbstractItemModel*)
+}
+
+class RocketPartModel <<concrete>> {
+  -m_parts : const PartsModel*  (borrowed)
+  +setParts(const PartsModel*)
+  +onPartsEvent(Event, before)
+  +index() / parent() / rowCount() / data()
+  -nodeForIndex(QModelIndex) : const PartNode*
+  -indexForId(Part::Id) : QModelIndex
+}
+
+class RocketTreeView <<concrete>> {
+  -m_partModel : RocketPartModel*
+  -m_rocket : RocketModel*
+  +setRocketModel(RocketModel*)
+}
+
+class RocketModel <<concrete>> {
+  -parts_ : PartsModel
+  +parts() : PartsModel&
+  +setPartsEventCallback(cb)
+  +setStructureChangedCallback(cb)
+}
+
+class PartsModel <<concrete>> {
+  +attach() / attachSubtree() / detach()
+  +installRoot()
+  +setPartMass() / setLink() / mutatePart()
+  +setChangedCallback(cb)
+  +find(Part::Id) : PartNode*
+  +root() : PartNode*
+}
+
+class "PartsModel::Event" as Event <<pod>> {
+  +kind : Reset | Attached | Detached\n       | LinkChanged | Mutated
+  +id : Part::Id
+  +parentId : Part::Id
+  +row : int
+}
+
+QAbstractItemModel <|-- RocketPartModel
+QTreeView <|-- RocketTreeView
+
+RocketTreeView *-right-> RocketPartModel : owns,\nsetModel()
+RocketTreeView -down-> RocketModel : setRocketModel()\n(rocket outlives view)
+RocketModel *-- PartsModel : owns
+PartsModel .right.> Event : emits aboutTo/did\npairs around every verb
+
+PartsModel --> RocketModel : changed_ callback\n(single subscriber)
+RocketModel --> RocketPartModel : partsEventCallback\n(typed forward)
+RocketPartModel ..> PartsModel : reads live:\nroot() / find(id) / children()
+
+note as N1
+  identity: QModelIndex::internalId
+  carries Part::Id, never a pointer
+end note
+N1 .. RocketPartModel
+@enduml

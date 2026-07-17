@@ -1,0 +1,59 @@
+% activity-load.tex -- DesignSerializer::load: detached build, fail-closed gates, one atomic install
+\begin{tikzpicture}[node distance=5mm and 8mm]
+
+  % ---- main spine -----------------------------------------------------------
+  \node[io] (file) {\texttt{read\_xml(file.qrd)}\\Boost property tree};
+  \node[decision, text width=20mm, below=of file] (ver) {major\\version $= 0$?};
+  \node[act, below=of ver] (build) {\texttt{buildNode(<part>)}\\recursive descent};
+  \node[act, below=of build] (params) {\texttt{readParams} $\to$\\\texttt{makePart(type, params)}};
+  \node[act, below=of params] (link) {\texttt{<link>} present? \texttt{readLink}\\else default abut;\\\texttt{addChild} bottom-up};
+  \node[decision, text width=20mm, below=of link] (motor) {\texttt{<motor>}\\present?};
+  \node[act, below=of motor] (lookup) {\texttt{getMotorModel(}\\\texttt{commonName)}};
+  \node[decision, text width=16mm, below=of lookup] (found) {found?};
+  \node[act, text width=30mm, below left=6mm and -6mm of found] (attach) {attach \texttt{Motor} node\\with persisted link};
+  \node[act, text width=30mm, draw=qrAmber, fill=qrAmber!8,
+        below right=6mm and -6mm of found] (warn) {warn: design loads\\without a motor};
+  \node[resolver, below=24mm of found] (install) {\texttt{rocket.installDesign(newRoot)}\\one atomic swap};
+  \node[act, below=of install] (sim) {\texttt{setName}; apply \texttt{<sim>}:\\$C_d$; reference area\\iff overridden};
+  \node[startstop, below=of sim] (done) {design live};
+
+  % ---- fail column (every throw precedes the install) -----------------------
+  \node[failnode, right=16mm of ver]    (fver)  {throw: unsupported\\design-file version};
+  \node[failnode, right=16mm of params] (ftype) {throw: unknown type, or\\\texttt{Motor} as a tree \texttt{<part>}};
+  \node[failnode, right=16mm of link]   (fseat) {throw: unknown seat, or\\a 0.1 \texttt{<offset>} element};
+
+  % ---- flows ----------------------------------------------------------------
+  \draw[flow] (file) -- (ver);
+  \draw[flow] (ver) -- node[flowlbl]{yes} (build);
+  \draw[flow] (ver) -- node[flowlbl]{no} (fver);
+  \draw[flow] (build) -- (params);
+  \draw[flow] (params) -- (link);
+  \draw[flow] (params) -- (ftype);
+  \draw[flow] (link) -- (fseat);
+  \draw[flow] (link) -- (motor);
+  \draw[flow, dashed] (link.west) to[out=160, in=200, looseness=1.4]
+      node[flowlbl, xshift=-1mm]{per \texttt{<children>} entry} (build.west);
+  \draw[flow] (motor) -- node[flowlbl]{present} (lookup);
+  \draw[flow] (motor.west) -- ++(-62mm,0) |- node[flowlbl, pos=0.12]{absent} (install.west);
+  \draw[flow] (lookup) -- (found);
+  \draw[flow] (found.south) -- ++(0,-2.5mm) -| node[flowlbl, pos=0.25]{hit} (attach.north);
+  \draw[flow] (found.south) -- ++(0,-2.5mm) -| node[flowlbl, pos=0.25]{miss} (warn.north);
+  \draw[flow] (attach.south) -- ++(0,-2.5mm) -| ([xshift=-9mm]install.north);
+  \draw[flow] (warn.south)   -- ++(0,-2.5mm) -| ([xshift=9mm]install.north);
+  \draw[flow] (install) -- (sim);
+  \draw[flow] (sim) -- (done);
+
+  % ---- the detached region: nothing here touches the current rocket --------
+  % boxtop lifts the box top edge and boxwest widens it left, so the title text
+  % clears both the first node and the spine arrow crossing the top edge
+  \coordinate (boxtop) at ([yshift=4mm]build.north);
+  \coordinate (boxwest) at ([xshift=-10mm]attach.west);
+  \begin{pgfonlayer}{background}
+    \titledbox{(build)(params)(link)(motor)(lookup)(found)(attach)(warn)(boxtop)(boxwest)}{}%
+      {qrTeal}{detached build}
+  \end{pgfonlayer}
+  \node[anchor=west, align=left, text=qrTeal, font=\sffamily\scriptsize\itshape]
+      at ([xshift=2mm]boxwest |- lookup.west)
+      {every throw exits\\before any write\\to the rocket};
+
+\end{tikzpicture}

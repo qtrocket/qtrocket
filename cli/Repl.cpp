@@ -374,7 +374,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
              << "#   checkdesign             physical-sense check: overlaps + air gaps\n"
              << "#   listparts               show the part tree + composite mass/CG\n"
              << "#   removepart <id>         remove a part (and its sub-tree)\n"
-             << "#   cleardesign             reset to the default placeholder body\n"
+             << "#   cleardesign             clear the design (no design loaded)\n"
              << "#   savedesign <file.qrd>   save the rocket design\n"
              << "#   loaddesign <file.qrd>   load a rocket design (motor re-resolved by name)\n"
              << "#   note: part ids reset on reload; launch/atmosphere settings are session\n"

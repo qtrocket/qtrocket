@@ -1,0 +1,34 @@
+\begin{tikzpicture}[node distance=7mm and 14mm]
+
+\node[startstop] (start) {setMotor(motor, link)};
+
+\node[decision, below=8mm of start] (hasmotor) {motor node\\ in the tree?};
+
+% swap branch (right column)
+\node[act, right=16mm of hasmotor, text width=52mm] (swap)
+  {in-place swap: replace the wrapped\\ MotorModel (node id and seat link\\ kept; link argument ignored)};
+\node[act, below=of swap, text width=52mm] (dirty)
+  {mark the mass chain dirty\\ (Mutated aboutTo/did pair\\ brackets the edit)};
+\node[oknode, below=of dirty, text width=52mm] (ok1) {return true};
+
+% attach branch (main column)
+\node[decision, below=26mm of hasmotor] (hasdesign) {design\\ loaded?};
+\node[failnode, left=12mm of hasdesign, text width=40mm] (fail)
+  {log error, return false\\ (no root to seat\\ a motor under)};
+\node[act, below=9mm of hasdesign, text width=56mm] (attach)
+  {attach a fresh Motor node under the\\ root; seat = link or the zero-config\\ default abut, like any part};
+\node[act, below=of attach, text width=56mm] (register)
+  {registerSubtree re-resolves the\\ \detokenize{motor_} borrow; Attached\\ aboutTo/did events fire};
+\node[oknode, below=of register, text width=56mm] (ok2) {return true (new node id)};
+
+\draw[flow] (start) -- (hasmotor);
+\draw[flow] (hasmotor) -- node[flowlbl]{yes} (swap);
+\draw[flow] (swap) -- (dirty);
+\draw[flow] (dirty) -- (ok1);
+\draw[flow] (hasmotor) -- node[flowlbl]{no} (hasdesign);
+\draw[flow] (hasdesign) -- node[flowlbl]{no} (fail);
+\draw[flow] (hasdesign) -- node[flowlbl]{yes} (attach);
+\draw[flow] (attach) -- (register);
+\draw[flow] (register) -- (ok2);
+
+\end{tikzpicture}

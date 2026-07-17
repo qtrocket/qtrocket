@@ -1,0 +1,76 @@
+% seq-flight.tex -- per-stage data flow of one integration step, three lanes:
+% core/sim drives, RocketModel bridges, the parts tree answers. Stage traffic
+% (top) touches only the motor curve and the live mass sum; the accepted-step
+% record (bottom) is the only path through the mass-delta gate.
+\begin{tikzpicture}[node distance=7mm and 10mm]
+  % ---- sim lane ------------------------------------------------------------
+  \node[act, text width=36mm] (loop) at (0,0)
+    {\textbf{runUntilTerminate}\\[1pt]{\scriptsize step loop}};
+  \node[act, text width=36mm] (stage) at (0,-2.9)
+    {\textbf{integrator stage}\\[1pt]{\scriptsize $\times 6$ per RKF45 attempt\\ $\times 4$ per RK4 step}};
+  \node[act, text width=36mm] (accept) at (0,-6.1)
+    {\textbf{accepted step}\\[1pt]{\scriptsize guards, statistics,\\ record}};
+  \node[act, text width=36mm] (term) at (0,-8.8)
+    {\textbf{terminate?}\\[1pt]{\scriptsize $z<0$ and $v_z<0$}};
+
+  % ---- bridge lane ---------------------------------------------------------
+  \node[io, text width=36mm] (env) at (6.2,0.4)
+    {Environment\\{\scriptsize $g(\mathbf r)$, $\rho(\mathrm{alt})$} \textbullet\ {\scriptsize $C_d$, $A$}};
+  \node[comp, text width=42mm] (forces) at (6.2,-1.9)
+    {getForces($t,\mathbf r,\mathbf v$, env)};
+  \node[comp, text width=42mm] (mass) at (6.2,-4.1)
+    {getMass($t$)};
+  \node[comp, text width=42mm] (wmp) at (6.2,-6.1)
+    {writeMassProperties($t$)};
+
+  % ---- parts-tree lane -----------------------------------------------------
+  \node[comp, text width=42mm] (thrust) at (12.6,-0.6)
+    {thrust($t$)\\{\scriptsize Motor $\to$ MotorModel curve}};
+  \node[comp, text width=42mm] (livesum) at (12.6,-3.3)
+    {compositeMass($t$)\\{\scriptsize live uncached sum}};
+  \node[resolver, text width=42mm] (gate) at (12.6,-5.7)
+    {mass-delta gate};
+  \node[comp, text width=42mm] (cache) at (12.6,-7.7)
+    {cached Cm($t$), I($t$)};
+  \node[ghost, rounded corners=2pt, inner sep=4pt, align=center,
+        text width=42mm, text=qrGray] (placement) at (12.6,-9.4)
+    {placement cache:\\ untouched in flight};
+
+  % ---- lane boxes ----------------------------------------------------------
+  \coordinate (simTop)    at ([yshift=5.5mm]loop.north);
+  \coordinate (bridgeTop) at ([yshift=5.5mm]env.north);
+  \coordinate (treeTop)   at ([yshift=5.5mm]thrust.north);
+  \begin{pgfonlayer}{background}
+    \titledbox{(loop)(stage)(accept)(term)(simTop)}{}{qrGray}{core/sim}
+    \titledbox{(env)(forces)(mass)(wmp)(bridgeTop)}{}{qrBlue}{RocketModel (Propagatable)}
+    \titledbox{(thrust)(livesum)(gate)(cache)(placement)(treeTop)}{}{qrTeal}{parts tree}
+  \end{pgfonlayer}
+
+  % ---- sim spine -----------------------------------------------------------
+  \draw[flow] (loop.south)   -- node[flowlbl]{step()} (stage.north);
+  \draw[flow] (stage.south)  -- node[flowlbl]{err $\le$ tol} (accept.north);
+  \draw[flow] (accept.south) -- (term.north);
+  \draw[flow] (term.west) .. controls (-3.6,-8.8) and (-3.6,0) ..
+    node[flowlbl, align=center]{no:\\ advance $t$} (loop.west);
+
+  % ---- stage traffic -------------------------------------------------------
+  \draw[uses] (stage.north east) -- node[flowlbl, pos=0.45]{$\mathbf F$}
+    (forces.west);
+  \draw[uses] (stage.south east) -- node[flowlbl, pos=0.45]{$\mathbf F/m$ divisor}
+    (mass.west);
+  \draw[dep]  (env.south) -- node[flowlbl]{gravity, drag inputs} (forces.north);
+  \draw[uses] (forces.north east) -- node[flowlbl, pos=0.5]{thrust term}
+    (thrust.west);
+  \draw[uses] (forces.south east) -- node[flowlbl, pos=0.55]{gravity weight $m(t)$}
+    (livesum.north west);
+  \draw[uses] (mass.east) -- node[flowlbl, pos=0.45]{live sum}
+    (livesum.south west);
+
+  % ---- accepted-step record ------------------------------------------------
+  \draw[uses] (accept.east) -- node[flowlbl, pos=0.5]{if saveStates}
+    (wmp.west);
+  \draw[uses] (wmp.east) -- node[flowlbl, pos=0.5, align=center]{mass, Cm, I}
+    (gate.west);
+  \draw[flow] (gate.south) -- node[flowlbl, align=center, pos=0.45]
+    {burn: rebuild\\ after: frozen hit} (cache.north);
+\end{tikzpicture}

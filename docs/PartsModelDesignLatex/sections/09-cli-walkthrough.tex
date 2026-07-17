@@ -1,0 +1,363 @@
+\section{Execution walkthrough: a CLI design session}\label{sec:cli}
+
+The preceding sections describe the part tree layer by layer; this one runs it. QtRocket ships a
+Qt-free command-line front end, \code{qtrocket-cli}, whose REPL (\srcf{cli/Repl.cpp}) drives exactly
+the API the GUI drives: the \code{QtRocket} controller, \code{RocketModel}, and the
+\code{PartsModel} verbs of \cref{sec:tree}. Because the CLI is a thin text skin over the model, a
+single scripted session exercises the factory (\cref{sec:leaf}), the placement vocabulary
+(\cref{sec:placement}), the mutation verbs and their event stream (\cref{sec:tree}), the composite
+caches (\cref{sec:caching}), the motor slot (\cref{sec:motor}), the serializer
+(\cref{sec:serialization}), and finally the flight loop (\cref{sec:flight}) --- and every seam
+between them is visible in the terminal output. The transcript quoted throughout this section is
+genuine: it is the output of \code{build/cli/qtrocket-cli} running the script in
+\cref{lst:cli-script} against the bundled small-motor database, altered only where a caption
+notes an elision.
+
+\subsection{The line protocol}\label{sec:cli-protocol}
+
+The REPL reads one command per line from any \cppinline|std::istream| --- interactively, from a
+pipe, or from a script file (\src{cli/Repl.h}{31}) --- and answers on a strict prefix protocol:
+a command's outcome arrives as \code{OK} or \code{ERR} status lines, with any detail on the lines
+that follow.
+The protocol is enforced at a single chokepoint. \code{Repl::execute} (\src{cli/Repl.cpp}{297})
+buffers each command's output, scans the buffer for \code{ERR}-prefixed lines to maintain an error
+count, and forwards the bytes verbatim; \code{run} then turns that count into the process exit code
+--- $0$ only if every command succeeded. A piped script is therefore CI-consumable with no output
+parsing at all: the exit status \emph{is} the verdict. The same chokepoint wraps every command in
+one \cppinline|try/catch|, because model reads can throw by design --- a composite query on a
+design whose placement solve failed re-throws on every read (\cref{sec:caching}) --- and a
+diagnostic that killed the session would punish exactly the user who most needs to keep editing.
+The catch turns the exception into an ordinary \code{ERR} line and the session continues.
+
+\subsection{The session}\label{sec:cli-session}
+
+\Cref{lst:cli-script} is the whole script. It builds a three-part rocket, deliberately provokes the
+design checker and the launch gate, removes the offending part, installs a motor, round-trips the
+design through disk, and flies it.
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+loaddb /home/travis/Development/qtrocket/tests/data/motors/estes_small.qmd
+newdesign NoseCone name=Nose baseRadius=0.019 length=0.10 density=520
+addpart Nose BodyTube name=Airframe outerRadius=0.019 innerRadius=0.018 length=0.45 density=680
+addpart Airframe FinSet name=Fins finCount=4 rootChord=0.06 tipChord=0.03 span=0.05
+        sweep=0.02 thickness=0.003 bodyRadius=0.019 density=680 seat=OnSurface
+listparts
+checkdesign
+addpart Airframe BodyTube name=Boattail outerRadius=0.019 innerRadius=0.018 length=0.05
+        density=680 gap=-0.02
+checkdesign
+removepart 4
+checkdesign
+launch
+setmotor C6
+listparts
+savedesign demo.qrd
+cleardesign
+listparts
+loaddesign demo.qrd
+listparts
+setvelocity 15
+launch
+quit
+\end{minted}
+\caption{The session script (each \code{addpart} is one line; two are wrapped here to fit the
+page). Run as \code{qtrocket-cli <script>}; the same commands work interactively or via
+\code{-c "<command>"}.}\label{lst:cli-script}
+\end{listing}
+
+\subsection[Building the tree: newdesign and addpart]{Building the tree: \code{newdesign} and \code{addpart}}\label{sec:cli-build}
+
+\Cref{lst:cli-build} is the build phase of the output. Three code paths produce it, and each is
+worth tracing.
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+OK loaddb: 13 new motors from .../tests/data/motors/estes_small.qmd (13 total)
+OK newdesign: root NoseCone id=1
+OK addpart: BodyTube id=2 under 1
+OK addpart: FinSet id=3 under 2
+OK listparts:
+  [1] NoseCone "Nose"  m=0.019658 kg
+    [2] BodyTube "Airframe"  m=0.0355691 kg
+      [3] FinSet "Fins"  m=0.01836 kg
+  -- composite: mass=0.0735871 kg, cg_z=-0.306313 m (t=0)
+OK checkdesign: 3 parts, contiguous, no overlaps
+OK addpart: BodyTube id=4 under 2
+ERR checkdesign: 1 air gap(s)
+  gap: nothing spans z in [-0.57, -0.55] (0.02 m)
+OK removepart: removed id=4 (BodyTube)
+OK checkdesign: 3 parts, contiguous, no overlaps
+\end{minted}
+\caption{Build-phase output (path elided to fit the line). Ids are handed out by the \code{Part}
+constructor in creation order; the boattail's id 4 is visible again in
+\code{removepart 4}.}\label{lst:cli-build}
+\end{listing}
+
+\textbf{Token parsing.} Every design command shares one \code{key=value} grammar, implemented by
+\code{parseDesignTokens} (\src{cli/Repl.cpp}{180}). Geometry keys are routed into a
+\code{PartParams} through \code{doubleFieldFor} (\src{cli/Repl.cpp}{151}), a one-page mapping from
+key string to \cppinline|std::optional<double>| field; the placement keys (\code{seat},
+\code{parentStation}, \code{childStation}, \code{gap}) accumulate separately in a \code{LinkTokens}
+staging struct. Numeric values go through strict full-string parsers that reject trailing garbage
+--- \code{length=0.5abc} is an error, not a truncated $0.5$. An \emph{unknown} key, by contrast, is
+logged and skipped, so a script written against a newer CLI's vocabulary degrades gracefully on an
+older one instead of dying at the first novel key.
+
+\begin{designrule}[One parameter vocabulary, three consumers]
+\code{PartParams} (\srcf{core/model/parts/PartFactory.h}) is filled by this parser, consumed by
+\code{makePart}, and reproduced by \code{params()} for the serializer of \cref{sec:serialization}.
+Because all three speak through the same struct, the CLI's key names, the factory's required-field
+errors, and the on-disk attribute names cannot drift apart --- there is no second vocabulary to
+fall out of sync.
+\end{designrule}
+
+\textbf{\code{newdesign}.} The command (\src{cli/Repl.cpp}{853}) parses tokens, calls
+\code{makePart(type, params)} (\src{core/model/parts/PartFactory.cpp}{27}) --- which throws with a
+named missing field or an unknown type, surfaced verbatim as the \code{ERR} line --- then captures
+the part's id \emph{before} ownership moves and installs the tree root:
+\cppinline|installDesign(model::PartNode::make(std::move(root)))|
+(\src{cli/Repl.cpp}{880}). \code{RocketModel::installDesign} (\src{core/model/RocketModel.cpp}{118})
+delegates to \code{PartsModel::installRoot}, which fires the \code{Reset} event pair around the
+atomic root replacement (\cref{sec:tree}). The REPL also drops its staged \code{motorSet} flag ---
+the old tree, motor node and all, is gone, so the staged launch configuration must not pretend
+otherwise. The \code{OK} line reports the root's id.
+
+\textbf{\code{addpart}.} The command (\src{cli/Repl.cpp}{894}) resolves its parent token in three
+ways: the literal \code{root}, a numeric id, or a part name looked up via
+\code{parts().findByName} (\src{core/model/PartsModel.cpp}{257}) --- a pre-order first-match walk,
+because names need not be unique and ids are the real identity
+(\src{core/model/PartsModel.h}{178}).
+
+\begin{designrule}[Names are the scriptable handle; ids are session currency]
+Part ids are assigned by a process-wide counter and are never persisted, so a design reloaded from
+disk carries \emph{fresh} ids (\cref{sec:cli-persist} demonstrates this: the same four parts return
+as 6--9). A saved script that said \code{addpart 2 \ldots} would silently target the wrong node in
+the next session. Scripts therefore address parents by name --- stable because the author chose it
+and the serializer round-trips it --- while ids remain the precise, collision-free handle for
+interactive surgery within one session, echoed in every \code{OK} line so the user always has
+both.
+\end{designrule}
+
+The placement tokens then become a \code{StationLink} in \code{linkFromTokens}
+(\src{cli/Repl.cpp}{226}): the seat name is resolved through the shared
+\code{seatKindFromString} table (\src{core/model/parts/Placement.h}{42}, fail-closed on unknown
+names), the link starts from that verb's canonical station pair --- \code{abut(0)},
+\code{nestInBore(0)}, or \code{seatOnWall(0)} (\src{core/model/parts/Placement.h}{134}) --- and any
+explicit \code{parentStation}/\code{childStation}/\code{gap} tokens override individual fields.
+That is why the fin set command needs only \code{seat=OnSurface}: the verb's canonical pair
+already reads ``child aft plane on the parent wall at the parent's aft station,'' which is exactly
+where fins belong. The one semantic guard lives here too: a \seat{NestInBore} gap is an insertion
+depth and must be non-negative, rejected before the model ever sees it.
+
+With a parent id, a fresh leaf from the factory, and a link, the command becomes a single model
+verb: \cppinline|rocket->parts().attach(parentId, std::move(child), link)|. The result is a
+\cppinline|std::expected<Part::Id, AttachError>|, and the REPL maps each typed error to an exact
+\code{ERR} string (\cref{lst:cli-attach-map}).
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+const auto attached = rocket->parts().attach(parentId, std::move(child), link);
+if(!attached)
+{
+   switch(attached.error())
+   {
+      case model::PartsModel::AttachError::NoSuchParent:
+         out << "ERR addpart: no part with id " << parentId << "\n"; break;
+      case model::PartsModel::AttachError::DuplicateMotor:
+         out << "ERR addpart: the design already has a motor\n"; break;
+      case model::PartsModel::AttachError::NullPart:
+         out << "ERR addpart: invalid part\n"; break;
+   }
+   return true;
+}
+out << "OK addpart: " << type << " id=" << *attached << " under " << parentId << "\n";
+\end{minted}
+\caption{Typed error mapping in \code{addpart} (\srccap{cli/Repl.cpp}{952}). The switch covers
+\code{AttachError} exhaustively with no default, so a new failure mode added to the model cannot
+be silently dropped by the CLI --- the build warns until this mapping learns the new
+arm.}\label{lst:cli-attach-map}
+\end{listing}
+
+The \code{DuplicateMotor} arm deserves a note on reachability. \code{attachSubtree} enforces the
+single-motor invariant by scanning any incoming sub-tree for a \code{Motor}
+(\src{core/model/PartsModel.cpp}{319}), but the CLI's factory refuses to construct one
+(\src{core/model/parts/PartFactory.cpp}{73}) --- a motor enters a design only through
+\code{setmotor}. The arm is therefore defense in depth at this call site: it exists because the
+mapping is total over the enum, and totality, not present-day reachability, is what keeps the CLI
+honest as the model grows.
+
+\Cref{fig:cli-addpart} traces one \code{addpart} across the three layers, including the event pair
+that fires around the mutation. \code{PartsModel} emits \code{Event\{Attached, id, parent, row\}}
+twice --- before and after the structural write --- and \code{RocketModel}'s constructor-wired
+bridge (\src{core/model/RocketModel.cpp}{20}) forwards the pair to any granular consumer and folds
+the completed edit into the coarse \emph{structure changed} callback. In a GUI session those become
+Qt's \code{beginInsertRows}/\code{endInsertRows} bracket and a mass/CG readout refresh
+(\cref{sec:gui}); in a CLI session no consumer ever registers, both callbacks are null, and the
+emit sites cost two skipped function-object checks. The model does not know or care which kind of
+session it is in --- that indifference is the point of routing every mutation through the verbs.
+
+\tikzfig{seq-cli-addpart}{One \code{addpart}, end to end. The REPL resolves the parent, parses
+geometry and link tokens, builds the leaf, and calls the single model verb; \code{PartsModel}
+validates, brackets the mutation in an aboutTo/did event pair, and returns the new id as a
+\code{std::expected}; observers (dashed --- present only in a GUI session) receive the pair
+via the \code{RocketModel} bridge.}{fig:cli-addpart}
+
+\subsection[Inspecting the design: listparts and checkdesign]{Inspecting the design: \code{listparts} and \code{checkdesign}}\label{sec:cli-inspect}
+
+\code{listparts} (\src{cli/Repl.cpp}{1021}) is the tree made visible: \code{forEachNode}
+(\src{core/model/PartsModel.h}{186}) walks pre-order, parent before child in attachment order, and
+\code{printPartTree} (\src{cli/Repl.cpp}{251}) indents by the depth the walk hands it --- id, type,
+name, and own mass at $t=0$ per line. The trailing composite line reads
+\code{compositeMass(0.0)} and \code{compositeCm(0.0).z()} from the root node: the \emph{same}
+gated accessors the flight loop uses (\cref{sec:caching}), so what the designer reads on screen is
+by construction what the integrator will fly.
+
+\code{checkdesign} (\src{cli/Repl.cpp}{969}) layers two verdicts with deliberately different
+vantage points:
+
+\begin{itemize}
+\item \textbf{The model's overlap verdict.} \code{placementDiagnostics()} returns the cached
+      envelope-sweep result (\cref{sec:placement}): radial interpenetration --- a part poking
+      through a wall that cannot contain it --- located by id and station. It is resolved once per
+      structural change and shared by every consumer.
+\item \textbf{The CLI's axial-coverage scan.} On top of \code{resolvedPlacements()} the command
+      builds one $[z_{\mathrm{aft}}, z_{\mathrm{fore}}]$ span per part
+      (\src{cli/Repl.cpp}{984}), sorts by aft edge, and walks a running coverage front; any span
+      that starts more than $10^{-9}\m$ beyond the front is reported as an air gap. Zero-length
+      parts --- a \code{Motor} node --- are excluded, since a point cannot bound coverage.
+\end{itemize}
+
+\begin{keyinsight}[Each layer sees what the other cannot]
+The sweep is intent-blind by design: a positive standoff is a perfectly legal \code{StationLink}
+--- the model must allow a floating part mid-edit --- so parts hanging in space are invisible to
+an overlap check. The coverage scan sees exactly that omission, but knows nothing of radii: a
+nested coupler and a tube-through-a-nose-cone look identical to it. Only their conjunction reads
+``physically sensible rocket,'' which is why the gap scan lives in the CLI as a design-review
+lint rather than in the model as an invariant --- a gap is suspicious in a \emph{finished}
+design, not illegal in a design under construction.
+\end{keyinsight}
+
+The transcript shows the scan working. The boattail is attached with \code{gap=-0.02} --- an
+\seat{Abut} gap is a signed forward standoff, so $-0.02$ retreats the part $2\unit{cm}$ aft of the
+airframe's aft plane at $z = -0.55$ --- and \code{checkdesign} answers with the located interval:
+\code{nothing spans z in [-0.57, -0.55]}. After \code{removepart 4} the design is contiguous
+again. \code{removepart} itself (\src{cli/Repl.cpp}{1035}) guards the root by id before calling
+the model --- \code{PartsModel::detach} would refuse with the typed \code{IsRoot} anyway, but the
+CLI pre-empts it to say \emph{what to do instead} (\code{use newdesign or cleardesign}) --- and
+afterwards re-reads \cppinline|rocket->isMotorSet()|, because the detached sub-tree may have
+carried the motor node with it and the staged \code{motorSet} flag must follow the tree, not the
+user's memory of it.
+
+\subsection[setmotor: the database meets the tree]{\code{setmotor}: the database meets the tree}\label{sec:cli-motor}
+
+\code{setmotor C6} (\src{cli/Repl.cpp}{539}) looks the common name up in the
+\code{MotorModelDatabase}, and hands the found \code{MotorModel} to
+\code{RocketModel::setMotorModel}, which delegates to \code{PartsModel::setMotor}
+(\src{core/model/PartsModel.cpp}{470}). On a design with no motor this \emph{attaches} a
+\code{Motor} leaf under the root through the ordinary \code{attach} verb --- default \seat{Abut}
+link, ordinary events, ordinary cache dirtying; a later \code{setmotor} swaps the wrapped
+\code{MotorModel} in place, keeping the node, its id, and its link (\cref{sec:motor}). The effect
+is immediately visible in the tree (\cref{lst:cli-motor}):
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+OK setmotor: C6
+OK listparts:
+  [1] NoseCone "Nose"  m=0.019658 kg
+    [2] BodyTube "Airframe"  m=0.0355691 kg
+      [3] FinSet "Fins"  m=0.01836 kg
+    [5] Motor "Motor"  m=0.0241 kg
+  -- composite: mass=0.0976871 kg, cg_z=-0.255415 m (t=0)
+\end{minted}
+\caption{The motor is a tree citizen: node 5 appears as a child of the root, its $24.1\unit{g}$
+loaded weight joins the composite, and the CG moves aft accordingly --- no separate motor mass
+bookkeeping anywhere.}\label{lst:cli-motor}
+\end{listing}
+
+\subsection{Persistence and the no-design contract}\label{sec:cli-persist}
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+OK savedesign: demo.qrd
+OK cleardesign:
+ERR listparts: no design
+OK loaddesign: demo.qrd (motor C6)
+OK listparts:
+  [6] NoseCone "Nose"  m=0.019658 kg
+    [7] BodyTube "Airframe"  m=0.0355691 kg
+      [8] FinSet "Fins"  m=0.01836 kg
+    [9] Motor "Motor"  m=0.0241 kg
+  -- composite: mass=0.0976871 kg, cg_z=-0.255415 m (t=0)
+\end{minted}
+\caption{The round trip. \code{cleardesign} leaves a genuinely empty model --- not a placeholder
+--- so the next \code{listparts} fails the \code{hasDesign} contract. On reload the identical
+physics returns under fresh ids 6--9, and the motor is re-resolved by common
+name.}\label{lst:cli-persist}
+\end{listing}
+
+\code{savedesign} and \code{loaddesign} (\src{cli/Repl.cpp}{1067}) are one-call wrappers over the
+\code{DesignSerializer} of \cref{sec:serialization}; serializer exceptions surface as \code{ERR}
+lines with the underlying message. \code{cleardesign} calls
+\code{RocketModel::clearDesign} --- \cppinline|installDesign(nullptr)| --- after which
+\code{hasDesign()} is false and every design command (\code{listparts}, \code{checkdesign},
+\code{addpart}, \dots) answers \code{ERR \ldots: no design} rather than inventing an empty-tree
+interpretation. ``No design'' is a representable, first-class state
+(\src{core/model/PartsModel.h}{160}), and the CLI's contract makes it audible.
+
+The reload output (\cref{lst:cli-persist}) is the evidence behind the name-vs-id rule of \cref{sec:cli-build}: masses, CG,
+and structure are bit-identical, but the ids are new. \code{loaddesign} finishes by syncing the
+REPL's staged configuration \emph{from} the loaded rocket (\src{cli/Repl.cpp}{1107}) --- drag
+coefficient, reference area, and the motor flag --- because the serializer re-attached the motor
+by common name from the session database (\src{core/model/DesignSerializer.cpp}{244}) and the
+staging must reflect what actually loaded, including the degraded no-motor case when the database
+lacks the name.
+
+\subsection{The launch gate}\label{sec:cli-launch}
+
+\begin{listing}[htbp]
+\begin{minted}{text}
+ERR launch: no motor set (use loadmotors + setmotor first)
+...
+OK setvelocity: 15 m/s
+OK launch: 1290 steps, t_final=12.890s
+  apogee    = 170.855 m @ t=5.590s
+  max_speed = 61.457 m/s @ t=1.820s
+  downrange = 0.000 m
+  landing   = t=12.890s, pos=(0.000, 0.000, -0.056)
+CSV /tmp/qtrocket-demo/qtrocket_run.csv
+OK bye
+\end{minted}
+\caption{The gate and the flight. The motorless \code{launch} (issued mid-session, before
+\code{setmotor}) is refused with the remedy in the message; the flight summary reads the
+statistics tracked live during propagation and names the CSV written beside the
+session.}\label{lst:cli-launch}
+\end{listing}
+
+\code{launch} (\src{cli/Repl.cpp}{740}) opens with the one precondition the CLI stages itself:
+\code{motorSet} (\cref{lst:cli-launch}). The flag is raised by \code{setmotor}, dropped by \code{newdesign} and
+\code{cleardesign}, and re-derived from the model after \code{removepart} and \code{loaddesign} ---
+every path that can change whether a motor exists converges on it, so the gate is a single boolean
+read. A motorless launch is refused before any state is touched.
+
+The initial condition matters more than it looks. \code{setvelocity} and \code{setangle} stage a
+rail-exit state --- $v_x = v\sin\theta$, $v_z = v\cos\theta$ from vertical
+(\src{cli/Repl.cpp}{749}) --- rather than defaulting every flight to a dead start, because a thrust
+curve begins with an implicit $(0,0)$ sample: over the first integration step a from-rest rocket
+has essentially no thrust. The propagator owns the pathological end of this --- it holds the
+vehicle at the pad until a step genuinely lifts it (\src{core/sim/Propagator.cpp}{111}) and aborts
+with a located \code{NoLiftoff} verdict if $3\unit{s}$ pass below $1\m$
+(\src{core/sim/Propagator.h}{26}) --- but a launch rail is also just the true physics: real models
+leave the rod at speed, and a $15\unit{m/s}$ exit starts the integration past the thrust hole on
+the part of the curve that actually flies the vehicle. When a run does end abnormally, the CLI
+prints a \code{WARN} line built from the typed termination reason; the mapping switch has no
+default case (\src{cli/Repl.cpp}{43}), so a new \code{TerminationReason} refuses to compile until
+the CLI can explain it.
+
+One last protocol note closes the loop: this session's process exit code is $1$. Three \code{ERR}
+lines were provoked on purpose --- the air gap, the empty-model \code{listparts}, the motorless
+\code{launch} --- and the chokepoint of \cref{sec:cli-protocol} counts them all the same. The
+protocol offers no ``expected failure'' escape hatch by design: a script that treats an
+\code{ERR} as part of its happy path documents that fact in its own exit-status handling, and a
+CI pipeline that pipes a design script through \code{qtrocket-cli} gets a conservative,
+zero-parsing pass/fail signal for free.

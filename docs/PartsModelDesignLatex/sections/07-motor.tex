@@ -1,0 +1,308 @@
+\section{The motor subsystem}\label{sec:motor}
+
+The motor is an ordinary node in the part tree with special provenance. Structurally it is a leaf
+like any other: it occupies one \code{PartNode}, seats against its parent through the same
+\code{StationLink} as every part (\cref{sec:placement}), contributes to the composite mass, CM, and
+inertia tensor through the same two-pass node walk (\cref{sec:caching}), and rides the same
+aboutTo/did event stream into the GUI (\cref{sec:gui}). What distinguishes it is where its data
+comes from and what varies at runtime. Every geometric part is authored --- its dimensions are
+design parameters, built by the part factory and serialized as such. A motor is \emph{catalog
+data}: a manufacturer's measured thrust curve and mass breakdown, selected from
+\code{MotorModelDatabase} by common name, with a burn that makes it the only part whose mass is a
+genuine function of time.
+
+The design concentrates that specialness into a deliberately small surface: one leaf type
+(\code{model::part::Motor}, \srcf{core/model/parts/Motor.h}) that wraps a \code{MotorModel} by
+value, and a compact verb set on \code{PartsModel} --- one attach/swap verb, four \code{const}
+reads, and exactly one runtime mutation. \Cref{fig:motor-class} shows the pieces and the two
+non-obvious edges between them: the friend seam and the typed borrow.
+
+\classfig{class-motor}{The motor subsystem. \code{Motor} owns its \code{MotorModel} by value and
+derives mass and tensor from it live; \code{PartsModel} holds a non-owning typed borrow into the
+tree it owns and reaches the private mutation surface through a friend seam. The
+\code{ThrustCurve} inside the \code{MotorModel} carries the manufacturer's (time, thrust) samples,
+linearly interpolated.}{fig:motor-class}{0.92}
+
+\subsection[The Motor leaf: everything derives live]{The \code{Motor} leaf: everything derives live}\label{sec:motor-leaf}
+
+\code{Motor} owns one \code{MotorModel} by value (the member \code{mm},
+\src{core/model/parts/Motor.h}{71}) and overrides exactly the two mass-property queries, both of
+which consult \code{mm} at call time (\cref{lst:motor-leaf}):
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+class Motor : public Part
+{
+public:
+    Motor(const std::string& name, const MotorModel& motor);
+    std::string typeName() const override { return "Motor"; }
+
+    /// This part's own mass at time @p t (kg): loaded weight pre-ignition, falling to the
+    /// casing mass over the burn, constant after burnout. @see MotorModel::getMass
+    double getMass(double t) const override { return mm.getMass(t); }
+
+    /// Per-unit-mass tensor derived live from the wrapped MotorModel -- a solid cylinder
+    /// from its catalog diameter/length.
+    Matrix3 getI() const override { return motorTensor(mm); }
+
+    const MotorModel& getMotorModel() const { return mm; }
+    // ...
+private:
+    friend class model::PartsModel;  // motor verbs: in-place swap, startMotor
+    void setMotorModel(const MotorModel& motor);
+    static Matrix3 motorTensor(const MotorModel& motor);
+    MotorModel mm; ///< the wrapped motor, owned by value
+};
+\end{minted}
+\caption{The \code{Motor} leaf (\srcfcap{core/model/parts/Motor.h}, elided). The public surface is
+read-only; the mutation surface is private and reachable only through the
+\code{PartsModel} friend seam.}\label{lst:motor-leaf}
+\end{listing}
+
+\code{getMass(t)} is the burn curve read directly. \code{MotorModel::getMass}
+(\src{core/model/MotorModel.cpp}{28}) returns the catalog loaded weight
+(\code{data.totalWeight}, $\unit{kg}$) before ignition, then during the burn interpolates a
+precomputed 128-sample propellant-mass table (built by \code{computeMassCurve} from the thrust
+curve, so mass leaves in proportion to delivered impulse), and after burnout returns the casing
+mass (\code{emptyMass} $=$ \code{totalWeight} $-$ \code{propWeight}). This single override is what
+makes the whole rocket's mass time-varying: \cppinline|RocketModel::getMass(t)| is just the
+composite mass sum over the tree (\src{core/model/RocketModel.cpp}{33}), and the motor node is the
+one term in that sum that moves.
+
+\code{getI()} is derived live as well. \code{motorTensor} (\src{core/model/parts/Motor.cpp}{23})
+converts the catalog diameter and length (stored in $\unit{mm}$) to metres and returns
+\code{InertiaTensors::Tube(0, d/2, L)} --- the per-unit-mass solid-cylinder tensor
+(\src{core/model/InertiaTensors.h}{63}), in the same geometric $\unit{m^2}$ convention every leaf
+uses (\cref{sec:leaf}). If the catalog lacks either dimension the tensor is
+\cppinline|Matrix3::Zero()|: the motor degrades to a point mass that still contributes its full
+mass term. The tensor itself is constant over the burn; the composite becomes time-varying only
+through the $m(t)$ weighting and the CM shift that the node walk applies
+($m \cdot I_{\mathrm{unit}} + m \cdot f(d)$ per part, \cref{sec:caching}).
+
+\begin{keyinsight}[No seeded copy exists, so no swap can leave it stale]
+The constructor seeds the \code{Part} base fields for uniformity
+(\src{core/model/parts/Motor.cpp}{12}), but no query path reads those copies: both overrides
+consult \code{mm} at every call. This closes a whole divergence class by construction. The
+composite cache rebuilds behind a mass-delta gate (\cref{sec:caching}) --- a gate that is
+\emph{blind} to an equal-mass, different-diameter motor swap. If a seeded tensor copy existed and
+a swap path ever forgot to re-seed it, the rebuild would consult the stale copy and the flight
+would carry the wrong inertia with no error anywhere. With live derivation there is nothing to
+re-seed and nothing to forget: the swap verb replaces \code{mm} and dirties the mass chain, and
+the very next rebuild reads the new geometry because there is no other geometry to read.
+\end{keyinsight}
+
+\begin{designrule}[Burn-dependent grain inertia is enabled, not gated out]
+Today \code{motorTensor} treats the grain as a full solid cylinder for the whole burn --- a stated
+modeling approximation, adequate at 3-DOF where the tensor is recorded but not yet integrated. The
+structural point is that \code{getI()} is \emph{already} a function of the live \code{MotorModel}.
+A future grain model --- a core-burner's tensor as a function of remaining propellant, read from
+the same mass curve --- changes only \code{motorTensor}, growing \code{getI()} a time parameter
+mirroring \code{getMass(t)} (\cref{sec:tradeoffs-motor}). The read path, the
+cache gates, the swap semantics, and every consumer are already shaped for a time-varying answer;
+nothing in the architecture has to move to admit better physics.
+\end{designrule}
+
+\subsection{A point in the airframe geometry}\label{sec:motor-point}
+
+\code{Motor} overrides none of the geometry surface. Its length is the base
+\cppinline|Part::getLength()| of zero --- the base-class contract explicitly names the motor as the
+intended zero-length node (\src{core/model/parts/Part.h}{79}) --- and its radius profiles are the
+base zeros. In the placement layer (\cref{sec:placement}) this makes it a \emph{point node}: its
+resolved axial interval has zero span, so the envelope sweep never selects it as a host
+(\src{core/model/parts/Placement.cpp}{183}), and its zero outer radius means it can never flag as
+an offender. It neither claims radial capacity nor grants it; it never extends the airframe's
+envelope.
+
+This is deliberate decoupling of inertial geometry from envelope geometry. The catalog knows the
+motor's real casing dimensions, and \code{getI()} uses them --- that is real physics the simulation
+wants. But QtRocket does not model motor-mount internals, and a motor given a real solid envelope
+would immediately collide with the body tube it sits inside, forcing every design to author a
+mount before the envelope sweep would pass. A point mass carrying a true cylinder tensor at the
+right station is the honest 3-DOF representation: correct mass properties, no fictitious solid to
+police.
+
+Placement-wise the motor is unremarkable, by design. \code{setMotor} attaches it under the root
+with a default \code{StationLink} --- the same zero-config ``child fore plane abuts parent aft
+plane'' every part gets --- or with any explicit link the caller passes, and the seat can later be
+re-authored through the ordinary \code{setLink} verb (\cref{sec:tree}). Because $L = 0$ and the CM
+offset is zero, its composite CM contribution lands exactly at its resolved fore-plane origin.
+
+\subsection{The verbs and the typed borrow}\label{sec:motor-verbs}
+
+\code{PartsModel} keeps one piece of motor-specific state: \cppinline|part::Motor* motor_|
+(\src{core/model/PartsModel.h}{261}), a non-owning typed borrow into the tree it already owns. The
+borrow exists so that \code{thrust(t)}, \code{isMotorSet()}, and \code{startMotor(t)} are $O(1)$
+--- the per-RK-stage hot path must not walk the tree hunting for a \code{Motor} by
+\cppinline|dynamic_cast|.
+
+A borrowed pointer into an owned structure is only safe if it is maintained wherever the structure
+changes, so the design pins it to the narrowest possible seam (\cref{lst:motor-borrow}):
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+void PartsModel::registerSubtree(PartNode* n)
+{
+    n->model_ = this;
+    index_[n->id()] = n;
+    if(auto* m = dynamic_cast<part::Motor*>(n->part_.get()))
+    {
+        motor_ = m;
+    }
+    for(const auto& child : n->children_) { registerSubtree(child.get()); }
+}
+
+void PartsModel::unregisterSubtree(PartNode* n)
+{
+    if(motor_ != nullptr && static_cast<part::Part*>(motor_) == n->part_.get())
+    {
+        motor_ = nullptr;
+    }
+    index_.erase(n->id());
+    n->model_ = nullptr;
+    for(const auto& child : n->children_) { unregisterSubtree(child.get()); }
+}
+\end{minted}
+\caption{Borrow maintenance (\srccap{core/model/PartsModel.cpp}{270}). The same walk that
+maintains the id index maintains the motor borrow; no structural verb touches the borrow
+directly.}\label{lst:motor-borrow}
+\end{listing}
+
+\begin{designrule}[The invariant lives with the only code that can break it]
+Every path by which a node enters or leaves the tree --- \code{attach}, \code{attachSubtree},
+\code{detach}, \code{installRoot} --- funnels through \code{registerSubtree} /
+\code{unregisterSubtree}, and those two functions are the only writers of \cppinline|motor_|
+(\src{core/model/PartsModel.h}{261}). Clearing the design, loading a new one, or detaching a
+sub-tree that happens to contain the motor therefore nulls the borrow as a side effect of the same
+walk that unindexes the nodes; there is no separate ``remember to fix the motor pointer'' step to
+forget. The CLI leans on this directly: after \code{removepart} it simply asks
+\code{isMotorSet()} again, because the motor may have been in the removed sub-tree
+(\src{cli/Repl.cpp}{1062}).
+\end{designrule}
+
+The tree admits at most one motor, and the invariant is enforced at the only gate through which
+parts enter: \code{attachSubtree} rejects with \code{AttachError::DuplicateMotor} when a motor is
+already set and the incoming sub-tree contains a \code{Motor} \emph{anywhere} --- a recursive scan,
+not a root check, because a pasted clone can carry a motor several levels down
+(\src{core/model/PartsModel.cpp}{317}). The rationale is physical consistency: with the motor an
+ordinary node, a second one would burn mass in the composite while only the borrowed one produces
+thrust --- a silently inconsistent flight. Rejecting at attach also keeps every reachable design
+serializable, since the file format carries exactly one motor reference
+(\cref{sec:serialization}).
+
+\code{setMotor} is the install-or-swap verb, and its two branches are intentionally asymmetric
+(\cref{lst:motor-setmotor,fig:motor-setmotor}):
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+bool PartsModel::setMotor(const MotorModel& motor, std::optional<part::StationLink> link)
+{
+    if(motor_ != nullptr)
+    {
+        // In-place swap keeps the node, its id, and its link; getMass(t)/getI() read the new
+        // MotorModel live, so only the cache chain needs dirtying. @p link is ignored on a swap.
+        PartNode* n = find(static_cast<part::Part*>(motor_)->getId());
+        const Event e{Event::Mutated, n->id(), /* ... */};
+        emitEvent(e, true);
+        motor_->setMotorModel(motor);
+        n->markMassDirty();
+        emitEvent(e, false);
+        return true;
+    }
+    if(!root_)
+    {
+        utils::Logger::getInstance()->error("PartsModel::setMotor: no design to attach a motor to");
+        return false;
+    }
+    return attach(root_->id(), std::make_unique<part::Motor>("Motor", motor),
+                  link.value_or(part::StationLink{}))
+        .has_value();
+}
+\end{minted}
+\caption{\code{PartsModel::setMotor} (\srccap{core/model/PartsModel.cpp}{470}, elided). First call:
+an ordinary attach under the root. Every later call: an in-place swap of the wrapped
+\code{MotorModel}, presented to observers as a \code{Mutated} edit on an unchanged
+node.}\label{lst:motor-setmotor}
+\end{listing}
+
+\tikzfig{activity-setmotor}{The \code{setMotor} flow. A swap is a leaf mutation --- node id and
+seat link survive, the mass chain is dirtied, and the event stream sees \code{Mutated}. A first
+install is a structural attach with the zero-config default seat. With no design loaded the verb
+fails closed.}{fig:motor-setmotor}
+
+\begin{rejected}[Rejected --- swap by detach-and-reattach]
+Replacing the motor \emph{node} on every selection would be simpler to write but worse everywhere
+it is observed. Part ids are per-instance and never reused, so a new node means a new id ---
+invalidating any id the CLI or GUI holds; the event stream would carry a
+\code{Detached}/\code{Attached} pair, forcing Qt views through row-removal/insertion churn for
+what the user perceives as editing a property; and the authored seat link would have to be saved
+and restored around the splice. The in-place swap keeps identity stable and reduces the edit to
+exactly what changed: the wrapped catalog data, plus a mass-chain invalidation.
+\end{rejected}
+
+The read surface is three accessors: \code{isMotorSet()} (the null test on the borrow),
+\code{motorModel()} (a borrowed \cppinline|const MotorModel*|, explicitly not for storing), and
+\code{motorNode()} (the motor's \code{PartNode}, existing chiefly so the serializer can persist
+the motor's seat link like any other edge, \src{core/model/PartsModel.h}{241}).
+
+\subsection{Const thrust, one runtime mutation}\label{sec:motor-const}
+
+The flight loop's entire motor read is \code{thrust(t)}: each RK stage evaluates
+\cppinline|RocketModel::getForces|, whose thrust term is \cppinline|parts_.thrust(t)|
+(\src{core/model/RocketModel.cpp}{67}), which forwards to \code{MotorModel::getThrust} --- zero
+with no motor set. The chain is \code{const} end-to-end, and that is a documented property, not an
+accident: \code{getThrust} returns a pure function of the thrust curve and the ignition epoch
+(\src{core/model/MotorModel.h}{325}).
+
+The one wrinkle is a \code{mutable} write inside \code{getThrust}: the first post-burnout call
+logs the burnout time and sets a latch so the line is logged once
+(\src{core/model/MotorModel.cpp}{74}). The latch is observability, not physics --- it never
+participates in the returned value, so the function is honestly \code{const} in the sense that
+matters: two calls with the same arguments return the same thrust regardless of latch state. It
+joins the composite caches under the model layer's single-writer \code{mutable} discipline
+(\cref{sec:caching}). Keeping the hot path \code{const} is itself a design tool here: the
+compiler now certifies that per-step force evaluation cannot mutate the motor, which makes the
+single genuine runtime mutation impossible to miss.
+
+That mutation is \code{startMotor(t)} --- the ignition epoch. \code{MotorModel} keeps thrust and
+mass as functions of $t - t_{\mathrm{ignition}}$, and \code{startMotor} sets
+\code{ignitionOccurred} and \code{ignitionTime} (\src{core/model/MotorModel.h}{330}). It is routed
+like every other post-attach edit: \cppinline|PartsModel::startMotor(t)| reaches
+\cppinline|motor_->mm.startMotor(t)| through the friend seam
+(\src{core/model/PartsModel.cpp}{511}), and \code{RocketModel::launch} invokes it at $t=0$
+immediately before the propagator runs (\src{core/model/RocketModel.cpp}{104};
+\cref{sec:flight}).
+
+\begin{rejected}[Rejected --- a public \code{Motor::setMotorModel}]
+Both mutators on \code{Motor} --- the swap and, via \code{mm}, ignition --- are private, with
+\code{PartsModel} as a friend (\src{core/model/parts/Motor.h}{60}). A public mutator would be a
+standing invitation to swap the motor through any \code{Part} reference without dirtying the
+composite caches, and the mass-delta gate would mask the damage in exactly the worst case: an
+equal-mass swap whose diameter differs. Routing every mutation through \code{PartsModel} verbs
+means cache invalidation is not a caller obligation but a structural consequence --- the same
+principle that makes every leaf setter private (\cref{sec:leaf}), applied to the one part with
+runtime state.
+\end{rejected}
+
+\subsection{Facade, persistence, and clients}\label{sec:motor-facade}
+
+\code{RocketModel} exposes the subsystem to clients as four thin delegations: \code{setMotorModel}
+$\to$ \cppinline|parts_.setMotor|, \code{getMotorModel} (a value copy, or a default-constructed
+\code{MotorModel} when none is set), \code{isMotorSet}, and \code{getThrust}
+(\src{core/model/RocketModel.cpp}{107}). \code{isMotorSet()} doubles as the launch gate on both
+front ends: the GUI disables trajectory calculation without it
+(\src{gui/CannonballTab.cpp}{88}), and the CLI mirrors it in a session flag --- re-synchronized
+against \code{isMotorSet()} after any removal --- whose \code{launch} check refuses with a usage
+hint (\src{cli/Repl.cpp}{744}). The CLI's \code{setmotor} command is the whole selection flow in
+miniature: resolve a common name against \code{MotorModelDatabase}, then
+\code{setMotorModel} (\src{cli/Repl.cpp}{559}; \cref{sec:cli}).
+
+Persistence is by database reference, consistent with the motor's provenance. The design-file
+writer never emits the motor as a tree part --- \code{writePart} skips \code{Motor} children
+(\src{core/model/DesignSerializer.cpp}{95}) --- and instead records a single element carrying the
+catalog common name, plus the motor node's seat link when it differs from the default. On load the
+name is re-resolved against the supplied database: a hit rebuilds the \code{Motor} node under the
+root with its persisted link, a miss warns and loads the design without a motor, and a hand-edited
+file that smuggles \cppinline|type="Motor"| in as a tree part is rejected outright
+(\src{core/model/DesignSerializer.cpp}{155}). A thrust curve is a measurement, not a design
+parameter; the design cites it rather than embedding it, and \cref{sec:serialization} covers the
+format and its failure modes in full.

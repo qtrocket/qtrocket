@@ -1,0 +1,45 @@
+\begin{tikzpicture}[node distance=6.5mm and 11mm]
+
+\node[startstop, text width=46mm] (start)
+  {attach(parent, p, link)\\ = attachSubtree(parent,\\ PartNode::make(p, link))};
+
+\node[decision, below=7mm of start] (null) {subtree null or\\ already owned?};
+\node[failnode, right=11mm of null, text width=36mm] (enull)
+  {return AttachError::\\ NullPart};
+
+\node[act, below=8mm of null, text width=46mm] (find)
+  {find(parent) in the\\ O(1) id index};
+\node[decision, below=7mm of find] (found) {parent\\ found?};
+\node[failnode, right=11mm of found, text width=36mm] (enp)
+  {return AttachError::\\ NoSuchParent};
+
+\node[decision, below=8mm of found] (motor)
+  {motor set and a\\ Motor anywhere in\\ the incoming sub-tree?};
+\node[failnode, right=11mm of motor, text width=36mm] (edup)
+  {return AttachError::\\ DuplicateMotor};
+
+\node[act, below=8mm of motor, text width=58mm] (emit1)
+  {apply linkOverride if given;\\ emit Attached aboutTo\\ (id, parentId, row = child count)};
+\node[act, below=of emit1, text width=58mm] (wire)
+  {wire parent\_; registerSubtree\\ (id index + owned-by pointers\\ + motor borrow); push into\\ the parent's children\_};
+\node[act, below=of wire, text width=58mm] (dirty)
+  {mark the parent's mass and\\ placement chains dirty};
+\node[act, below=of dirty, text width=58mm] (emit2)
+  {emit Attached did};
+\node[oknode, below=of emit2, text width=58mm] (ok)
+  {return the new node's id};
+
+\draw[flow] (start) -- (null);
+\draw[flow] (null) -- node[flowlbl]{yes} (enull);
+\draw[flow] (null) -- node[flowlbl]{no} (find);
+\draw[flow] (find) -- (found);
+\draw[flow] (found) -- node[flowlbl]{no} (enp);
+\draw[flow] (found) -- node[flowlbl]{yes} (motor);
+\draw[flow] (motor) -- node[flowlbl]{yes} (edup);
+\draw[flow] (motor) -- node[flowlbl]{no} (emit1);
+\draw[flow] (emit1) -- (wire);
+\draw[flow] (wire) -- (dirty);
+\draw[flow] (dirty) -- (emit2);
+\draw[flow] (emit2) -- (ok);
+
+\end{tikzpicture}

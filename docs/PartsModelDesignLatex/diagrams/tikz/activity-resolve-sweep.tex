@@ -1,0 +1,56 @@
+% activity-resolve-sweep.tex -- structural edit -> lazy resolve -> sweep -> gated consumers.
+% Styles from diagrams/tikzstyles.tex only.
+\begin{tikzpicture}[node distance=7mm and 14mm]
+
+  % ---- left column: the edit and the read ----
+  \node[startstop, text width=44mm] (edit) {structural edit\\
+    \scriptsize attach / detach / setLink\\
+    \scriptsize installRoot / mutate(Geom.)};
+
+  \node[act, below=of edit] (dirty) {\detokenize{markPlacementDirty()}\\
+    \scriptsize dirty bit walks every ancestor\\ \scriptsize up to the root};
+
+  \node[io, below=of dirty] (read) {next read:\\
+    \scriptsize \detokenize{resolvedPlacements()} /\\
+    \scriptsize \detokenize{placementDiagnostics()} /\\
+    \scriptsize any composite query};
+
+  \node[decision, below=8mm of read] (isdirty) {placement\\ dirty?};
+
+  % ---- resolve chain (right column) ----
+  \node[act, right=of isdirty] (resolve) {\detokenize{resolveNodes} DFS\\
+    \scriptsize \detokenize{placeChild} per edge,\\
+    \scriptsize parent before child,\\
+    \scriptsize sub-tree root at local origin};
+
+  \node[act, below=of resolve] (sweep) {\detokenize{sweepOverlaps}\\
+    \scriptsize world intervals, feature\\
+    \scriptsize breakpoints, host capacity};
+
+  \node[act, below=of sweep] (cache) {cache placements $+$ verdict;\\
+    \scriptsize clear dirty flag};
+
+  % ---- verdict gate ----
+  \node[decision, below=30mm of isdirty] (okq) {verdict\\ ok?};
+
+  \node[oknode, below left=9mm and -12mm of okq] (ok) {composite pass proceeds\\
+    \scriptsize CM / inertia / aero served;\\
+    \scriptsize CLI prints \detokenize{OK}; visualizer draws};
+
+  \node[failnode, below right=9mm and -12mm of okq] (fail) {every composite read throws\\
+    \scriptsize located first diagnostic;\\
+    \scriptsize CLI \detokenize{ERR}; offender drawn in error color};
+
+  % ---- flows ----
+  \draw[flow] (edit) -- (dirty);
+  \draw[flow] (dirty) -- (read);
+  \draw[flow] (read) -- (isdirty);
+  \draw[flow] (isdirty) -- node[flowlbl] {yes} (resolve);
+  \draw[flow] (resolve) -- (sweep);
+  \draw[flow] (sweep) -- (cache);
+  \draw[flow] (cache.west) -- ++(-6mm,0) |- ([yshift=2mm]okq.north east) -- (okq.north);
+  \draw[flow] (isdirty) -- node[flowlbl] {no (cached)} (okq);
+  \draw[flow] (okq) -| node[flowlbl, pos=0.25] {yes} (ok);
+  \draw[flow] (okq) -| node[flowlbl, pos=0.25] {no} (fail);
+
+\end{tikzpicture}

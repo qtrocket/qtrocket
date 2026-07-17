@@ -1,0 +1,105 @@
+@startuml
+!include _style.iuml
+
+' the pure leaf: Part's full contract, the five concrete types (overridden
+' members only), and PartsModel appearing solely as the routed-mutation friend.
+
+class "model::PartsModel" as PartsModel {
+  +setPartMass(id, kg) : bool
+  +setPartInertia(id, I) : bool
+  +mutatePart(id, hint, fn) : bool
+  +setMotor(motor, link) : bool
+  +startMotor(t)
+}
+
+abstract class "model::part::Part" as Part <<abstract>> {
+  .. identity ..
+  +getId() : Id
+  +getName() : std::string
+  +{abstract} typeName() : std::string
+  .. mass properties ..
+  +getI() : Matrix3
+  +getMass(t : double) : double
+  +getCenterMassOffset() : Vector3
+  .. aero ..
+  +getAero(refArea : double) : AeroComponent
+  +getReferenceArea() : double
+  .. geometry profile ..
+  +getLength() : double
+  +radiusOuterAt(zLocal : double) : double
+  +radiusInnerAt(zLocal : double) : double
+  +axialLength() : double
+  +isSolid() : bool
+  +stationAt(station01 : double) : Station
+  +innerCapacityAt(zLocal : double) : double
+  .. duplication ..
+  +{abstract} clone() : std::unique_ptr<Part>
+  #Part(orig : const Part&)
+  .. friend seam ..
+  -setMass(m : double)
+  -setI(I : const Matrix3&)
+  .. state ..
+  -id : Id
+  -name : std::string
+  -inertiaTensor : Matrix3 (per-unit-mass, m2)
+  -mass : double (kg)
+  -cm : Vector3 (from middle)
+}
+
+class "BodyTube" as BodyTube <<concrete>> {
+  +typeName() = "BodyTube"
+  +getLength()
+  +radiusOuterAt(z)
+  +radiusInnerAt(z)
+  +isSolid()
+  +getReferenceArea()
+  +getAero(refArea)
+  #clone()
+}
+
+class "ConicalNoseCone" as NoseCone <<concrete>> {
+  +typeName() = "NoseCone"
+  +getLength()
+  +radiusOuterAt(z)
+  +isSolid()
+  +getReferenceArea()
+  +getAero(refArea)
+  #clone()
+}
+
+class "FinSet" as FinSet <<concrete>> {
+  +typeName() = "FinSet"
+  +getLength()
+  +radiusOuterAt(z)
+  +getReferenceArea()
+  +getAero(refArea)
+  #clone()
+}
+
+class "HollowSphere" as Sphere <<concrete>> {
+  +typeName() = "HollowSphere"
+  +getLength()
+  +radiusOuterAt(z)
+  +radiusInnerAt(z)
+  +isSolid()
+  #clone()
+}
+
+class "Motor" as Motor <<concrete>> {
+  +typeName() = "Motor"
+  +getMass(t)
+  +getI()
+  #clone()
+  -setMotorModel(motor)
+}
+
+Part <|-- BodyTube
+Part <|-- NoseCone
+Part <|-- FinSet
+Part <|-- Sphere
+Part <|-- Motor
+
+PartsModel .right.> Part : friend: routed\nsetMass / setI
+PartsModel ..> Motor : friend: setMotorModel,\nstartMotor
+
+@enduml

@@ -1,0 +1,129 @@
+\section{Invariants and guarantees}\label{sec:invariants}
+
+This appendix is the checklist form of the design: each guarantee the implementation
+upholds, stated in one sentence, with the class or function that enforces it. ``Enforced
+at'' names the code that makes the property hold --- by construction where the type
+system carries it, by a guard where a runtime check does. The verification suite in
+\cref{sec:verification} exercises each of these; this list is what those tests are
+tests \emph{of}. The I-numbers are this appendix's own, finer-grained list; a bare
+``invariant $n$'' in the body always refers to the eight commitments of
+\cref{sec:philosophy}.
+
+\begin{description}
+
+\item[I1 --- Linear ownership] Every leaf is owned by exactly one node and every node by
+  exactly one parent (or the model root), so double-attachment, ownership cycles, and
+  retained mutable aliases are unrepresentable.\\
+  \emph{Enforced at:} \cppinline|std::unique_ptr| end-to-end ---
+  \cppinline|PartNode::part_| and \cppinline|children_|
+  (\src{core/model/PartsModel.h}{108}), attach verbs taking
+  \cppinline|std::unique_ptr| by value (\src{core/model/PartsModel.h}{205}), and
+  \code{Part}'s deleted assignment / protected copy constructor
+  (\src{core/model/parts/Part.h}{56}).
+
+\item[I2 --- Routed mutation] The only post-attach writes to a leaf or to tree structure
+  are \code{PartsModel} verbs; nothing else can touch a leaf's setters or an owned
+  node's children.\\
+  \emph{Enforced at:} \code{Part::setMass}/\code{setI} private behind
+  \cppinline|friend class model::PartsModel| (\src{core/model/parts/Part.h}{133}), and
+  \code{PartNode::addChild} rejecting any node already owned by a model
+  (\src{core/model/PartsModel.cpp}{79}).
+
+\item[I3 --- Gate semantics] A mass edit dirties only the mass chain; a structural or
+  link edit dirties both chains; the placement sweep therefore never re-runs for a
+  mass-only change, and a same-mass geometry change still invalidates the composites.\\
+  \emph{Enforced at:} \code{setPartMass}/\code{setPartInertia} (mass chain only,
+  \src{core/model/PartsModel.cpp}{399}), \code{setLink} dirtying both chains because
+  the mass gate cannot see an equal-mass geometry change
+  (\src{core/model/PartsModel.cpp}{443}), and \code{mutatePart} honouring
+  \code{MutateHint} (\src{core/model/PartsModel.cpp}{462}).
+
+\item[I4 --- Stamp-after-success] Cache stamps are written only after a successful
+  composite build, so a failed placement solve throws on every read instead of being
+  swallowed into a stale cache.\\
+  \emph{Enforced at:} \code{PartNode::ensureCompositeCache} --- \cppinline|builtAtMass_|
+  and \cppinline|massDirty_| land after \code{computeCompositeAt} returns
+  (\src{core/model/PartsModel.cpp}{127}).
+
+\item[I5 --- Motor borrow maintenance] The borrowed \cppinline|part::Motor*| is
+  re-resolved at every point where tree membership changes and nowhere else, so no
+  structural edit --- including a full clear --- can leave it dangling.\\
+  \emph{Enforced at:} \code{registerSubtree}/\code{unregisterSubtree}, the only code
+  that assigns \cppinline|motor_| (\src{core/model/PartsModel.cpp}{270}), funnelling
+  \code{attach}, \code{attachSubtree}, \code{detach}, and \code{installRoot}.
+
+\item[I6 --- Single motor at attach] The tree holds at most one \code{Motor} node,
+  rejected where the invariant could be broken: an incoming sub-tree containing a motor
+  fails typed when a motor is already installed.\\
+  \emph{Enforced at:} the \code{attachSubtree} scan returning
+  \code{AttachError::DuplicateMotor} (\src{core/model/PartsModel.cpp}{319}).
+
+\item[I7 --- Install resets the area override] Installing a design clears any manual
+  reference-area override, so a fresh airframe always starts from its geometry-derived
+  reference area.\\
+  \emph{Enforced at:} \code{RocketModel::installDesign} setting
+  \code{referenceAreaOverridden} false after the root swap
+  (\src{core/model/RocketModel.cpp}{121}).
+
+\item[I8 --- Id-only identity] Parts are identified by \code{Part::Id} --- unique per
+  instance, fresh on every construction including copies, never serialized --- and
+  never by name or raw pointer; a stale id fails safe as a null lookup.\\
+  \emph{Enforced at:} \code{Part::getId} (\src{core/model/parts/Part.h}{114}), the
+  id-keyed \cppinline|index_| behind \code{PartsModel::find}
+  (\src{core/model/PartsModel.h}{167}), and \code{findByName} documented as a
+  convenience over non-unique labels (\src{core/model/PartsModel.h}{178}).
+
+\item[I9 --- Resolver determinism] A resolve emits one \code{Placed} per node in
+  depth-first attachment order, parent before child, so \code{parentId} always names an
+  earlier entry and the sweep is reproducible run to run.\\
+  \emph{Enforced at:} \code{resolveNodes} (\src{core/model/PartsModel.cpp}{29}) and the
+  ordering contract on \code{Placed} (\src{core/model/parts/Placement.h}{94}).
+
+\item[I10 --- Zero-span parts never host] A part with no axial interior (a \code{Motor}
+  node, span $\le$ tolerance) is skipped as a candidate host, so a geometrically inert
+  node can never generate spurious containment violations.\\
+  \emph{Enforced at:} the covering-host filter in \code{sweepOverlaps}
+  (\src{core/model/parts/Placement.cpp}{183}).
+
+\item[I11 --- No-design is representable] An empty model is a first-class state --- null
+  root, \code{hasDesign()} false, size 0 --- and every verb degrades cleanly against it
+  rather than assuming a placeholder rocket.\\
+  \emph{Enforced at:} the nullable \cppinline|root_|
+  (\src{core/model/PartsModel.h}{259}), \code{hasDesign}
+  (\src{core/model/PartsModel.h}{161}), and \code{setMotor} refusing to attach into
+  no design (\src{core/model/PartsModel.cpp}{485}).
+
+\item[I12 --- Single writer] All mutable-behind-const caches (composite stamps, resolved
+  placements, verdict, the motor's burnout latch) are single-writer by contract;
+  concurrent access, even all-const, is a data race.\\
+  \emph{Enforced at:} contract, stated where the caches live ---
+  \code{PartNode}'s class doc (\src{core/model/PartsModel.h}{39}) and the burnout latch
+  (\src{core/model/MotorModel.h}{342}); nothing in the model layer takes a lock.
+
+\item[I13 --- Events fire in pairs] Every tree or leaf mutation verb fires its
+  \code{Event} exactly twice --- \code{before == true} ahead of the write,
+  \code{before == false} after it --- which is precisely the \code{begin*}/\code{end*}
+  shape Qt's row-op contract requires.\\
+  \emph{Enforced at:} the paired \code{emitEvent} calls bracketing every verb body in
+  \srcf{core/model/PartsModel.cpp} (e.g.\ \code{attachSubtree},
+  \src{core/model/PartsModel.cpp}{342}), consumed one-to-one by the tree view
+  (\src{gui/RocketTreeView.cpp}{32}).
+
+\item[I14 --- The core stays Qt-free] The model layer notifies through
+  \cppinline|std::function| callbacks only; the Qt adaptation lives entirely in
+  \code{gui/}, so the CLI, tests, and sim core link no Qt.\\
+  \emph{Enforced at:} the callback types \code{PartsModel::ChangeCallback}
+  (\src{core/model/PartsModel.h}{151}) and \code{RocketModel}'s registration hooks
+  (\src{core/model/RocketModel.h}{96}), with the sole Qt subscriber in
+  \srcf{gui/RocketTreeView.cpp}.
+
+\end{description}
+
+\begin{qrcallout}{Reading this list}
+I1, I2, and I12--I14 are architectural: the type system and the layering carry them, and
+a violation is a compile error or an API that does not exist. I3--I11 are behavioral:
+each has a specific guard in the code cited above and a corresponding regression test
+(\cref{sec:verification}). When extending the model, the discipline is to add to this
+list, not around it --- a new mutation is a new routed verb (I2) that fires paired
+events (I13) and dirties its declared scope (I3).
+\end{qrcallout}

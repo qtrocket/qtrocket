@@ -1,0 +1,111 @@
+@startuml
+!include _style.iuml
+
+' the owned part tree: RocketModel owns PartsModel by value, PartsModel owns the
+' PartNode tree through unique_ptr, and every post-attach mutation is a verb on
+' PartsModel. PartNode's composite queries and caches are covered in sec. 5.
+
+class "model::RocketModel" as RocketModel {
+  +parts() : PartsModel&
+  +installDesign(root : unique_ptr<PartNode>)
+  +clearDesign()
+  +setStructureChangedCallback(cb)
+  +setPartsEventCallback(cb)
+}
+
+class "model::PartsModel" as PartsModel {
+  .. reads ..
+  +hasDesign() : bool
+  +root() : PartNode*
+  +find(id) : PartNode*   [O(1), nullptr on stale id]
+  +findByName(name) : const PartNode*
+  +size() : size_t
+  +forEachNode(f)   [pre-order]
+  .. structural verbs ..
+  +attach(parent, p, link) : expected<Id, AttachError>
+  +attachSubtree(parent, subtree, linkOverride) : expected<Id, AttachError>
+  +detach(id) : expected<unique_ptr<PartNode>, DetachError>
+  +installRoot(newRoot : unique_ptr<PartNode>)
+  .. routed leaf edits ..
+  +setPartMass(id, kg) : bool
+  +setPartInertia(id, I) : bool
+  +setLink(child, link) : bool
+  +mutatePart(id, hint : MutateHint, fn) : bool
+  .. events ..
+  +setChangedCallback(cb : ChangeCallback)
+  -emitEvent(e, before)
+  .. adoption -- the only motor_ writer ..
+  -registerSubtree(n)
+  -unregisterSubtree(n)
+  .. state ..
+  -root_ : unique_ptr<PartNode>   (nullable)
+  -index_ : unordered_map<Id, PartNode*>
+  -motor_ : part::Motor*   (typed borrow)
+  -changed_ : ChangeCallback
+}
+
+class "model::PartNode" as PartNode {
+  .. detached-tree building ..
+  +{static} make(p : unique_ptr<Part>, link) : unique_ptr<PartNode>
+  +addChild(child, link)   [no-op once owned]
+  +clone() : unique_ptr<PartNode>
+  .. read surface ..
+  +id() : Part::Id
+  +part() : const Part&
+  +link() : const StationLink&
+  +parent() : PartNode*
+  +rowInParent() : int
+  +children() : span<const unique_ptr<PartNode>>
+  .. composite queries (sec. 5) ..
+  +compositeMass(t) / compositeCm(t) / compositeI(t)
+  +compositeAero(refArea) / maxFrontalReferenceArea()
+  +resolvedPlacements() / placementDiagnostics()
+  .. state ..
+  -part_ : unique_ptr<part::Part>
+  -link_ : StationLink   (incoming edge)
+  -parent_ : PartNode*   (raw back-pointer)
+  -model_ : PartsModel*   (owned-by; guards addChild)
+  -children_ : vector<unique_ptr<PartNode>>
+}
+
+abstract class "model::part::Part" as Part <<abstract>> {
+  the pure leaf (sec. 3)
+}
+
+class "Event" as Event <<pod>> {
+  +kind : Kind {Reset, Attached, Detached, LinkChanged, Mutated}
+  +id : Part::Id   (0 on a clearing Reset)
+  +parentId : Part::Id   (0 for a root)
+  +row : int   (row within that parent)
+}
+
+class "AttachError" as AttachError <<enumc>> {
+  NullPart
+  NoSuchParent
+  DuplicateMotor
+}
+
+class "DetachError" as DetachError <<enumc>> {
+  NoSuchId
+  IsRoot
+}
+
+class "MutateHint" as MutateHint <<enumc>> {
+  MassOnly
+  Geometry
+}
+
+RocketModel *-- PartsModel : parts_ (by value)
+PartsModel *-- PartNode : root_\nunique_ptr, nullable
+PartsModel ..> PartNode : index_: id to node\n(non-owning)
+PartNode *-- PartNode : children_\nvector<unique_ptr>
+PartNode --> PartNode : parent_ (raw)
+PartNode ..> PartsModel : model_ (owned-by)
+PartNode *-- Part : part_\nunique_ptr
+
+PartsModel +-- Event
+PartsModel +-- AttachError
+PartsModel +-- DetachError
+PartsModel +-- MutateHint
+
+@enduml

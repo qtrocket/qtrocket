@@ -25,7 +25,7 @@ Matrix3 parallelAxisTerm(const Vector3& d)
 }
 
 /// Depth-first resolve of a node tree from @p pose: one Placed per node in attachment order,
-/// parent before child. The node-tree twin of part::resolvePlacements; same placeChild math.
+/// parent before child. Pure placeChild math per edge; no CM, time, or mass.
 void resolveNodes(const PartNode& n, const part::Pose& pose, part::PartId parentId,
                   std::vector<part::Placed>& out)
 {

@@ -1,0 +1,314 @@
+\section[Design persistence: the .qrd format]{Design persistence: the \texttt{.qrd} format}\label{sec:serialization}
+
+A rocket design persists as a \texttt{.qrd} file: versioned XML written and read by the two
+static entry points of \code{DesignSerializer} (\srcf{core/model/DesignSerializer.h}), on
+Boost property tree, the same XML machinery the motor database uses. The format records
+exactly what the in-memory model treats as authoritative --- the part tree's typed geometry
+parameters, each edge's placement \emph{intent}, the motor's identity, and the
+\code{RocketModel}-owned aero options --- and nothing the model derives. No resolved pose,
+no composite mass, no absolute coordinate ever reaches disk; the resolver re-derives all of
+it on load (\cref{sec:placement}), so a hand-edit that lengthens a tube reloads with every
+seam moved to follow the new geometry. Both front-ends reach the format only through these
+two calls: the CLI's \code{savedesign}/\code{loaddesign} commands
+(\src{cli/Repl.cpp}{1077}, \src{cli/Repl.cpp}{1098}; \cref{sec:cli}) and the GUI's file
+menu (\src{gui/MainWindow.cpp}{106}).
+
+The reader is built around one structural commitment: the entire tree is constructed
+\emph{detached} --- outside any \code{RocketModel} --- and handed over in a single
+\code{installDesign} call at the end. Every validation failure therefore lands before the
+current rocket is touched. This section walks the file anatomy, the parameter and link
+vocabularies it shares with the factory and the CLI, the motor-by-reference element, and
+the load pipeline that turns a file into a live design.
+
+\subsection{File anatomy and the version gate}\label{sec:serialization-anatomy}
+
+The root element is \code{QtRocketDesign} with a \code{version} attribute; the writer
+emits \texttt{0.2} (\src{core/model/DesignSerializer.cpp}{198}). The version string is
+\emph{major.minor}, and the load gate keys on the major component alone: it splits at the
+first dot and rejects any major other than \texttt{0}
+(\src{core/model/DesignSerializer.cpp}{233}), so the reader is forward-tolerant across
+minor revisions --- a minor bump signals an element-shape change the reader can detect
+structurally, not a compatibility break. Under the root sit four elements: a
+\code{<design name=...>} attribute element carrying the design's human-facing name, one
+recursive \code{<part>} tree, an optional \code{<motor>} reference, and a \code{<sim>}
+options block. \Cref{lst:serialization-qrd} shows a complete file from the test corpus.
+
+Each \code{<part>} element carries \code{type} (the part's \code{typeName()}, the exact
+factory key --- \texttt{NoseCone}, \texttt{BodyTube}, \texttt{FinSet},
+\texttt{HollowSphere}) and \code{name} attributes, a \code{<params>} attribute element, an
+optional \code{<link>}, and a \code{<children>} element holding the child \code{<part>}s
+in attachment order. The ownership tree in the XML \emph{is} the tree structure; parts are
+never cross-referenced by name (names are not unique --- identity is the per-instance id,
+which is process-local and deliberately not serialized).
+
+\begin{listing}[htbp]
+\begin{minted}{xml}
+<?xml version="1.0" encoding="utf-8"?>
+<QtRocketDesign version="0.2">
+  <design name=""/>
+  <part type="NoseCone" name="Nose">
+    <params baseRadius="0.0155" length="0.14999999999999999" wallThickness="0"
+            density="2500" solid="true"/>
+    <children>
+      <part type="BodyTube" name="Airframe">   <!-- no <link>: default abut -->
+        <params innerRadius="0.0146" outerRadius="0.0155"
+                length="0.40000000000000002" density="2500"/>
+        <children>
+          <part type="FinSet" name="Fins">
+            <params density="2500" rootChord="0.059999999999999998"
+                    tipChord="0.029999999999999999" span="0.040000000000000001"
+                    sweep="0.02" thickness="0.0025000000000000001"
+                    bodyRadius="0.0155" finCount="6"/>
+            <link seat="OnSurface" parentStation="0" childStation="0" gap="0"/>
+            <children/>
+          </part>
+          <part type="BodyTube" name="Coupler">
+            <params innerRadius="0.012" outerRadius="0.0146"
+                    length="0.050000000000000003" density="2500"/>
+            <link seat="NestInBore" parentStation="1" childStation="0"
+                  gap="0.050000000000000003"/>
+            <children/>
+          </part>
+        </children>
+      </part>
+    </children>
+  </part>
+  <motor commonName="G80T"/>
+  <sim dragCoefficient="1" referenceArea="0.001134"
+       referenceAreaOverridden="false"/>
+</QtRocketDesign>
+\end{minted}
+\caption{A complete \texttt{.qrd} file (\srcfcap{tests/data/designs/mid29\_multi.qrd};
+attribute lists re-wrapped to the page and the default-abut annotation added, content
+otherwise verbatim). All three seat kinds
+appear: the airframe abuts the nose by the elided default, the fins seat
+\seat{OnSurface}, the coupler nests \seat{NestInBore}. The motor is a database
+reference, not an inlined thrust curve.}
+\label{lst:serialization-qrd}
+\end{listing}
+
+The unpretty decimals are deliberate: the property-tree double translator emits the full
+17 significant digits a \cppinline|double| round-trip requires, so a save/load cycle
+reproduces geometry --- and therefore mass, CM, and inertia --- bit-exactly. The format
+optimizes for faithfulness over prettiness; a human authoring a file by hand writes
+\texttt{0.4} and loses nothing.
+
+\subsection{Parameters: the factory round-trip}\label{sec:serialization-params}
+
+The \code{<params>} attributes are not a per-type schema. They are the one shared
+vocabulary of \code{PartParams} (\srcf{core/model/parts/PartFactory.h}): every attribute
+name in the file is a field of that struct, the writer produces it by calling the
+reflector \code{params(part)} (\src{core/model/parts/PartFactory.h}{69}), and the reader
+feeds it back to \code{makePart(type, params)}
+(\src{core/model/parts/PartFactory.h}{60}), whose documented contract is that
+\code{params(makePart(p))} reproduces the geometry. Because the CLI's \code{addpart}
+key=value parser fills the same struct, the on-disk attribute names cannot drift from the
+interactive vocabulary --- there is exactly one spelling of \code{outerRadius} in the
+system, and it is a struct field, not a string constant in two parsers.
+
+Every field is \cppinline|std::optional|, and \code{writeParams} emits only the fields
+that are present (\src{core/model/DesignSerializer.cpp}{32}), so a nose cone's element
+carries cone attributes and nothing else. On read, a missing key stays
+\cppinline|std::nullopt| --- distinct from a supplied zero --- and \code{makePart} applies
+its documented defaults or throws for a missing required field, the same fail-closed path
+an interactive command takes. The one non-numeric field, \code{solid}, serializes as the
+strings \texttt{true}/\texttt{false}, matching the motor database's XML idiom.
+
+\subsection[Placement: the <link> element, elided by default]{Placement: the \texttt{<link>} element, elided by default}
+\label{sec:serialization-link}
+
+A child's spatial relationship to its parent is its \cppinline|StationLink|
+(\cref{sec:placement}), serialized as an inline \code{<link>} on the child with exactly
+the four authored quantities: \code{seat}, \code{parentStation}, \code{childStation},
+\code{gap}. The seat enumerator maps to its attribute string through the single shared
+table \code{seatKindToString}/\code{seatKindFromString}
+(\src{core/model/parts/Placement.h}{41}); the writer
+(\src{core/model/DesignSerializer.cpp}{57}), the reader
+(\src{core/model/DesignSerializer.cpp}{140}), and the CLI's \code{seat=} token parser
+(\src{cli/Repl.cpp}{232}) all consult it, so the three agree on the spellings
+(\seat{Abut}, \seat{NestInBore}, \seat{OnSurface}) by construction rather than by three
+independently maintained switch statements. \code{seatKindFromString} returns
+\cppinline|std::nullopt| for an unknown name, and the reader converts that into a thrown
+error on the same path as \code{makePart}'s unknown-type rejection --- a hand-edited seat
+typo is a refused file with a directed diagnostic, never a silent coercion to \seat{Abut}.
+
+The link's quaternion (\code{childRot}) is not persisted: it is identity in 3-DOF, so a
+stored link is fully described by its scalars and seat, and the file format acquires the
+6-DOF field only when a non-identity value exists to store.
+
+\begin{designrule}[The common case costs zero authored numbers]
+\code{writePart} compares each link against a default-constructed
+\cppinline|StationLink| (\code{isDefaultLink},
+\src{core/model/DesignSerializer.cpp}{67}) and elides the element entirely when they are
+equal (\src{core/model/DesignSerializer.cpp}{85}); the reader, seeing no \code{<link>},
+attaches by the same default (\src{core/model/DesignSerializer.cpp}{175}). The default is
+a meaningful physical relationship --- child fore plane abutting parent aft plane, the
+natural nose$\to$body$\to\ldots$ stack --- so eliding it loses nothing, and the two halves
+of the contract (elide on write, default on read) are pinned to the same
+default-constructed struct. The payoff is visible in \cref{lst:serialization-qrd}: the
+airframe, the largest part in the design, is attached by zero authored placement numbers,
+and the file's size tracks the design's \emph{placement complexity}, not its part count.
+\end{designrule}
+
+Within major version \texttt{0}, one element shape is refused by name: a \texttt{0.1}-era
+file records placement as a resolved CM-to-CM \code{<offset>} coordinate triple, which
+the intent-only model cannot faithfully represent. The reader throws on that element with
+a message directing the user to re-create the design
+(\src{core/model/DesignSerializer.cpp}{180}) --- mis-seating every child by silently
+treating a resolved coordinate as the abut default would corrupt the design while
+appearing to load it.
+
+\subsection{The motor: a database reference}\label{sec:serialization-motor}
+
+The motor element is one attribute --- \code{<motor commonName="G80T"/>}
+(\src{core/model/DesignSerializer.cpp}{205}) --- plus an optional \code{<link>} for its
+seat, elided under the same default-equal rule as any other edge
+(\src{core/model/DesignSerializer.cpp}{207}). The file stores a \emph{reference} into the
+motor database, never an inlined thrust curve.
+
+\begin{designrule}[The database is the source of truth for motors]
+A motor is certified vendor data --- a thrust curve, propellant and total masses, burn
+time --- that the design merely selects (\cref{sec:motor}). Inlining a copy into every
+\texttt{.qrd} would create as many divergent copies of that data as there are saved
+designs, each frozen at its save date; resolving by common name on every load means a
+corrected or updated database benefits every existing file. It also keeps the file small
+and portable: a \texttt{.qrd} carries authored intent measured in tens of numbers, not a
+hundred-sample thrust curve.
+\end{designrule}
+
+The save walk enforces the reference form structurally: \code{writePart} skips any
+\code{Motor} child while recursing (\src{core/model/DesignSerializer.cpp}{95}), so the
+motor --- an ordinary node in the live tree (\cref{sec:tree}) --- never appears as a
+\code{<part>}, only as the \code{<motor>} element. The reader enforces the inverse:
+\code{buildNode} rejects \code{type="Motor"} outright
+(\src{core/model/DesignSerializer.cpp}{155}), because the geometry factory cannot rebuild
+a motor from \code{<params>} --- a \code{Motor} tree part can only occur in a hand-edited
+or foreign file, and refusing it names the correct channel in the diagnostic.
+
+On load, the common name is resolved against the caller-supplied
+\code{MotorModelDatabase} (\src{core/model/DesignSerializer.cpp}{246}). A hit attaches a
+fresh \code{Motor} node under the root with the persisted (or defaulted) link
+(\src{core/model/DesignSerializer.cpp}{253}); a miss logs a warning and the design loads
+without a motor (\src{core/model/DesignSerializer.cpp}{257}) --- degraded, flyable after
+the user selects a motor, and fully intact in geometry.
+
+\begin{rejected}[Rejected --- fail-closed motor resolution]
+Symmetry with the seat and type gates argues for throwing on a motor miss; the reference
+form argues the other way, and wins. A seat typo is evidence the file is corrupt, but a
+missing motor is evidence about the \emph{machine}: the same valid file loaded on a
+workstation whose database lacks one vendor file would be refused in its entirety ---
+geometry, placements, and all --- over the one datum the database can supply later.
+Fail-closed here would make every \texttt{.qrd} silently non-portable across database
+states. The warning path degrades exactly as far as the missing information requires, and
+\cref{sec:flight}'s launch gate (\code{isMotorSet()}) already prevents flying the
+degraded design by accident.
+\end{rejected}
+
+\subsection{Load: build detached, install once}\label{sec:serialization-load}
+
+\Cref{fig:serialization-load} traces the load pipeline;
+\cref{lst:serialization-loadtail} is its tail in code. After
+\cppinline|read_xml| and the major-version gate, \code{buildNode} recursion constructs
+the entire tree as detached \code{PartNode}s --- \code{PartNode::make} wrapping each
+factory-built part, \code{addChild} assembling bottom-up
+(\src{core/model/DesignSerializer.cpp}{240}), the same detached-building path a clone
+uses (\cref{sec:tree}). The motor, when resolved, is attached to that detached root the
+same way. Only then does the one mutation of shared state happen:
+\code{rocket.installDesign(newRoot)} (\src{core/model/DesignSerializer.cpp}{262}), which
+atomically replaces the tree through \code{PartsModel::installRoot} and re-resolves the
+motor borrow inside the install facade.
+
+\tikzfig{activity-load}{The load pipeline. Every fail-closed exit --- version, part type,
+seat kind, placement element --- throws from inside the detached region, before
+\code{installDesign}; the motor miss is the one soft path. The sim attributes apply after
+the install so a persisted manual reference area survives the install-time override
+reset.}{fig:serialization-load}
+
+\begin{keyinsight}[A malformed file leaves the current rocket untouched]
+Nothing before \code{installDesign} touches the \code{RocketModel}. Every validation
+failure --- unreadable XML, unknown major version, unknown part type, non-physical
+geometry thrown by a concrete constructor, unknown seat, a \code{Motor} tree part, a
+\texttt{0.1} \code{<offset>} --- propagates out of the detached build and destroys only
+the half-built detached tree. A user who mistypes a filename or opens a corrupt file gets
+an error message and keeps the design they were editing; there is no partially-loaded
+state to recover from, by construction rather than by rollback code.
+\end{keyinsight}
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+// Build the whole tree (detached) before touching the rocket, then install in one
+// shot so a malformed file leaves the existing rocket untouched.
+std::unique_ptr<PartNode> newRoot = buildNode(root.get_child("part"));
+
+// Motor by common name, re-resolved against the supplied database (a miss warns,
+// never throws). An ordinary node: attached under the root with its persisted link.
+if(const auto name = root.get_optional<std::string>("motor.<xmlattr>.commonName"))
+{
+    if(const auto m = motors.getMotorModel(*name))
+    {
+        part::StationLink motorLink{};
+        if(root.get_child_optional("motor.link"))
+        {
+            motorLink = readLink(root.get_child("motor"));
+        }
+        newRoot->addChild(PartNode::make(std::make_unique<part::Motor>("Motor", *m)),
+                          motorLink);
+    }
+    else
+    {
+        utils::Logger::getInstance()->warn(/* ... loaded without a motor */);
+    }
+}
+
+rocket.installDesign(std::move(newRoot));
+rocket.setName(root.get<std::string>("design.<xmlattr>.name", ""));
+
+// Apply the sim/aero block after the install so a restored manual override wins
+// over its reset.
+rocket.setDragCoefficient(
+    root.get<double>("sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient()));
+const bool overridden =
+    root.get<std::string>("sim.<xmlattr>.referenceAreaOverridden", "false") == "true";
+if(overridden)
+{
+    rocket.setReferenceArea(
+        root.get<double>("sim.<xmlattr>.referenceArea", rocket.getReferenceArea()));
+}
+\end{minted}
+\caption{The tail of \code{DesignSerializer::load}
+(\srccap{core/model/DesignSerializer.cpp}{240}, lightly elided): detached motor attach,
+the single atomic install, then name and sim attributes.}
+\label{lst:serialization-loadtail}
+\end{listing}
+
+\subsection[The <sim> block and the override tri-state]{The \texttt{<sim>} block and the override tri-state}
+\label{sec:serialization-sim}
+
+The \code{<sim>} element persists only the \code{RocketModel}-owned aero options:
+\code{dragCoefficient}, \code{referenceArea}, and \code{referenceAreaOverridden}
+(\src{core/model/DesignSerializer.cpp}{216}). Launch and environment options ---
+rail velocity, atmosphere, gravity, integrator --- are session configuration owned by the
+front-ends (\cref{sec:cli}), not rocket state, and deliberately stay out of the design
+file: a design describes a vehicle, not a flight.
+
+The reference area needs two attributes because it is one value with two provenances
+(\cref{sec:flight}): a geometry-derived default (the widest frontal disc in the tree) or
+a manual override set through \code{setReferenceArea}, which latches the
+\code{referenceAreaOverridden} flag (\src{core/model/RocketModel.h}{69}). Persisting the
+flag alongside the value gives the reader three distinct behaviors: with
+\code{referenceAreaOverridden="true"} it calls \code{setReferenceArea}, restoring both
+the value and the manual-override provenance; with \texttt{"false"} it applies nothing
+--- the stored \code{referenceArea} is a record of the value at save time, and the
+rocket's existing area continues to govern; with the attribute absent it likewise leaves the
+rocket's current state alone. Storing the value unconditionally but applying it
+conditionally keeps the file self-describing while never promoting a derived number into
+authored intent.
+
+Ordering carries the correctness burden: \code{installDesign} clears the override flag as
+an install side effect --- a freshly-installed airframe must not inherit a manual area
+sized for a different one (\src{core/model/RocketModel.cpp}{121}) --- so the loader
+applies the sim block \emph{after} the install (\src{core/model/DesignSerializer.cpp}{266}).
+A persisted override is thereby re-established on top of the reset rather than clobbered
+by it; applying the attributes first would make every load silently discard the user's
+saved area. The CLI then syncs its staged session copies from the freshly loaded rocket
+(\src{cli/Repl.cpp}{1107}), so the next \code{fly} sees the restored values.

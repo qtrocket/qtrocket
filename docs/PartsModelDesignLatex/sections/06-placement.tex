@@ -1,0 +1,336 @@
+% =============================================================================
+%  06-placement.tex -- Placement integration: how the node tree binds to the
+%  placement layer (value types, per-edge math, resolver, diagnostics gate).
+% =============================================================================
+
+\section{Placement integration}\label{sec:placement}
+
+The node tree of \cref{sec:tree} stores structure and intent: which part attaches under which, and
+one \code{StationLink} per edge describing \emph{how} the child seats against its parent. Nothing in
+the stored model is an absolute coordinate. Everything spatial --- each part's pose in the rocket
+frame, the composite center of mass, the overlap verdict, the visualizer's mesh positions --- is
+derived on demand from that intent by the placement layer, a small vocabulary of value types and
+free functions in \srcf{core/model/parts/Placement.h}. The layer is pure geometry: no time, no mass,
+no tree access. The tree walk that drives it lives with the tree (\cref{sec:placement-resolver}),
+and its output is cached on the node behind the placement gate of \cref{sec:caching}.
+
+This section reads bottom-up: the value types first, then the per-edge placement math, then the
+node-tree resolver that composes edges into absolute poses, and finally the diagnostics --- the
+per-seam radial check and the whole-tree envelope sweep --- whose verdict gates every composite
+read.
+
+\subsection{The placement vocabulary}\label{sec:placement-vocab}
+
+\Cref{fig:placement-types} shows the complete layer. Every type is a plain value; every function is
+free. The layer deliberately owns nothing and observes parts only through \code{const} references
+and non-owning pointers, so it composes with the single-ownership story of \cref{sec:tree} without
+touching it.
+
+\classfig{class-placement-types}{The placement layer of
+\srcfcap{core/model/parts/Placement.h}: stored intent (\code{StationLink}), derived geometry
+(\code{Station}, \code{Pose}, \code{Placed}), diagnostics values (\code{OverlapDiagnostic},
+\code{SolveResult}), and the free functions that connect them.}{fig:placement-types}{0.95}
+
+\paragraph{StationLink: the stored intent.}
+A \code{StationLink} (\src{core/model/parts/Placement.h}{54}, \cref{lst:placement-stationlink}) is
+the only spatial relationship the model persists: a fractional station on the parent, a fractional
+station on the child, a gap in metres, a seat kind, and a per-seam orientation quaternion. Stations
+are fractions of \emph{live} length --- $0$ names the aft plane, $1$ the fore plane --- and are
+resolved against \code{getLength()} on every read by \code{Part::stationAt}
+(\src{core/model/parts/Part.cpp}{44}), which clamps the fraction and maps it to
+$z = (\mathit{station01} - 1) \cdot L$ in the part's local \zfwd{} frame.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+struct StationLink
+{
+    double     parentStation01{0.0};             // 0 = aft plane, 1 = fore plane, on the PARENT
+    double     childStation01{1.0};              // 0 = aft plane, 1 = fore plane, on the CHILD
+    double     gap{0.0};                         // meters; meaning per SeatKind
+    SeatKind   seat{SeatKind::Abut};             // selects the radial check and the gap sign
+    Quaternion childRot{Quaternion::Identity()}; // (x,y,z,w) seam orientation; identity in 3-DOF
+};
+\end{minted}
+\caption{\code{StationLink} (\srccap{core/model/parts/Placement.h}{54}). The default-constructed
+link means ``child fore plane abuts parent aft plane'' --- the natural nose $\to$ body $\to$ tail
+build order, so a design assembled with default links stacks aft without any authored
+numbers.}\label{lst:placement-stationlink}
+\end{listing}
+
+\begin{keyinsight}[Length edits move the seam]
+Because stations are stored as fractions and resolved against \code{getLength()} at read time, a
+link never goes stale. Stretch a body tube and every seam authored against its planes --- and every
+part stacked behind it --- moves with it on the next resolve, with no fix-up pass and no stored
+coordinate to forget to update.
+\end{keyinsight}
+
+\begin{rejected}[Rejected --- authored absolute offsets]
+The alternative is to store each child's axial offset directly, either from the root or from its
+parent's origin. That representation is simpler to resolve but wrong under edit: an authored
+coordinate is a snapshot of geometry that was true when it was written, and every length change
+afterwards silently invalidates it. Fractional stations keep the stored quantity in intent space
+(``my fore plane against your aft plane''), where it remains true under any resize.
+\end{rejected}
+
+\paragraph{Seat kinds.}
+\code{SeatKind} (\src{core/model/parts/Placement.h}{32}) is a closed three-value enum, because a
+rigid axisymmetric stack admits exactly three radial relationships between mated parts. The seat
+does double duty: it selects which radial compatibility check applies at the seam
+(\cref{sec:placement-diagnostics}), and it fixes the \emph{sign} of the gap so the author always
+writes a non-negative number (\cref{tab:placement-seats}). An arbitrary axial position needs no
+fourth kind --- it is already expressible as a station fraction.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}llXX@{}}
+\toprule
+Seat & Seam geometry & Radial check & Gap meaning (sign in \zfwd) \\
+\midrule
+\seat{Abut} & rim to rim & outer radii equal & forward standoff ($+z$) \\
+\seat{NestInBore} & child inside parent bore & child OD $\le$ parent bore & insertion depth ($-z$, child moves aft) \\
+\seat{OnSurface} & child on parent outer wall & outer radii equal & axial standoff ($+z$) \\
+\bottomrule
+\end{tabularx}
+\caption{The three seat kinds. Each fixes both the seam's radial compatibility test and the
+direction a positive gap displaces the child, so no authored negative gaps
+exist.}\label{tab:placement-seats}
+\end{table}
+
+Three snap verbs --- \code{abut(gap)}, \code{nestInBore(depth)}, and
+\code{seatOnWall(parentStation01)} (\src{core/model/parts/Placement.h}{134}) --- produce a
+\code{StationLink} by value for the common cases. They are pure sugar over the brace-initializer
+form: no pose is stored and no part is mutated, they simply read better as verbs at call sites such
+as the CLI's link parser (\src{cli/Repl.cpp}{226}), which seeds each seat's canonical station pair
+from its verb before applying the author's explicit overrides (\cref{sec:cli}).
+
+\paragraph{Reserved orientation.}
+\code{childRot} is carried in every link but is the identity throughout the current 3-DOF regime.
+It exists so the placement schema needs no change when 6-DOF arrives: \code{Pose::compose} already
+multiplies orientations, and a stored 3-DOF link is bit-identical to a pure-translation tree. The
+cost of this reserve is one identity quaternion multiply per child per resolve.
+
+\paragraph{Derived geometry.}
+A \code{Station} (\src{core/model/parts/Placement.h}{67}) is a resolved axial landmark --- $z$,
+outer radius, inner radius --- produced by \code{stationAt} and never stored. A \code{Pose}
+(\src{core/model/parts/Placement.h}{79}) is a rigid transform into the sub-tree root frame: a
+fore-plane origin on the axis plus an orientation, with \code{compose} implementing the
+rotate-then-translate composition law (vector addition while orientations are identity). A
+\code{Placed} (\src{core/model/parts/Placement.h}{98}) pairs a non-owning part pointer with its
+resolved pose and its seat parent's id. The resolver emits \code{Placed} entries in deterministic
+depth-first attachment order, parent before child, which yields two guarantees consumers lean on:
+the envelope sweep is reproducible, and \code{parentId} always names an \emph{earlier} entry in the
+vector (0 for the sub-tree root), so a consumer can reconstruct the tree relation by streaming the
+vector once, without access to the ownership tree itself.
+
+\paragraph{Diagnostics values.}
+An \code{OverlapDiagnostic} (\src{core/model/parts/Placement.h}{109}) locates one violation:
+offender id, host id, the worst station, the penetration depth, and a human-readable message. Parts
+are named by stable id (\code{Part::getId()}), never by name --- names are not unique --- and never
+by pointer, which would dangle if the tree were edited between resolve and report. A
+\code{SolveResult} (\src{core/model/parts/Placement.h}{123}) bundles the verdict flag with the
+diagnostics list; \cref{sec:placement-gate} covers how that verdict is enforced.
+
+\subsection{Per-edge geometry: placeChild}\label{sec:placement-placechild}
+
+All per-edge placement math is one pure function, \code{placeChild}
+(\src{core/model/parts/Placement.cpp}{39}, \cref{lst:placement-placechild}). Given the parent's
+already-resolved pose, the two parts, and the link binding them, it asks each part for the live
+landmark at its chosen fractional station, lines the two stations up, and displaces the child by
+the seat-signed gap.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+Pose placeChild(const Pose& parentPose, const Part& parent, const Part& child,
+                     const StationLink& link)
+{
+    const Station p = parent.stationAt(link.parentStation01);  // landmark on the parent
+    const Station c = child.stationAt(link.childStation01);    // landmark on the child
+
+    // signedGap encodes seat direction in +z = forward: NestInBore inserts aft (-z, gap is depth),
+    // Abut/OnSurface stand off forward (+z). The author always writes a non-negative number.
+    const double signedGap = (link.seat == SeatKind::NestInBore) ? -link.gap : link.gap;
+
+    // Line the child's station up with the parent's, then displace by the gap. The pose locates the
+    // child's fore plane, which sits c.z from its chosen station -- hence the `- c.z`.
+    const double childOriginZ = p.z + signedGap - c.z;
+
+    const Pose childInParent{Vector3(0.0, 0.0, childOriginZ), link.childRot};  // coaxial in 3-DOF
+    return parentPose.compose(childInParent);
+}
+\end{minted}
+\caption{The complete per-edge placement math
+(\srccap{core/model/parts/Placement.cpp}{39}).}\label{lst:placement-placechild}
+\end{listing}
+
+The central line reads as physical intent: \cppinline|childOriginZ = p.z + signedGap - c.z|. The
+parent's chosen station sits at \code{p.z} in the parent frame; the child must be positioned so its
+own chosen station lands there; and because a pose locates the child's fore plane --- its local
+origin --- rather than the chosen station, the station's own offset \code{c.z} is subtracted back
+out. The seat supplies the gap's direction, so \seat{Abut} and \seat{OnSurface} standoffs move the
+child forward while a \seat{NestInBore} depth drives it aft into the bore. In 3-DOF the child is
+coaxial with its parent ($x = y = 0$); radial position is a property the diagnostics \emph{check},
+not one the author places.
+
+\subsection{The node-tree resolver}\label{sec:placement-resolver}
+
+Turning a tree of links into absolute poses is a depth-first walk, and the walk lives with the tree:
+\code{resolveNodes} (\src{core/model/PartsModel.cpp}{29}, \cref{lst:placement-resolvenodes}) is a
+file-local function of \srcf{core/model/PartsModel.cpp} that plants the sub-tree root at the local
+origin (\code{Pose\{\}}) and composes one \code{placeChild} result per edge on the way down,
+emitting one \code{Placed} per node in attachment order.
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+/// Depth-first resolve of a node tree from @p pose: one Placed per node in attachment order,
+/// parent before child.
+void resolveNodes(const PartNode& n, const part::Pose& pose, part::PartId parentId,
+                  std::vector<part::Placed>& out)
+{
+    out.push_back(part::Placed{&n.part(), pose, parentId});
+    for(const auto& child : n.children())
+    {
+        resolveNodes(*child, part::placeChild(pose, n.part(), child->part(), child->link()),
+                     n.part().getId(), out);
+    }
+}
+\end{minted}
+\caption{The node-tree resolver (\srccap{core/model/PartsModel.cpp}{29}). The tree walk is ten
+lines because all geometry lives in \code{placeChild}; planting the root at the local origin makes
+\emph{any} node a valid sub-assembly root for the composite queries.}\label{lst:placement-resolvenodes}
+\end{listing}
+
+The resolve is not run per consumer. \cppinline|PartNode::ensurePlacementCache()|
+(\src{core/model/PartsModel.cpp}{144}) runs \code{resolveNodes} and then \code{sweepOverlaps} once
+per structural change --- node attached or detached, link edited, geometry mutated --- and caches
+both the placement vector and the verdict on the node, \code{mutable} behind \code{const}
+accessors. \cppinline|resolvedPlacements()| and \cppinline|placementDiagnostics()| serve the cached
+values on every subsequent read; a mass change (a burning motor) never re-triggers them, because
+geometry is invariant under a burn (\cref{sec:caching}).
+
+\begin{designrule}[One resolve, many consumers]
+Every consumer of absolute placement reads the same cached resolve through
+\cppinline|resolvedPlacements()|: the composite mass/CM/inertia pass
+(\src{core/model/PartsModel.cpp}{171}), the aero datum shift
+(\src{core/model/PartsModel.cpp}{224}), the envelope sweep itself, the CLI's \code{checkdesign}
+verdict (\src{cli/Repl.cpp}{969}), and the visualizer's mesh walk
+(\src{visualizer/RocketMesh.cpp}{433}). Two independent resolvers could drift --- the simulator
+flying one rocket while the renderer draws another --- so no consumer is permitted to compute its
+own placement; disagreement is unrepresentable rather than tested for.
+\end{designrule}
+
+\subsection{Seam and envelope diagnostics}\label{sec:placement-diagnostics}
+
+Diagnostics come in two granularities: a per-seam radial check for one attachment, and a whole-tree
+envelope sweep over a resolved placement vector.
+
+\paragraph{The radial seam check.}
+\code{radialSeamCheck} (\src{core/model/parts/Placement.cpp}{57}) vets one parent--child edge,
+dispatched on the seat kind exactly as \cref{tab:placement-seats} states: \seat{Abut} and
+\seat{OnSurface} demand equal outer radii at the mated stations, \seat{NestInBore} demands the
+child's OD fit within the parent's bore. It returns a located \code{OverlapDiagnostic} on
+incompatibility and \code{nullopt} otherwise; its \code{zWorld} carries the parent-local seam
+station, since no pose is in scope at seam granularity. Being free and pose-free, it is directly
+exercisable by authoring flows and by the unit suite one seam at a time
+(\srcf{core/model/tests/ResolverSweepTests.cpp}).
+
+\paragraph{The envelope sweep.}
+\code{sweepOverlaps} (\src{core/model/parts/Placement.cpp}{108}) checks the whole resolved tree for
+physical impossibility: one part's material occupying another's. It works entirely on the
+\code{Placed} vector --- \code{parentId} gives it the tree relations it needs, so it never touches
+the ownership tree. For each part it builds the world axial interval
+$[z_{\mathrm{fore}} - \mathrm{axialLength}, z_{\mathrm{fore}}]$, sorts intervals by aft station
+($O(N \log N)$), and then tests each part (the \emph{offender}) against the part whose interior it
+occupies (the \emph{host}) at a finite set of stations.
+
+\begin{keyinsight}[Exact, not sampled]
+The test stations are \emph{feature breakpoints}: the offender's own endpoints plus every other
+interval endpoint falling within its span. For the stack profiles --- a tube constant, a cone
+linear, a fin set's body disc constant --- the radius is monotone between breakpoints, so the
+extremum of offender radius against host capacity is attained at a breakpoint and the sweep is
+exact: no sampling density to tune, no thin intrusion slipping between samples. The one profile
+outside this argument is \code{HollowSphere}, whose silhouette peaks at its equator between its
+own endpoints; an intrusion carried only by that bulge, with no breakpoint inside the sphere's
+span, is not sampled there.
+\end{keyinsight}
+
+At each breakpoint the host is chosen as the \emph{smallest-id covering interval}, after three
+exclusions: the offender itself, its descendants (a child legitimately nests inside its parent's
+envelope), and its direct seat parent (that relationship belongs to the seam check). Taking the
+smallest id makes the report deterministic when several intervals cover the same station, so a
+violation is always attributed to the same host regardless of sort incidentals. The capacity the
+offender must fit within comes from \code{Part::innerCapacityAt}
+(\src{core/model/parts/Part.cpp}{53}), which encodes the \emph{solid-host rule}: a bored part is
+bounded by its inner wall, a solid part by its outer skin. Branching once inside the part keeps the
+sweep free of solidity special cases --- the same comparison flags both a rod jammed through a
+motor mount and a fin can poking out of a solid boattail.
+
+Two further host rules are guards in the sweep loop itself (\cref{lst:placement-hostguards}):
+
+\begin{listing}[htbp]
+\begin{minted}{cpp}
+if(cand.zFore - cand.zAft <= tol) { continue; }      // zero-span node (a Motor): no interior, hosts nothing
+// ...
+const double rOff = off.part->radiusOuterAt(zWorld - off.originZ);
+const double cap  = host->part->innerCapacityAt(zWorld - host->originZ);
+
+// A hollow host's bore capacity gates only an offender nested within its outer envelope. Once
+// the offender's outer radius reaches the host skin (rOff >= hostOuter) it sits on or outside
+// that skin -- e.g. a fin set's body disc on a co-radial aft coupler -- so a bore "intrusion"
+// there is a modelling artifact, not a collision. A solid host has cap == hostOuter, so this
+// guard never trips and poke-through still flags.
+const double hostOuter = host->part->radiusOuterAt(zWorld - host->originZ);
+const bool   boreHost  = cap < hostOuter - tol;        // hollow: capacity is the bore, not the skin
+if(boreHost && rOff >= hostOuter - tol) { continue; }  // offender lies on/outside the host skin
+\end{minted}
+\caption{The zero-span-host rule and the bore-host skin guard inside the sweep
+(\srccap{core/model/parts/Placement.cpp}{183}, elided).}\label{lst:placement-hostguards}
+\end{listing}
+
+\begin{designrule}[A zero-span node is mass, not envelope]
+A node with no axial extent has no interior and never hosts. The canonical case is \code{Motor}
+(\cref{sec:motor}), which keeps the base \code{getLength()} of $0$: it contributes mass, CM shift,
+and inertia to the composite, but it is a point in the placement geometry, and a point cannot be
+intruded into. Without this rule a zero-length interval would cover exactly its own station and, as
+a low-id ``host'' of zero capacity, flag every co-located part as an offender.
+\end{designrule}
+
+The bore-host skin guard resolves the complementary edge case: a hollow host's bore capacity is
+only meaningful for an offender \emph{inside} its outer envelope. An offender whose outer radius
+reaches the host's skin sits on or outside that skin --- a fin set's body disc wrapped around a
+co-radial coupler is the canonical case --- so comparing it against the bore would manufacture an
+intrusion where none physically exists. Because a solid host's capacity equals its skin, the guard
+never trips for solids and genuine poke-through still flags. Finally, the sweep reports only the
+worst (deepest) violation per offender/host pair, so one misplaced part yields one located
+diagnostic rather than a breakpoint-by-breakpoint flood.
+
+\subsection{The diagnostics gate}\label{sec:placement-gate}
+
+The sweep's verdict is cached beside the resolve it judged --- \cppinline|verdict_| is written in
+the same \cppinline|ensurePlacementCache()| pass that fills \cppinline|resolved_|
+(\src{core/model/PartsModel.cpp}{144}) --- so the verdict and the geometry it describes can never
+be observed out of step, and no consumer can disagree with another about whether the design is
+sound. \Cref{fig:placement-gate} traces the full path from a structural edit to the gated
+consumers.
+
+\tikzfig{activity-resolve-sweep}{From structural edit to verdict: the edit dirties the placement
+chain up to the root; the next read resolves once, sweeps once, and caches both; every consumer
+then sees the same placements and the same verdict.}{fig:placement-gate}
+
+\begin{hardfail}[A self-intersecting design does not fly]
+When the cached verdict is not \ok, \cppinline|computeCompositeAt| throws
+\cppinline|std::runtime_error| carrying the first diagnostic's located message
+(\src{core/model/PartsModel.cpp}{184}) --- and because cache stamps are written only after a
+successful build (\cref{sec:caching}), the throw repeats on \emph{every} composite read rather than
+being swallowed by the cache. A design whose geometry is physically impossible produces a hard,
+located failure, never a silently wrong mass, CM, or inertia tensor fed to the integrator.
+\end{hardfail}
+
+Consumers differ only in how they surface the shared verdict. The flight path refuses to solve, as
+above (\cref{sec:flight}). The CLI's \code{checkdesign} command (\src{cli/Repl.cpp}{969}) prints
+each diagnostic's message behind an \code{ERR} verdict, and layers one additional check the sweep
+deliberately does not make: an axial-coverage scan for air gaps, since a positive standoff is legal
+in a \code{StationLink} but leaves parts floating apart --- a question of authored intent, not of
+physical impossibility (\cref{sec:cli}). The visualizer (\src{visualizer/RocketMesh.cpp}{433})
+keeps rendering --- a picture of the broken design is exactly what a user fixing it needs --- but
+draws each offender in an error color and logs the same messages, so a headless caller sees the
+same signal the simulator throws on. One resolve, one verdict, three presentations.
