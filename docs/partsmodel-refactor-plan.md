@@ -2,8 +2,14 @@
 
 **Design specification and incremental implementation plan**
 
-Status: plan of record, pre-implementation. The live tree is *pre-refactor*; this document describes
-the target and an ordered path from the current code to it.
+Status: **implemented** (branch `PartsModel`, 2026-07-17) -- steps 0-7 all landed, one build-green
+commit per step. Gates as-built: all 24 fixture flights bit-identical to the pre-refactor baseline
+after the cutover (step 4), after the Part strip (step 5), and at completion; full suite (8 ctest
+suites incl. the new PartsModelTests and qtrocket_gui_model_tests) green, heavy ladder green,
+ASan+UBSan green, clang-tidy clean. One deferred item: the Part Placement whitepaper's
+class-diagram sources (`docs/PartPlacementDesignLatex/diagrams/class-part-new.puml`) still draw
+`childParts` on Part; the pairing invariant now lives on the PartsModel node, unchanged in
+substance -- refresh the diagram next time the whitepaper is rebuilt.
 
 Provenance: a structured design investigation (2026-07-16) produced three independent candidate
 designs — a recursive wrapper-node tree, a flat arena, and a verbatim relocation — each adversarially
