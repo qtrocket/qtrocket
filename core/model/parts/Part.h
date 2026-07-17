@@ -191,7 +191,7 @@ public:
 
     /// Deep-copy this part and its whole sub-tree into a new, independent tree. Type-preserving; every
     /// cloned node gets a fresh id and the returned root has no parent. The only way to duplicate a part.
-    std::shared_ptr<Part> clone() const;
+    std::unique_ptr<Part> clone() const;
 
     /**
      * @brief Attach an existing part as a child by transferring ownership (no copy, so dynamic type and
@@ -218,7 +218,7 @@ protected:
 
     /// Type-preserving shallow copy of just this node (no children). Pure: each concrete subclass
     /// overrides it so clone() reproduces the right dynamic type. @see clone()
-    virtual std::shared_ptr<Part> cloneShallow() const = 0;
+    virtual std::unique_ptr<Part> cloneShallow() const = 0;
 
 private:
 

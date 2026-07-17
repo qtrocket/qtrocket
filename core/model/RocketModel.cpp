@@ -1,57 +1,53 @@
+#include "model/RocketModel.h"
+
+/// \cond
+// C++ headers
+#include <memory>
+#include <utility>
+/// \endcond
 
 // qtrocket headers
-#include "RocketModel.h"
-#include "model/parts/Parts.h"
 #include "sim/Environment.h"
-#include "utils/Logger.h"
+#include "sim/StateData.h"
 
 namespace model
 {
 
-namespace
-{
-/// DFS for the first Motor node (single-motor assumption), or nullptr. Re-borrows the motor handle
-/// after a tree edit; the owning shared_ptr stays in the tree.
-part::Motor* findMotorInTree(part::Part* node)
-{
-    if(node == nullptr) { return nullptr; }
-    if(auto* m = dynamic_cast<part::Motor*>(node)) { return m; }
-    for(const auto& [child, pos] : node->getChildParts())
-    {
-        if(part::Motor* hit = findMotorInTree(child.get())) { return hit; }
-    }
-    return nullptr;
-}
-} // anonymous namespace
-
 RocketModel::RocketModel()
 {
+    // Bridge the typed event stream to the coarse GUI callback: any completed mutation counts.
+    parts_.setChangedCallback([this](const PartsModel::Event&, bool before)
+    {
+        if(!before && structureChangedCallback)
+        {
+            structureChangedCallback();
+        }
+    });
 }
-
 
 double RocketModel::getMass(double t)
 {
-    // The motor is a child Part, so the composite already includes its time-varying mass.
-    return topPart->getCompositeMass(t);
+    // The motor is a tree node, so the composite already includes its time-varying mass.
+    return parts_.root()->compositeMass(t);
 }
 
 Matrix3 RocketModel::getCompositeInertiaTensor(double t)
 {
-    return topPart->getCompositeI(t);
+    return parts_.root()->compositeI(t);
 }
 
 double RocketModel::deriveReferenceAreaFromGeometry() const
 {
-    return topPart->maxFrontalReferenceArea();
+    return parts_.hasDesign() ? parts_.root()->maxFrontalReferenceArea() : 0.0;
 }
 
 void RocketModel::writeMassProperties(double t, StateData& st)
 {
     // Via the gated accessors, so after burnout this reads the frozen cache. The three are mutually
     // consistent at this t.
-    st.mass    = topPart->getCompositeMass(t);
-    st.cg      = topPart->getCompositeCm(t);
-    st.inertia = topPart->getCompositeI(t);
+    st.mass    = parts_.root()->compositeMass(t);
+    st.cg      = parts_.root()->compositeCm(t);
+    st.inertia = parts_.root()->compositeI(t);
 }
 
 bool RocketModel::terminateCondition(double)
@@ -63,7 +59,7 @@ bool RocketModel::terminateCondition(double)
 Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3& velocity, sim::Environment& environment)
 {
     // Thrust along the rocket's z-axis, assumed through the CM.
-    Vector3 forces{0.0, 0.0, motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0};
+    Vector3 forces{0.0, 0.0, parts_.thrust(t)};
 
     // Evaluate gravity at the integrator's trial position (not currentState) so each RK4 stage sees
     // a consistent state.
@@ -94,95 +90,30 @@ Vector3 RocketModel::getTorques(double)
 
 double RocketModel::getThrust(double t)
 {
-    return motorPart ? motorPart->getMotorModel().getThrust(t) : 0.0;
+    return parts_.thrust(t);
 }
 
 void RocketModel::launch()
 {
     setCurrentState(initialState);
-    if(motorPart) { motorPart->getMotorModel().startMotor(0.0); }
+    parts_.startMotor(0.0);
 }
 
 void RocketModel::setMotorModel(const model::MotorModel& motor)
 {
-    if(motorPart == nullptr)
-    {
-        auto mp = std::make_shared<part::Motor>("Motor", motor);
-        motorPart = mp.get();                       // borrow before ownership moves into the tree
-        // Join the airframe root CM and motor CM stations with a motorOffset.z gap (zero today). The
-        // Motor carries no geometric envelope, so this never trips the overlap gate.
-        const auto cmStation = [](const part::Part& p)
-        {
-            const double L = p.getLength();
-            return (L > 0.0) ? 0.5 + p.getCenterMassOffset().z() / L : 0.0;
-        };
-        const part::StationLink motorLink{cmStation(*topPart), cmStation(*mp), motorOffset.z(),
-                                                     part::SeatKind::Abut};
-        topPart->addChildPart(std::move(mp), motorLink);
-    }
-    else
-    {
-        motorPart->setMotorModel(motor);            // in-place swap (keeps the borrowed motorPart valid)
-    }
-    notifyStructureChanged(); // first call adds the Motor node; a swap changes its displayed mass
+    parts_.setMotor(motor);
 }
 
 MotorModel RocketModel::getMotorModel() const
 {
-    return motorPart ? motorPart->getMotorModel() : MotorModel{};
+    const MotorModel* m = parts_.motorModel();
+    return m ? *m : MotorModel{};
 }
 
-void RocketModel::reresolveMotorPart()
+void RocketModel::installDesign(std::unique_ptr<PartNode> root)
 {
-    // The previously-borrowed motorPart belonged to whatever tree was just replaced/edited; re-point
-    // it at the current tree's Motor node (or nullptr if none) so the raw handle can never dangle.
-    motorPart = findMotorInTree(topPart.get());
-}
-
-void RocketModel::setRoot(std::shared_ptr<part::Part> root)
-{
-    if(!root)
-    {
-        utils::Logger::getInstance()->error("RocketModel::setRoot: ignoring null root");
-        return;
-    }
-    topPart = std::move(root);
-    reresolveMotorPart();            // the old motorPart belonged to the replaced tree
+    parts_.installRoot(std::move(root));
     referenceAreaOverridden = false; // a freshly-installed airframe must not inherit a manual area
-    notifyStructureChanged();
-}
-
-void RocketModel::clearDesign()
-{
-    topPart = nullptr;
-    reresolveMotorPart();            // the borrowed motorPart belonged to the cleared tree
-    referenceAreaOverridden = false; // a design built after a clear must not inherit a manual area
-    notifyStructureChanged();
-}
-
-bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, part::StationLink link)
-{
-    part::Part* parent = topPart ? topPart->findById(parentId) : nullptr;
-    if(parent == nullptr) { return false; }
-    // addChildPart is a logged no-op on null / cycle / already-parented, so detect success by the
-    // parent's child count rather than trusting the (void) call.
-    const auto before = parent->getChildParts().size();
-    parent->addChildPart(std::move(child), link);
-    const bool attached = parent->getChildParts().size() == before + 1;
-    if(attached)
-    {
-        reresolveMotorPart(); // a Motor sub-tree could have been attached
-        notifyStructureChanged();
-    }
-    return attached;
-}
-
-std::shared_ptr<part::Part> RocketModel::removePart(part::Part::Id id)
-{
-    if(!topPart || id == topPart->getId()) { return nullptr; } // the root is never removed here
-    std::shared_ptr<part::Part> detached = topPart->removeChildById(id);
-    if(detached) { reresolveMotorPart(); notifyStructureChanged(); } // the motor may have lived in the removed sub-tree
-    return detached;
 }
 
 } // namespace model

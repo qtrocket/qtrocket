@@ -4,7 +4,6 @@
 /// \cond
 // C headers
 // C++ headers
-#include <vector>
 #include <memory>
 #include <string>
 #include <utility> // std::move
@@ -14,22 +13,17 @@
 /// \endcond
 
 // qtrocket headers
-#include "model/parts/Part.h"
 #include "model/PartsModel.h"
 #include "sim/Propagator.h"
 #include "model/MotorModel.h"
 
 #include "model/Propagatable.h"
-// Not yet
-//#include "model/Stage.h"
-
-// Borrowed handle below; the full Motor type is only needed in RocketModel.cpp.
-namespace model::part { class Motor; }
 
 namespace model
 {
 
-/// @brief Root of a rocket's part tree; the model side of the Propagatable bridge to the sim.
+/// @brief The rocket: a PartsModel (the part tree) plus the model side of the Propagatable bridge
+///        to the sim (forces, drag config, launch).
 class RocketModel : public Propagatable
 {
 public:
@@ -54,15 +48,14 @@ public:
     /// Current motor thrust at @p t (Newtons); 0 with no motor set.
     double getThrust(double t);
 
-    /// Install or swap the motor model (creates the Motor child on first call).
+    /// Install or swap the motor model (delegates to PartsModel::setMotor).
     void setMotorModel(const model::MotorModel& motor);
 
-    /// Copy of the current motor model (a default MotorModel if none is set). Defined in the .cpp --
-    /// it needs the complete Motor type.
+    /// Copy of the current motor model (a default MotorModel if none is set).
     MotorModel getMotorModel() const;
 
     /// Whether a motor is set; the single launch-gate signal the GUI reads, regardless of source.
-    bool isMotorSet() const { return motorPart != nullptr; }
+    bool isMotorSet() const { return parts_.isMotorSet(); }
 
     void setName(const std::string& n) { name = n; }
     std::string getName() const { return name; }
@@ -80,81 +73,37 @@ public:
 
     /// Reference (frontal) area from geometry (m^2): the single widest frontal disc in the part tree
     /// (max part getReferenceArea() -- Barrowman/OpenRocket convention, not a sum, not inflated by
-    /// fins). 0 for the placeholder body.
+    /// fins). 0 with no design.
     double deriveReferenceAreaFromGeometry() const;
 
-    // ---- Part-tree facade ----------------------------------------------------------------------
-    // The CLI and the design serializer reach the tree only through these. The mutators keep the
-    // borrowed motorPart handle consistent (reresolveMotorPart) so the force path never reads a
-    // dangling motor.
+    // ---- The part tree -------------------------------------------------------------------------
 
-    /// Read handle to the part tree root (for serialization / listing). Non-const pointee so callers
-    /// can read time-varying composites; structural edits go through the wrappers below.
-    std::shared_ptr<part::Part> getTopPart() const { return topPart; }
-
-    /// The part tree as a PartsModel -- the read surface consumers walk (find/forEachNode/children).
-    /// Migration window: a shadow over topPart, resynced on every structural edit.
+    /// The part tree: reads and every mutation verb. The single authority for tree structure.
     PartsModel& parts() { return parts_; }
     const PartsModel& parts() const { return parts_; }
 
-    /// Replace the entire part tree -- the single install seam (newdesign / loaddesign / GUI New-Open).
-    /// Re-resolves motorPart and clears the manual reference-area override. A null @p root is ignored.
-    void setRoot(std::shared_ptr<part::Part> root);
+    /// Install a design (null clears): atomic root replace plus the RocketModel-owned install side
+    /// effect -- a freshly-installed airframe must not inherit a manual reference-area override.
+    void installDesign(std::unique_ptr<PartNode> root);
 
-    /// Clear the design (null root). Re-resolves the motor borrow, resets the manual reference-area
-    /// override, and notifies structure observers -- same invariants as setRoot, for an empty tree.
-    void clearDesign();
+    /// Clear the design. The motor borrow is re-resolved inside the install seam, so it can never
+    /// dangle across a clear.
+    void clearDesign() { installDesign(nullptr); }
 
-    /// Attach @p child under the part with id @p parentId, placed by @p link (default: abut child fore
-    /// plane to parent aft plane). False if no such parent or the attach was rejected.
-    bool addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, part::StationLink link = {});
-
-    /// Detach and return the sub-tree rooted at @p id, or nullptr if absent (the root is never removed).
-    /// Re-resolves motorPart in case the motor was in the sub-tree.
-    std::shared_ptr<part::Part> removePart(part::Part::Id id);
-
-    /// Locate a part by id anywhere in the tree, or nullptr. Borrowed pointer; do not store it.
-    part::Part* findPart(part::Part::Id id) { return topPart ? topPart->findById(id) : nullptr; }
-
-    /// Register a callback fired after any change to the part tree's structure or composition
-    /// (setRoot/clearDesign, addPart, removePart, setMotorModel). A GUI tree view uses it to refresh.
-    /// std::function keeps the model layer Qt-free; only the latest callback is kept. Pass {} to clear.
+    /// Register a callback fired after any change to the part tree's structure or composition.
+    /// A GUI tree view uses it to refresh. std::function keeps the model layer Qt-free; only the
+    /// latest callback is kept. Pass {} to clear. (Granular consumers subscribe to
+    /// PartsModel::setChangedCallback instead; this is the coarse did-anything-change signal.)
     void setStructureChangedCallback(std::function<void()> cb) { structureChangedCallback = std::move(cb); }
 
 private:
-
-    void notifyStructureChanged()
-    {
-        parts_.resync(topPart); // the shadow must be current before any observer reads it
-        if(structureChangedCallback)
-        {
-            structureChangedCallback();
-        }
-    }
-
-    /// Fired on every structural/compositional edit; null until the GUI registers one. @see setStructureChangedCallback.
-    std::function<void()> structureChangedCallback;
-
-    /// Re-point motorPart at the (single) Motor node in the current tree, or nullptr. Called after any
-    /// tree replacement / removal so the raw handle never dangles.
-    void reresolveMotorPart();
-
     std::string name;
 
-    /// Borrowed handle to the motor node; the owning shared_ptr lives in topPart's childParts. nullptr
-    /// = no motor. RocketModel is only ever held via shared_ptr (never value-copied), so this never
-    /// dangles; re-resolve via findById if deep-copy is ever needed.
-    part::Motor* motorPart{nullptr};
-
-    /// Body-frame offset of the motor CM relative to the airframe CM. Zero today.
-    Vector3 motorOffset{Vector3::Zero()};
-
-    /// Top of the part tree. Structural edits go through the facade (setRoot/addPart/removePart/
-    /// clearDesign), which keep motorPart in sync; do not mutate via getTopPart().
-    std::shared_ptr<model::part::Part> topPart;
-
-    /// Node view over topPart, resynced by notifyStructureChanged after every structural edit.
+    /// The part tree. Fires this model's event bridge (wired in the ctor) on every mutation.
     PartsModel parts_;
+
+    /// Fired on every structural/compositional edit; null until the GUI registers one.
+    std::function<void()> structureChangedCallback;
 
     /// Dimensionless drag coefficient for the drag term in getForces().
     double dragCoefficient{1.0};

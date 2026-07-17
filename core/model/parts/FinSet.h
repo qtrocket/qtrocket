@@ -76,8 +76,8 @@ public:
 
 protected:
     FinSet(const FinSet&) = default;
-    std::shared_ptr<Part> cloneShallow() const override
-    { return std::shared_ptr<Part>(new FinSet(*this)); }
+    std::unique_ptr<Part> cloneShallow() const override
+    { return std::unique_ptr<Part>(new FinSet(*this)); }
 
 private:
     static double  computeMass(unsigned int N, double cr, double ct, double s, double thk, double density);

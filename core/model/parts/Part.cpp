@@ -103,9 +103,9 @@ void Part::addChildPart(std::shared_ptr<Part> child, StationLink link)
     markPlacementDirty();
 }
 
-std::shared_ptr<Part> Part::clone() const
+std::unique_ptr<Part> Part::clone() const
 {
-    std::shared_ptr<Part> copy = cloneShallow(); // this node: correct dynamic type, fresh id, no kids
+    std::unique_ptr<Part> copy = cloneShallow(); // this node: correct dynamic type, fresh id, no kids
     for(const auto& [child, link] : childParts)
     {
         std::shared_ptr<Part> childCopy = child->clone(); // recurse polymorphically (no slicing)

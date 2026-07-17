@@ -866,7 +866,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
          out << "ERR newdesign: " << err << "\n";
          return true;
       }
-      std::shared_ptr<model::part::Part> root;
+      std::unique_ptr<model::part::Part> root;
       try
       {
          root = model::part::makePart(type, params);
@@ -877,8 +877,8 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
          return true;
       }
       const auto id = root->getId();
-      qtRocket->getRocket()->setRoot(std::move(root));
-      motorSet = false; // setRoot drops any previously-set motor
+      qtRocket->getRocket()->installDesign(model::PartNode::make(std::move(root)));
+      motorSet = false; // a fresh design drops any previously-set motor
       motorName.clear();
       out << "OK newdesign: root " << type << " id=" << id << "\n";
       return true;
@@ -942,20 +942,28 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
          out << "ERR addpart: " << linkErr << "\n";
          return true;
       }
-      std::shared_ptr<model::part::Part> child;
+      std::unique_ptr<model::part::Part> child;
       try { child = model::part::makePart(type, params); }
       catch(const std::exception& e)
       {
          out << "ERR addpart: " << e.what() << "\n";
          return true;
       }
-      const auto childId = child->getId();
-      if(!rocket->addPart(parentId, std::move(child), link))
+      const auto attached = rocket->parts().attach(parentId, std::move(child), link);
+      if(!attached)
       {
-         out << "ERR addpart: no part with id " << parentId << " (or the attach was rejected)\n";
+         switch(attached.error())
+         {
+            case model::PartsModel::AttachError::NoSuchParent:
+               out << "ERR addpart: no part with id " << parentId << "\n"; break;
+            case model::PartsModel::AttachError::DuplicateMotor:
+               out << "ERR addpart: the design already has a motor\n"; break;
+            case model::PartsModel::AttachError::NullPart:
+               out << "ERR addpart: invalid part\n"; break;
+         }
          return true;
       }
-      out << "OK addpart: " << type << " id=" << childId << " under " << parentId << "\n";
+      out << "OK addpart: " << type << " id=" << *attached << " under " << parentId << "\n";
       return true;
    }
    else if(cmd == "checkdesign")
@@ -970,8 +978,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
       // plus an axial-coverage scan for air gaps -- intent the sweep can't see (a positive standoff is
       // legal in a StationLink but leaves parts floating apart).
       const model::part::SolveResult& diag = parts.root()->placementDiagnostics();
-      const std::vector<model::part::Placed> placed =
-         model::part::resolvePlacements(parts.root()->part(), model::part::Pose{});
+      const std::span<const model::part::Placed> placed = parts.root()->resolvedPlacements();
 
       struct Span { double aft; double fore; };
       std::vector<Span> spans;
@@ -1046,7 +1053,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
          out << "ERR removepart: cannot remove the root (use newdesign or cleardesign)\n";
          return true;
       }
-      auto detached = rocket->removePart(id);
+      auto detached = rocket->parts().detach(id);
       if(!detached)
       {
          out << "ERR removepart: no part with id " << id << "\n";
@@ -1054,7 +1061,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
       }
       if(!rocket->isMotorSet()) // the motor may have been in the removed sub-tree
          motorSet = false;
-      out << "OK removepart: removed id=" << id << " (" << detached->typeName() << ")\n";
+      out << "OK removepart: removed id=" << id << " (" << (*detached)->part().typeName() << ")\n";
       return true;
    }
    else if(cmd == "savedesign")

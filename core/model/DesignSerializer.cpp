@@ -132,7 +132,24 @@ part::PartParams readParams(const pt::ptree& partNode)
     return p;
 }
 
-std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
+// Parse the <link> child of @p owner into a StationLink (fail-closed on an unknown seat name).
+part::StationLink readLink(const pt::ptree& owner)
+{
+    const std::string seatStr = owner.get<std::string>("link.<xmlattr>.seat", "Abut");
+    const auto        seat    = part::seatKindFromString(seatStr);
+    if(!seat) // fail-closed, on the same path as makePart's unknown-type rejection
+    {
+        throw std::runtime_error("DesignSerializer: unknown seat kind '" + seatStr + "'");
+    }
+    return part::StationLink{
+        owner.get<double>("link.<xmlattr>.parentStation", 0.0),
+        owner.get<double>("link.<xmlattr>.childStation", 1.0),
+        owner.get<double>("link.<xmlattr>.gap", 0.0),
+        *seat,
+        Quaternion::Identity()};
+}
+
+std::unique_ptr<PartNode> buildNode(const pt::ptree& partNode)
 {
     const std::string type = partNode.get<std::string>("<xmlattr>.type");
     if(type == "Motor")
@@ -142,54 +159,34 @@ std::shared_ptr<part::Part> buildPart(const pt::ptree& partNode)
         throw std::runtime_error(
             "DesignSerializer: a Motor cannot be a tree part; it loads by common name via <motor>");
     }
-    std::shared_ptr<part::Part> node = part::makePart(type, readParams(partNode)); // throws on bad/unknown
+    std::unique_ptr<PartNode> node =
+        PartNode::make(part::makePart(type, readParams(partNode))); // throws on bad/unknown
 
     if(const auto kids = partNode.get_child_optional("children"))
     {
         for(const auto& [key, childNode] : *kids)
         {
             if(key != "part") { continue; } // skip any non-<part> entry (e.g. an <xmlattr> pseudo-node)
-            std::shared_ptr<part::Part> child = buildPart(childNode);
-            const std::string childName = child->getName();
-            const auto before = node->getChildParts().size();
+            std::unique_ptr<PartNode> child = buildNode(childNode);
 
-         // 0.2 placement: a <link> (explicit intent) or neither element (an elided default-equal link,
-         // attaches by the zero-config abut default). A legacy 0.1 <offset> (CM-to-CM) is rejected
-         // below rather than silently mis-placed.
-         if(childNode.get_child_optional("link"))
-         {
-            const std::string seatStr = childNode.get<std::string>("link.<xmlattr>.seat", "Abut");
-            const auto        seat    = part::seatKindFromString(seatStr);
-            if(!seat) // fail-closed, on the same path as makePart's unknown-type rejection
+            // 0.2 placement: a <link> (explicit intent) or neither element (an elided default-equal
+            // link, attaches by the zero-config abut default). A legacy 0.1 <offset> (CM-to-CM) is
+            // rejected rather than silently mis-placed.
+            part::StationLink link{};
+            if(childNode.get_child_optional("link"))
             {
-               throw std::runtime_error("DesignSerializer: unknown seat kind '" + seatStr + "'");
+                link = readLink(childNode);
             }
-            const part::StationLink link{
-               childNode.get<double>("link.<xmlattr>.parentStation", 0.0),
-               childNode.get<double>("link.<xmlattr>.childStation", 1.0),
-               childNode.get<double>("link.<xmlattr>.gap", 0.0),
-               *seat,
-               Quaternion::Identity()};
-            node->addChildPart(std::move(child), link);
-         }
-         else if(childNode.get_child_optional("offset"))
-         {
-            throw std::runtime_error(
-               "DesignSerializer: legacy 0.1 <offset> placement is no longer supported; this file "
-               "predates the 0.2 <link> format and must be re-created");
-         }
-         else
-         {
-            node->addChildPart(std::move(child), part::StationLink{}); // elided default -> abut
-         }
-         if(node->getChildParts().size() != before + 1) // addChildPart is a silent no-op on rejection
-         {
-            throw std::runtime_error(
-               "DesignSerializer: failed to attach child part '" + childName + "' (see log for the reason)");
-         }
-      }
-   }
-   return node;
+            else if(childNode.get_child_optional("offset"))
+            {
+                throw std::runtime_error(
+                    "DesignSerializer: legacy 0.1 <offset> placement is no longer supported; this file "
+                    "predates the 0.2 <link> format and must be re-created");
+            }
+            node->addChild(std::move(child), link);
+        }
+    }
+    return node;
 }
 } // anonymous namespace
 
@@ -206,6 +203,11 @@ void DesignSerializer::save(const RocketModel& rocket, const std::string& filena
     if(rocket.isMotorSet())
     {
         tree.put("QtRocketDesign.motor.<xmlattr>.commonName", rocket.getMotorModel().data.commonName);
+        // The motor is an ordinary node; persist its seat like any other edge (elided if default).
+        if(const PartNode* mn = rocket.parts().motorNode(); mn != nullptr && !isDefaultLink(mn->link()))
+        {
+            tree.add_child("QtRocketDesign.motor.link", writeLink(mn->link()));
+        }
     }
 
     // The <sim> block carries only the RocketModel-owned aero options. Launch/environment options
@@ -233,33 +235,40 @@ void DesignSerializer::load(RocketModel& rocket, MotorModelDatabase& motors, con
         throw std::runtime_error("DesignSerializer: unsupported design-file version '" + version + "'");
     }
 
-    // Build the whole geometry tree (detached) before touching the rocket, then install in one shot so
-    // a malformed file leaves the existing rocket untouched.
-    std::shared_ptr<part::Part> newRoot = buildPart(root.get_child("part"));
-    rocket.setRoot(newRoot); // in-place: re-resolves motorPart and resets the ref-area override
-    rocket.setName(root.get<std::string>("design.<xmlattr>.name", ""));
-
-    // Apply the sim/aero block after setRoot so a restored manual override wins over setRoot's reset.
-    rocket.setDragCoefficient(root.get<double>("sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient()));
-    const bool overridden =
-        root.get<std::string>("sim.<xmlattr>.referenceAreaOverridden", "false") == "true";
-    if(overridden)
-    {
-        rocket.setReferenceArea(root.get<double>("sim.<xmlattr>.referenceArea", rocket.getReferenceArea()));
-    }
+    // Build the whole tree (detached) before touching the rocket, then install in one shot so a
+    // malformed file leaves the existing rocket untouched.
+    std::unique_ptr<PartNode> newRoot = buildNode(root.get_child("part"));
 
     // Motor by common name, re-resolved against the supplied database (a miss warns, never throws).
+    // An ordinary node: attached under the root with its persisted link (default abut when elided).
     if(const auto name = root.get_optional<std::string>("motor.<xmlattr>.commonName"))
     {
         if(const auto m = motors.getMotorModel(*name))
         {
-            rocket.setMotorModel(*m);
+            part::StationLink motorLink{};
+            if(root.get_child_optional("motor.link"))
+            {
+                motorLink = readLink(root.get_child("motor"));
+            }
+            newRoot->addChild(PartNode::make(std::make_unique<part::Motor>("Motor", *m)), motorLink);
         }
         else
         {
             utils::Logger::getInstance()->warn(
                 "DesignSerializer: motor '" + *name + "' not found in the database; loaded without a motor");
         }
+    }
+
+    rocket.installDesign(std::move(newRoot));
+    rocket.setName(root.get<std::string>("design.<xmlattr>.name", ""));
+
+    // Apply the sim/aero block after the install so a restored manual override wins over its reset.
+    rocket.setDragCoefficient(root.get<double>("sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient()));
+    const bool overridden =
+        root.get<std::string>("sim.<xmlattr>.referenceAreaOverridden", "false") == "true";
+    if(overridden)
+    {
+        rocket.setReferenceArea(root.get<double>("sim.<xmlattr>.referenceArea", rocket.getReferenceArea()));
     }
 }
 

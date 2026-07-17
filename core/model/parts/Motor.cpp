@@ -15,11 +15,9 @@ Motor::Motor(const std::string& name, const MotorModel& motor)
 
 void Motor::setMotorModel(const MotorModel& motor)
 {
+    // getMass(t)/getI() read mm live, so the swap is complete by itself; the routed caller dirties
+    // the composite cache chain.
     mm = motor;
-    // setI() and setMass() each mark this part (and its ancestors) for composite recompute, so the
-    // airframe's cached inertia tensor is rebuilt to reflect the new motor on the next read.
-    setI(motorTensor(mm));
-    setMass(mm.getMass(0.0));
 }
 
 Matrix3 Motor::motorTensor(const MotorModel& motor)

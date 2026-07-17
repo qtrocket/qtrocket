@@ -39,21 +39,25 @@ public:
     /// over the burn, constant after burnout. @see MotorModel::getMass
     double getMass(double t) const override { return mm.getMass(t); }
 
+    /// Per-unit-mass tensor derived live from the wrapped MotorModel -- a solid cylinder from its
+    /// catalog diameter/length. No seeded copy exists to go stale across a swap.
+    Matrix3 getI() const override { return motorTensor(mm); }
+
     const MotorModel& getMotorModel() const { return mm; }
     MotorModel& getMotorModel() { return mm; }
 
-    /// Replace the wrapped motor in place: re-seeds the static mass/inertia and flags the tree for
-    /// composite recompute. Mutates this node rather than re-attaching, so RocketModel's borrowed
-    /// Motor* stays valid.
+    /// Replace the wrapped motor in place. A plain swap: mass and tensor are derived live from mm,
+    /// so the caller (PartsModel::setMotor) owns cache invalidation. Mutates this node rather than
+    /// re-attaching, so the model's borrowed Motor* stays valid.
     void setMotorModel(const MotorModel& motor);
 
 protected:
     /// Copy ctor + cloneShallow() implement clone(); MotorModel deep-copies by value.
     Motor(const Motor&) = default;
 
-    std::shared_ptr<Part> cloneShallow() const override
+    std::unique_ptr<Part> cloneShallow() const override
     {
-        return std::shared_ptr<Part>(new Motor(*this));
+        return std::unique_ptr<Part>(new Motor(*this));
     }
 
 private:

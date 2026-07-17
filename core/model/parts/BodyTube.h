@@ -60,8 +60,8 @@ public:
 
 protected:
     BodyTube(const BodyTube&) = default;
-    std::shared_ptr<Part> cloneShallow() const override
-    { return std::shared_ptr<Part>(new BodyTube(*this)); }
+    std::unique_ptr<Part> cloneShallow() const override
+    { return std::unique_ptr<Part>(new BodyTube(*this)); }
 
 private:
     static double computeVolume(double ri, double ro, double L);

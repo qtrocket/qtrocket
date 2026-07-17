@@ -94,7 +94,11 @@ void CannonballTab::refreshFromModel()
     // loaded elsewhere they must mirror the model or they silently overwrite the loaded values. Mass is
     // the top part's own (dry) mass -- the quantity setMass() writes -- not the motor-inclusive composite.
     auto rocket = qtRocket->getRocket();
-    ui->mass->setText(QString::number(rocket->getTopPart()->getMass(0.0)));
+    if(!rocket->parts().hasDesign())
+    {
+        return;
+    }
+    ui->mass->setText(QString::number(rocket->parts().root()->part().getMass(0.0)));
     ui->dragCoeff->setText(QString::number(rocket->getDragCoefficient()));
     ui->referenceArea->setText(QString::number(rocket->getReferenceArea()));
     refreshCalculateTrajectoryEnabled();
@@ -120,7 +124,11 @@ void CannonballTab::onButton_calculateTrajectory_clicked()
     initialState.position = {0.0, 0.0, 0.0};
     initialState.velocity = {initialVelocityX, 0.0, initialVelocityZ};
     auto rocket = QtRocket::getInstance()->getRocket();
-    rocket->getTopPart()->setMass(mass);
+    if(rocket->parts().hasDesign())
+    {
+        // routed edit: invalidates the composite caches and refreshes the tree view's mass column
+        rocket->parts().setPartMass(rocket->parts().root()->id(), mass);
+    }
     rocket->setDragCoefficient(dragCoeff);
     rocket->setReferenceArea(referenceArea);
 

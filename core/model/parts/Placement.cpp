@@ -198,6 +198,7 @@ SolveResult sweepOverlaps(const std::vector<Placed>& placed, double tol)
             {
                 if(cand.zAft > zWorld + tol) { break; }              // sorted: no later interval covers
                 if(cand.zFore < zWorld - tol) { continue; }          // ended before zWorld
+                if(cand.zFore - cand.zAft <= tol) { continue; }      // zero-span node (a Motor): no interior, hosts nothing
                 if(excludedHost(cand.id, off.id)) { continue; }
                 if(host == nullptr || cand.id < host->id) { host = &cand; }
             }

@@ -430,8 +430,7 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
     // translate each origin-centered primitive so its fore plane lands at the resolved fore-plane
     // origin (the build* primitives are centered about mid-length, half an axialLength forward of
     // the aft plane).
-    const std::vector<model::part::Placed> placed =
-        model::part::resolvePlacements(root->part(), model::part::Pose{});
+    const std::span<const model::part::Placed> placed = root->resolvedPlacements();
 
     // Diagnostics verdict (cached per structural resolve): map each offender id to its message so
     // those RenderItems render in an error color. Also log it, so a headless caller sees the same
