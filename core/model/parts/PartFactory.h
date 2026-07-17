@@ -57,7 +57,7 @@ struct PartParams
  *         @p type is unknown / non-constructible (Motor is attached via RocketModel::setMotorModel,
  *         not this factory).
  */
-std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p);
+std::unique_ptr<Part> makePart(std::string_view type, const PartParams& p);
 
 /**
  * @brief Read a part's own geometry back into a PartParams (the inverse of makePart).

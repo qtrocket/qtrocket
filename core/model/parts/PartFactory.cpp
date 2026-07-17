@@ -24,14 +24,14 @@ T requireField(const std::optional<T>& v, const char* key, std::string_view type
 }
 } // anonymous namespace
 
-std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p)
+std::unique_ptr<Part> makePart(std::string_view type, const PartParams& p)
 {
     // Each branch supplies the ctor's required fields (requireField throws if absent) and defaults for
     // the rest; range validation lives in the ctors and propagates. centerMass is {0,0,0} (placement
     // is the attach offset, not a baked-in CM).
     if(type == "BodyTube")
     {
-        return std::make_shared<BodyTube>(
+        return std::make_unique<BodyTube>(
             p.name,
             p.innerRadius.value_or(0.0),
             requireField(p.outerRadius, "outerRadius", type),
@@ -40,7 +40,7 @@ std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p)
     }
     if(type == "NoseCone") // the factory key is exactly typeName() -- one string, no aliases
     {
-        return std::make_shared<ConicalNoseCone>(
+        return std::make_unique<ConicalNoseCone>(
             p.name,
             requireField(p.baseRadius, "baseRadius", type),
             requireField(p.length, "length", type),
@@ -50,7 +50,7 @@ std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p)
     }
     if(type == "FinSet")
     {
-        return std::make_shared<FinSet>(
+        return std::make_unique<FinSet>(
             p.name,
             requireField(p.finCount, "finCount", type),
             requireField(p.rootChord, "rootChord", type),
@@ -63,7 +63,7 @@ std::shared_ptr<Part> makePart(std::string_view type, const PartParams& p)
     }
     if(type == "HollowSphere")
     {
-        return std::make_shared<HollowSphere>(
+        return std::make_unique<HollowSphere>(
             p.name,
             p.innerRadius.value_or(0.0),
             requireField(p.outerRadius, "outerRadius", type),
