@@ -1,8 +1,9 @@
 # Static analysis over every hand-written TU (vendored qcustomplot excluded),
 # via the same scripts/run-tidy.sh developers run locally. Needs a full build
 # first so the AUTOMOC/AUTOUIC generated headers exist for the Qt TUs.
-# clang-tidy 20 from apt.llvm.org: the .clang-tidy config uses
-# ExcludeHeaderFilterRegex, which needs clang-tidy >= 19; ubuntu-latest ships 18.
+# LLVM 20 from apt.llvm.org for both the build (libstdc++ hides std::expected
+# from clang < 19) and the analysis (ExcludeHeaderFilterRegex needs
+# clang-tidy >= 19); ubuntu-latest ships 18.
 name: clang-tidy
 
 on:
@@ -27,11 +28,14 @@ jobs:
         version: 6.10.2
         target: desktop
 
-    - name: Install clang-tidy 20
+    # The PATH prepend makes the preset's bare clang/clang++ resolve to 20 for
+    # the build step below.
+    - name: Install LLVM 20
       run: |
         wget -q https://apt.llvm.org/llvm.sh
         sudo bash llvm.sh 20
         sudo apt-get install -y clang-tidy-20
+        echo "/usr/lib/llvm-20/bin" >> "$GITHUB_PATH"
 
     - name: Set up ccache
       uses: hendrikmuhs/ccache-action@v1
