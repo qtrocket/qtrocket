@@ -15,6 +15,7 @@
 
 // qtrocket headers
 #include "model/parts/Part.h"
+#include "model/PartsModel.h"
 #include "sim/Propagator.h"
 #include "model/MotorModel.h"
 
@@ -91,6 +92,11 @@ public:
     /// can read time-varying composites; structural edits go through the wrappers below.
     std::shared_ptr<part::Part> getTopPart() const { return topPart; }
 
+    /// The part tree as a PartsModel -- the read surface consumers walk (find/forEachNode/children).
+    /// Migration window: a shadow over topPart, resynced on every structural edit.
+    PartsModel& parts() { return parts_; }
+    const PartsModel& parts() const { return parts_; }
+
     /// Replace the entire part tree -- the single install seam (newdesign / loaddesign / GUI New-Open).
     /// Re-resolves motorPart and clears the manual reference-area override. A null @p root is ignored.
     void setRoot(std::shared_ptr<part::Part> root);
@@ -119,6 +125,7 @@ private:
 
     void notifyStructureChanged()
     {
+        parts_.resync(topPart); // the shadow must be current before any observer reads it
         if(structureChangedCallback)
         {
             structureChangedCallback();
@@ -145,6 +152,9 @@ private:
     /// Top of the part tree. Structural edits go through the facade (setRoot/addPart/removePart/
     /// clearDesign), which keep motorPart in sync; do not mutate via getTopPart().
     std::shared_ptr<model::part::Part> topPart;
+
+    /// Node view over topPart, resynced by notifyStructureChanged after every structural edit.
+    PartsModel parts_;
 
     /// Dimensionless drag coefficient for the drag term in getForces().
     double dragCoefficient{1.0};

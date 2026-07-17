@@ -21,14 +21,13 @@
 
 // C++ headers
 #include <exception>
-#include <tuple>
 #include <vector>
 
 // qtrocket headers (full types needed here for the unique_ptr members + the loader)
 #include "model/RocketModel.h"
 #include "model/MotorModelDatabase.h"
 #include "model/DesignSerializer.h"
-#include "model/parts/Part.h"
+#include "model/PartsModel.h"
 #include "visualizer/RocketGLWidget.h"
 #include "visualizer/RocketMesh.h"
 
@@ -47,21 +46,6 @@ const QStringList& knownPartTypes()
         QStringLiteral("FinSet"),
         QStringLiteral("HollowSphere")};
     return types;
-}
-
-/// @brief Depth-first count of every part in @p root's sub-tree (root included).
-std::size_t countParts(const model::part::Part* root)
-{
-    if(root == nullptr)
-    {
-        return 0;
-    }
-    std::size_t total = 1;
-    for(const auto& childEntry : root->getChildParts())
-    {
-        total += countParts(std::get<0>(childEntry).get());
-    }
-    return total;
 }
 
 /// @brief Set a button's background swatch to @p color (keeping readable text).
@@ -294,7 +278,7 @@ void VisualizerWindow::setStatusForRocket()
     const QString fileName =
         currentFile.isEmpty() ? QStringLiteral("(none)") : QFileInfo(currentFile).fileName();
     const QString rocketName = QString::fromStdString(rocket->getName());
-    const std::size_t parts = countParts(rocket->getTopPart().get());
+    const std::size_t parts = rocket->parts().size();
 
     statusBar()->showMessage(
         QStringLiteral("%1  -  \"%2\"  -  %3 part(s)")

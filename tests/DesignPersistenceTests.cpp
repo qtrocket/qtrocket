@@ -306,7 +306,7 @@ TEST_F(DesignRoundTrip, DefaultLinkIsElidedAndReloadsAsAbut)
 {
     model::RocketModel r;
     r.setRoot(std::make_shared<model::part::ConicalNoseCone>("Nose", 0.019, 0.10, 0.0, 2700.0, true));
-    r.getTopPart()->addChildPart(bodyTube("Body")); // default StationLink{} == abut, equal radii
+    r.addPart(r.getTopPart()->getId(), bodyTube("Body")); // default StationLink{} == abut, equal radii
 
     const std::string tmp = tempFile("defaultlink");
     model::DesignSerializer::save(r, tmp);

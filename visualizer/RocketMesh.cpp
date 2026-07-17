@@ -3,6 +3,7 @@
 
 // qtrocket headers
 #include "model/RocketModel.h"
+#include "model/PartsModel.h"
 #include "model/parts/Part.h"
 #include "model/parts/ConicalNoseCone.h"
 #include "model/parts/BodyTube.h"
@@ -17,7 +18,6 @@
 #include <limits>
 #include <map>
 #include <string>
-#include <tuple>
 
 namespace viz
 {
@@ -405,7 +405,7 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
 {
     std::vector<RenderItem> items;
 
-    std::shared_ptr<model::part::Part> root = rocket.getTopPart();
+    const model::PartNode* root = rocket.parts().root();
     if(!root)
     {
         return items;
@@ -431,13 +431,13 @@ std::vector<RenderItem> buildRocketMeshes(const model::RocketModel& rocket)
     // origin (the build* primitives are centered about mid-length, half an axialLength forward of
     // the aft plane).
     const std::vector<model::part::Placed> placed =
-        model::part::resolvePlacements(*root, model::part::Pose{});
+        model::part::resolvePlacements(root->part(), model::part::Pose{});
 
     // Diagnostics verdict (cached per structural resolve): map each offender id to its message so
     // those RenderItems render in an error color. Also log it, so a headless caller sees the same
     // signal the simulator throws on.
     std::map<model::part::PartId, std::string> offenderMessage;
-    const model::part::SolveResult& diag = root->placementDiagnostics();
+    const model::part::SolveResult& diag = root->placementDiagnostics(); // cached on the node
     if(!diag.ok)
     {
         for(const model::part::OverlapDiagnostic& d : diag.diagnostics)

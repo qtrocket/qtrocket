@@ -1,19 +1,20 @@
 #include "RocketTreeView.h"
 
+#include "model/PartsModel.h"
 #include "model/RocketModel.h"
-#include "model/parts/Part.h"
 
-using model::part::Part;
+using model::PartNode;
+using model::PartsModel;
 
 RocketPartModel::RocketPartModel(QObject* parent)
     : QAbstractItemModel(parent)
 {
 }
 
-void RocketPartModel::setRootPart(Part* root)
+void RocketPartModel::setParts(const PartsModel* parts)
 {
     beginResetModel();
-    m_root = root;
+    m_parts = parts;
     endResetModel();
 }
 
@@ -24,11 +25,16 @@ QModelIndex RocketPartModel::index(int row, int column, const QModelIndex& paren
 
     // The only top-level row is the tree root itself.
     if (!parent.isValid())
-        return createIndex(row, column, m_root);
+    {
+        const PartNode* root = m_parts ? m_parts->root() : nullptr;
+        return root ? createIndex(row, column, static_cast<quintptr>(root->id())) : QModelIndex{};
+    }
 
-    Part* parentPart = partForIndex(parent);
-    const auto& children = parentPart->getChildParts();
-    return createIndex(row, column, children[row].first.get());
+    const PartNode* parentNode = nodeForIndex(parent);
+    if (!parentNode || row >= static_cast<int>(parentNode->children().size()))
+        return {};
+    return createIndex(row, column,
+                       static_cast<quintptr>(parentNode->children()[static_cast<std::size_t>(row)]->id()));
 }
 
 QModelIndex RocketPartModel::parent(const QModelIndex& index) const
@@ -36,15 +42,15 @@ QModelIndex RocketPartModel::parent(const QModelIndex& index) const
     if (!index.isValid())
         return {};
 
-    Part* part = partForIndex(index);
-    if (!part || part == m_root)
+    const PartNode* node = nodeForIndex(index);
+    if (!node)
         return {};
 
-    Part* parentPart = part->getParent();
-    if (!parentPart)
+    const PartNode* parentNode = node->parent();
+    if (!parentNode)
         return {};
 
-    return createIndex(rowOfPart(parentPart), 0, parentPart);
+    return createIndex(parentNode->rowInParent(), 0, static_cast<quintptr>(parentNode->id()));
 }
 
 int RocketPartModel::rowCount(const QModelIndex& parent) const
@@ -52,8 +58,9 @@ int RocketPartModel::rowCount(const QModelIndex& parent) const
     if (parent.column() > 0)  // children hang only off column 0
         return 0;
     if (!parent.isValid())
-        return m_root ? 1 : 0;
-    return static_cast<int>(partForIndex(parent)->getChildParts().size());
+        return (m_parts && m_parts->hasDesign()) ? 1 : 0;
+    const PartNode* node = nodeForIndex(parent);
+    return node ? static_cast<int>(node->children().size()) : 0;
 }
 
 int RocketPartModel::columnCount(const QModelIndex& /*parent*/) const
@@ -66,15 +73,15 @@ QVariant RocketPartModel::data(const QModelIndex& index, int role) const
     if (!index.isValid() || role != Qt::DisplayRole)
         return {};
 
-    Part* part = partForIndex(index);
-    if (!part)
+    const PartNode* node = nodeForIndex(index);
+    if (!node)
         return {};
 
     switch (index.column())
     {
-        case Name: return QString::fromStdString(part->getName());
-        case Type: return QString::fromStdString(part->typeName());
-        case Mass: return QString::number(part->getMass(0.0), 'f', 4);  // this part's own mass (kg)
+        case Name: return QString::fromStdString(node->part().getName());
+        case Type: return QString::fromStdString(node->part().typeName());
+        case Mass: return QString::number(node->part().getMass(0.0), 'f', 4);  // own mass (kg)
         default:   return {};
     }
 }
@@ -93,28 +100,13 @@ QVariant RocketPartModel::headerData(int section, Qt::Orientation orientation, i
     }
 }
 
-Part* RocketPartModel::partForIndex(const QModelIndex& index) const
+const PartNode* RocketPartModel::nodeForIndex(const QModelIndex& index) const
 {
-    if (index.isValid())
-        return static_cast<Part*>(index.internalPointer());
-    return m_root;
-}
-
-int RocketPartModel::rowOfPart(Part* part) const
-{
-    if (!part || part == m_root)
-        return 0;
-
-    Part* parentPart = part->getParent();
-    if (!parentPart)
-        return 0;
-
-    const auto& siblings = parentPart->getChildParts();
-    for (int i = 0; i < static_cast<int>(siblings.size()); ++i)
-        if (siblings[i].first.get() == part)
-            return i;
-
-    return 0;
+    if (!m_parts)
+        return nullptr;
+    if (!index.isValid())
+        return m_parts->root();
+    return m_parts->find(static_cast<model::part::Part::Id>(index.internalId()));
 }
 
 RocketTreeView::RocketTreeView(QWidget* parent)
@@ -148,7 +140,6 @@ void RocketTreeView::setRocketModel(model::RocketModel* rocket)
 
 void RocketTreeView::onRocketStructureChanged()
 {
-    // Re-fetch the root each time: setRoot()/clearDesign() swap the top-part pointer wholesale.
-    m_partModel->setRootPart(m_rocket ? m_rocket->getTopPart().get() : nullptr);
+    m_partModel->setParts(m_rocket ? &m_rocket->parts() : nullptr);
     expandAll();
 }

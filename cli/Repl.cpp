@@ -26,6 +26,7 @@
 #include "sim/Propagator.h"
 #include "sim/StateData.h"
 #include "model/MotorModelDatabase.h"
+#include "model/PartsModel.h"
 #include "model/parts/Parts.h"
 #include "model/DesignSerializer.h"
 #include "utils/Logger.h"
@@ -246,28 +247,17 @@ std::string linkFromTokens(const LinkTokens& t, model::part::StationLink& out)
    return "";
 }
 
-// First part matching @p name in DFS attachment order, or nullptr. Names need not be unique; the
-// first match wins, so scripts should use unique names (ids are session-specific and unscriptable).
-model::part::Part* findByName(model::part::Part& node, const std::string& name)
-{
-   if(node.getName() == name)
-      return &node;
-   for(const auto& [child, link] : node.getChildParts())
-      if(model::part::Part* hit = findByName(*child, name))
-         return hit;
-   return nullptr;
-}
-
 // Print one part per line, indented by depth: id / type / name / own-mass at t=0.
-void printPartTree(std::ostream& out, model::part::Part& node, int depth)
+void printPartTree(std::ostream& out, const model::PartsModel& parts)
 {
-    out << "  ";
-    for(int i = 0; i < depth; ++i)
+    parts.forEachNode([&out](const model::PartNode& n, int depth)
+    {
         out << "  ";
-    out << "[" << node.getId() << "] " << node.typeName() << " \"" << node.getName() << "\""
-         << "  m=" << node.getMass(0.0) << " kg\n";
-    for(const auto& [child, pos] : node.getChildParts())
-        printPartTree(out, *child, depth + 1);
+        for(int i = 0; i < depth; ++i)
+            out << "  ";
+        out << "[" << n.id() << "] " << n.part().typeName() << " \"" << n.part().getName() << "\""
+             << "  m=" << n.part().getMass(0.0) << " kg\n";
+    });
 }
 
 } // anonymous namespace
@@ -911,7 +901,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
          return true;
       }
       auto rocket = qtRocket->getRocket();
-      if(!rocket->getTopPart())
+      if(!rocket->parts().hasDesign())
       {
          out << "ERR addpart: no design (use newdesign first)\n";
          return true;
@@ -922,15 +912,15 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
       unsigned long long pid = 0;
       if(parentTok == "root")
       {
-         parentId = rocket->getTopPart()->getId();
+         parentId = rocket->parts().root()->id();
       }
       else if(parseULLStr(parentTok, pid))
       {
          parentId = static_cast<model::part::Part::Id>(pid);
       }
-      else if(model::part::Part* byName = findByName(*rocket->getTopPart(), parentTok))
+      else if(const model::PartNode* byName = rocket->parts().findByName(parentTok))
       {
-         parentId = byName->getId();
+         parentId = byName->id();
       }
       else
       {
@@ -970,8 +960,8 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
    }
    else if(cmd == "checkdesign")
    {
-      auto top = qtRocket->getRocket()->getTopPart();
-      if(!top)
+      const model::PartsModel& parts = qtRocket->getRocket()->parts();
+      if(!parts.hasDesign())
       {
          out << "ERR checkdesign: no design\n";
          return true;
@@ -979,9 +969,9 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
       // Physical-sense verdict in two layers: the cached envelope sweep (overlaps / poke-through),
       // plus an axial-coverage scan for air gaps -- intent the sweep can't see (a positive standoff is
       // legal in a StationLink but leaves parts floating apart).
-      const model::part::SolveResult& diag = top->placementDiagnostics();
+      const model::part::SolveResult& diag = parts.root()->placementDiagnostics();
       const std::vector<model::part::Placed> placed =
-         model::part::resolvePlacements(*top, model::part::Pose{});
+         model::part::resolvePlacements(parts.root()->part(), model::part::Pose{});
 
       struct Span { double aft; double fore; };
       std::vector<Span> spans;
@@ -1023,16 +1013,16 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
    }
    else if(cmd == "listparts")
    {
-      auto top = qtRocket->getRocket()->getTopPart();
-      if(!top)
+      const model::PartsModel& parts = qtRocket->getRocket()->parts();
+      if(!parts.hasDesign())
       {
          out << "ERR listparts: no design\n";
          return true;
       }
       out << "OK listparts:\n";
-      printPartTree(out, *top, 0);
-      out << "  -- composite: mass=" << top->getCompositeMass(0.0)
-          << " kg, cg_z=" << top->getCompositeCm(0.0).z() << " m (t=0)\n";
+      printPartTree(out, parts);
+      out << "  -- composite: mass=" << parts.root()->compositeMass(0.0)
+          << " kg, cg_z=" << parts.root()->compositeCm(0.0).z() << " m (t=0)\n";
       return true;
    }
    else if(cmd == "removepart")
@@ -1051,7 +1041,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
       }
       const model::part::Part::Id id = static_cast<model::part::Part::Id>(idv);
       auto rocket = qtRocket->getRocket();
-      if(rocket->getTopPart() && id == rocket->getTopPart()->getId())
+      if(rocket->parts().hasDesign() && id == rocket->parts().root()->id())
       {
          out << "ERR removepart: cannot remove the root (use newdesign or cleardesign)\n";
          return true;

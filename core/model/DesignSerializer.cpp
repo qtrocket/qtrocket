@@ -15,6 +15,7 @@
 // qtrocket headers
 #include "model/RocketModel.h"
 #include "model/MotorModelDatabase.h"
+#include "model/PartsModel.h"  // PartNode -- the save walk reads the node tree
 #include "model/parts/Parts.h" // Part, PartParams, makePart, params, Motor, concrete part types
 #include "utils/Logger.h"
 #include "utils/math/MathTypes.h"
@@ -70,29 +71,29 @@ bool isDefaultLink(const part::StationLink& link)
          && link.childStation01 == d.childStation01 && link.gap == d.gap;
 }
 
-// Recursively serialize a (non-Motor) part and its non-Motor descendants. @p link is this part's
-// placement intent relative to its parent (a default link for the root, ignored on load). Absolute
-// pose is never serialized -- the resolver re-derives it on load.
-pt::ptree writePart(const part::Part& node, const part::StationLink& link)
+// Recursively serialize a (non-Motor) node and its non-Motor descendants. The node's own link is
+// its placement intent relative to its parent (a default link on the root, ignored on load).
+// Absolute pose is never serialized -- the resolver re-derives it on load.
+pt::ptree writePart(const PartNode& node)
 {
     pt::ptree pn;
-    pn.put("<xmlattr>.type", node.typeName());
-    pn.put("<xmlattr>.name", node.getName());
-    pn.add_child("params", writeParams(part::params(node)));
+    pn.put("<xmlattr>.type", node.part().typeName());
+    pn.put("<xmlattr>.name", node.part().getName());
+    pn.add_child("params", writeParams(part::params(node.part())));
     // Emit <link> only for non-default intent; a default-equal link (zero-config abut) is elided and
     // recovered as the default on read.
-    if(!isDefaultLink(link))
+    if(!isDefaultLink(node.link()))
     {
-        pn.add_child("link", writeLink(link));
+        pn.add_child("link", writeLink(node.link()));
     }
 
     pt::ptree children;
-    for(const auto& [child, childLink] : node.getChildParts())
+    for(const auto& child : node.children())
     {
         // The motor is serialized separately, by common name (see save) -- not as a tree part, since it
         // cannot be rebuilt by the geometry factory.
-        if(dynamic_cast<const part::Motor*>(child.get()) != nullptr) { continue; }
-        children.add_child("part", writePart(*child, childLink)); // add_child (NOT put) for siblings
+        if(dynamic_cast<const part::Motor*>(&child->part()) != nullptr) { continue; }
+        children.add_child("part", writePart(*child)); // add_child (NOT put) for siblings
     }
     pn.add_child("children", children);
     return pn;
@@ -200,7 +201,7 @@ void DesignSerializer::save(const RocketModel& rocket, const std::string& filena
     tree.put("QtRocketDesign.<xmlattr>.version", "0.2");
     tree.put("QtRocketDesign.design.<xmlattr>.name", rocket.getName());
 
-    tree.add_child("QtRocketDesign.part", writePart(*rocket.getTopPart(), part::StationLink{}));
+    tree.add_child("QtRocketDesign.part", writePart(*rocket.parts().root()));
 
     if(rocket.isMotorSet())
     {
