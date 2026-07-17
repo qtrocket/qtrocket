@@ -26,7 +26,7 @@ public:
 
     /// @brief Thrust (Newtons) at time @p t (seconds), linearly interpolated between samples. 0 for
     ///        t < 0 or t > burn time.
-    double getThrust(double t);
+    double getThrust(double t) const;
 
     void setIgnitionTime(double t);
 

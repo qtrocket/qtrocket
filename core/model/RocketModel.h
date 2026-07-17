@@ -95,8 +95,8 @@ public:
     /// Re-resolves motorPart and clears the manual reference-area override. A null @p root is ignored.
     void setRoot(std::shared_ptr<part::Part> root);
 
-    /// Reset to the default placeholder body (the boot HollowSphere) via setRoot -- so the motor is
-    /// cleared and the reference-area override reset.
+    /// Clear the design (null root). Re-resolves the motor borrow, resets the manual reference-area
+    /// override, and notifies structure observers -- same invariants as setRoot, for an empty tree.
     void clearDesign();
 
     /// Attach @p child under the part with id @p parentId, placed by @p link (default: abut child fore

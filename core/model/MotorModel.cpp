@@ -66,7 +66,7 @@ double MotorModel::getMass(double simTime) const
     }
 }
 
-double MotorModel::getThrust(double simTime)
+double MotorModel::getThrust(double simTime) const
 {
 
     if(simTime > thrust.getMaxTime() + ignitionTime)

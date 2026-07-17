@@ -149,12 +149,15 @@ void RocketModel::setRoot(std::shared_ptr<part::Part> root)
     topPart = std::move(root);
     reresolveMotorPart();            // the old motorPart belonged to the replaced tree
     referenceAreaOverridden = false; // a freshly-installed airframe must not inherit a manual area
-    notifyStructureChanged();        // also covers clearDesign(), which routes through here
+    notifyStructureChanged();
 }
 
 void RocketModel::clearDesign()
 {
-    topPart = nullptr; // functionally identical to topPart.reset()
+    topPart = nullptr;
+    reresolveMotorPart();            // the borrowed motorPart belonged to the cleared tree
+    referenceAreaOverridden = false; // a design built after a clear must not inherit a manual area
+    notifyStructureChanged();
 }
 
 bool RocketModel::addPart(part::Part::Id parentId, std::shared_ptr<part::Part> child, part::StationLink link)

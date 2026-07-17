@@ -320,7 +320,9 @@ public:
     };
 
     double getMass(double simTime) const;
-    double getThrust(double simTime);
+    /// Thrust (N) at @p simTime -- a pure function of the curve and ignition epoch. const: its only
+    /// write is the mutable log-once burnout latch, which never affects the returned value.
+    double getThrust(double simTime) const;
 
     void setMetaData(const MetaData& md);
     void moveMetaData(MetaData&& md);
@@ -335,7 +337,9 @@ public:
     MetaData data;
 private:
     bool ignitionOccurred{false};
-    bool burnOutOccurred{false};
+    /// log-once burnout marker, written inside const getThrust. mutable observability state, not
+    /// physics; single-writer like every mutable cache in the model layer.
+    mutable bool burnOutOccurred{false};
     double emptyMass{0.0};
     double isp{0.0};
     double ignitionTime{0.0}; /// 0 until startMotor(); read by getThrust's burnout test, so it must
