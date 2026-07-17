@@ -1,6 +1,7 @@
 
 add_executable(model_tests
    PartTests.cpp
+   PartsModelTests.cpp
    MotorTests.cpp
    ThrustCurveTests.cpp
    ThrustCurveParserTests.cpp

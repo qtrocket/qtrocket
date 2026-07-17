@@ -7,8 +7,10 @@
 #include <string>
 
 #include "model/InertiaTensors.h"
+#include "model/PartsModel.h"
 #include "model/parts/FinSet.h"
 #include "model/parts/Part.h"
+#include "model/parts/Placement.h"
 #include "model/tests/TestPart.h"
 #include "utils/Logger.h"
 
@@ -70,14 +72,20 @@ double axialMassCentroid(const Fin& f)
              / (3.0 * (f.cr + f.ct));
 }
 
-std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
+std::unique_ptr<model::part::Part> pointMass(const std::string& name, double mass)
 {
-    return std::make_shared<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
+    return std::make_unique<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
 }
 
 model::part::FinSet makeFins(unsigned int N, const Fin& f = EX)
 {
     return model::part::FinSet("fins", N, f.cr, f.ct, f.s, f.sweep, f.thk, f.rb, f.rho);
+}
+
+std::unique_ptr<model::part::Part> makeFinsPtr(unsigned int N, const Fin& f = EX)
+{
+    return std::make_unique<model::part::FinSet>(
+        "fins", N, f.cr, f.ct, f.s, f.sweep, f.thk, f.rb, f.rho);
 }
 } // namespace
 
@@ -99,8 +107,8 @@ TEST(FinSetTest, CmOnAxisForN3AndN4)
     {
         SCOPED_TRACE(testing::Message() << "N = " << N);
         const model::part::FinSet fins = makeFins(N);
-        // The stored CM offset is on-axis at the axial mass centroid, reported relative to the MIDDLE in
-        // the +z = forward frame: x_c - L/2 (L = rootChord). (Corrected datum; see whitepaper 2.3.)
+        // The stored CM offset is on-axis at the axial mass centroid, reported relative to the
+        // component middle in the +z = forward frame: x_c - L/2 (L = rootChord).
         const Vector3 off = fins.getCenterMassOffset();
         EXPECT_NEAR(off.x(), 0.0, 1e-15);
         EXPECT_NEAR(off.y(), 0.0, 1e-15);
@@ -117,19 +125,26 @@ TEST(FinSetTest, InertiaMatchesMeshOracle)
 {
     model::part::FinSet fins = makeFins(3);
     const double mass = fins.getMass(0.0);
-    const Matrix3 I = fins.getCompositeI(0.0); // full mass-weighted tensor about the set CM
+    const Matrix3 I = fins.getI(); // per-unit-mass tensor about the set CM
     const MeshResult mesh = finSetMesh(3, EX);
 
-    // FinSet wires the helper correctly (getCompositeI == mass * TrapezoidalFinSet) ...
-    const Matrix3 helper = mass * model::InertiaTensors::TrapezoidalFinSet(
+    // FinSet wires the helper correctly (getI == TrapezoidalFinSet) ...
+    const Matrix3 helper = model::InertiaTensors::TrapezoidalFinSet(
                                                 3, EX.cr, EX.ct, EX.s, EX.sweep, EX.thk, EX.rb);
     for(int r = 0; r < 3; ++r)
         for(int c = 0; c < 3; ++c)
             EXPECT_NEAR(I(r, c), helper(r, c), 1e-12);
 
+    // ... a lone node mass-weights it unchanged (single part about its own CM: no parallel-axis term) ...
+    const auto node = model::PartNode::make(makeFinsPtr(3));
+    const Matrix3 full = node->compositeI(0.0);
+    for(int r = 0; r < 3; ++r)
+        for(int c = 0; c < 3; ++c)
+            EXPECT_NEAR(full(r, c), mass * helper(r, c), 1e-12);
+
     // ... and that tensor matches the independent brute-force mesh (the corrected-Kz acceptance gate).
-    EXPECT_NEAR(I(0, 0) / mass, mesh.perMassInertia(0, 0), 0.01 * mesh.perMassInertia(0, 0));
-    EXPECT_NEAR(I(2, 2) / mass, mesh.perMassInertia(2, 2), 0.01 * mesh.perMassInertia(2, 2));
+    EXPECT_NEAR(I(0, 0), mesh.perMassInertia(0, 0), 0.01 * mesh.perMassInertia(0, 0));
+    EXPECT_NEAR(I(2, 2), mesh.perMassInertia(2, 2), 0.01 * mesh.perMassInertia(2, 2));
     EXPECT_DOUBLE_EQ(I(0, 0), I(1, 1));
     EXPECT_NEAR(I(0, 1), 0.0, 1e-12);
     EXPECT_NEAR(I(0, 2), 0.0, 1e-12);
@@ -236,19 +251,23 @@ TEST(FinSetTest, RejectsNonPhysical)
 
 TEST(FinSetTest, CloneIsDeepTypePreserving)
 {
-    auto fins = std::make_shared<model::part::FinSet>(
-        "fins", 4, EX.cr, EX.ct, EX.s, EX.sweep, EX.thk, EX.rb, EX.rho);
-    fins->addChildPart(pointMass("rail", 0.01), model::part::abut(0.01));
+    auto fins = makeFinsPtr(4);
+    const model::part::Part::Id finsId = fins->getId();
+    auto root = model::PartNode::make(std::move(fins));
+    root->addChild(model::PartNode::make(pointMass("rail", 0.01)), model::part::abut(0.01));
 
-    auto copy = fins->clone();
-    const double massBefore = copy->getCompositeMass(0.0);
-    const double izzBefore = copy->getCompositeI(0.0)(2, 2);
+    auto copy = root->clone();
+    const double massBefore = copy->compositeMass(0.0);
+    const double izzBefore  = copy->compositeI(0.0)(2, 2);
 
-    fins->setMass(99.0);
-    fins->addChildPart(pointMass("extra", 50.0), model::part::abut(1.0));
+    // edits routed through the owning model must not reach the detached copy
+    model::PartsModel pm;
+    pm.installRoot(std::move(root));
+    ASSERT_TRUE(pm.setPartMass(finsId, 99.0));
+    ASSERT_TRUE(pm.attach(finsId, pointMass("extra", 50.0), model::part::abut(1.0)).has_value());
 
-    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
-    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(2, 2), izzBefore);
-    EXPECT_NE(dynamic_cast<model::part::FinSet*>(copy.get()), nullptr);
-    EXPECT_NE(copy->getId(), fins->getId());
+    EXPECT_DOUBLE_EQ(copy->compositeMass(0.0), massBefore);
+    EXPECT_DOUBLE_EQ(copy->compositeI(0.0)(2, 2), izzBefore);
+    EXPECT_NE(dynamic_cast<const model::part::FinSet*>(&copy->part()), nullptr);
+    EXPECT_NE(copy->id(), finsId); // fresh ids on every cloned part
 }

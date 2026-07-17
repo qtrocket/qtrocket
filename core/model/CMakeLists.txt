@@ -54,6 +54,5 @@ target_link_libraries(model PUBLIC
    Boost::property_tree
    jsoncpp_static)
 
-# Unit tests -- step-4 migration window: rebuilt against PartsModel in step 6 of
-# docs/partsmodel-refactor-plan.md.
-# add_subdirectory(tests)
+# Unit tests
+add_subdirectory(tests)

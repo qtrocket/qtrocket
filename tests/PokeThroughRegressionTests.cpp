@@ -1,18 +1,20 @@
-// Part-Placement Step 12 / T4: the frozen poke-through offender, exercised END-TO-END through the file
-// reader. xl75_multi_pokethrough.qrd carries the whitepaper's edge-defined links (abut body, OnSurface
-// fins, NestInBore coupler at 0.04 m insertion), so the resolved coupler projects past the body rim into
-// the solid nose and the Layer-2 sweep fires. The production xl75_multi.qrd is clean (its recovered
+// The frozen poke-through offender, exercised end-to-end through the file reader.
+// xl75_multi_pokethrough.qrd carries the whitepaper's edge-defined links (abut body, OnSurface fins,
+// NestInBore coupler at 0.04 m insertion), so the resolved coupler projects past the body rim into
+// the solid nose and the envelope sweep fires. The production xl75_multi.qrd is clean (its recovered
 // CM-to-CM links keep the coupler clear), so without this separate fixture nothing would drive the
-// poke-through diagnostic after the cutover. WorkedExampleTests pins the whitepaper geometry; the
-// programmatic twin lives in model/tests/ResolverSweepTests.cpp.
+// poke-through diagnostic. WorkedExampleTests pins the whitepaper geometry; the programmatic twin
+// lives in model/tests/ResolverSweepTests.cpp.
 
 #include <gtest/gtest.h>
 
-#include <memory>
+#include <span>
+#include <stdexcept>
 #include <string>
 
 #include "model/DesignSerializer.h"
 #include "model/MotorModelDatabase.h"
+#include "model/PartsModel.h"
 #include "model/RocketModel.h"
 #include "model/parts/Part.h"
 #include "model/parts/Placement.h"
@@ -23,17 +25,21 @@ namespace
 const std::string kPokeThrough =
     std::string(QTROCKET_TEST_DATA_DIR) + "/designs/xl75_multi_pokethrough.qrd";
 
-/// Load the airframe-only tree (empty motor DB: the <motor> is re-attached by name, absent here).
-std::shared_ptr<model::part::Part> loadAirframe(const std::string& path)
+/// Airframe-only design (empty motor DB: the <motor> is re-attached by name, absent here). The
+/// RocketModel owns the tree, so it must outlive every borrowed node/placement.
+struct LoadedDesign
 {
-    utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_); // quiet the motor-absent warning
-    model::RocketModel        rocket;
-    model::MotorModelDatabase motors;
-    model::DesignSerializer::load(rocket, motors, path);
-    return rocket.getTopPart();
-}
+    model::RocketModel rocket;
 
-const model::part::Placed* find(const std::vector<model::part::Placed>& placed, const std::string& name)
+    explicit LoadedDesign(const std::string& path)
+    {
+        utils::Logger::getInstance()->setLogLevel(utils::Logger::ERROR_); // quiet the motor-absent warning
+        model::MotorModelDatabase motors;
+        model::DesignSerializer::load(rocket, motors, path);
+    }
+};
+
+const model::part::Placed* find(std::span<const model::part::Placed> placed, const std::string& name)
 {
     for(const model::part::Placed& p : placed)
     {
@@ -45,13 +51,15 @@ const model::part::Placed* find(const std::vector<model::part::Placed>& placed, 
 
 TEST(PokeThroughRegressionTests, UnfixedFixtureStillFires)
 {
-    const std::shared_ptr<model::part::Part> root = loadAirframe(kPokeThrough);
+    const LoadedDesign design(kPokeThrough);
+    const model::PartNode* root = design.rocket.parts().root();
+    ASSERT_NE(root, nullptr);
 
     const model::part::SolveResult& diag = root->placementDiagnostics();
     ASSERT_FALSE(diag.ok) << "the frozen poke-through fixture must still fail the sweep";
     ASSERT_EQ(diag.diagnostics.size(), 1u);
 
-    const std::vector<model::part::Placed> placed = model::part::resolvePlacements(*root, model::part::Pose{});
+    const std::span<const model::part::Placed> placed = root->resolvedPlacements();
     const model::part::Placed* coupler = find(placed, "MultiCoupler");
     const model::part::Placed* nose    = find(placed, "MultiNose");
     ASSERT_NE(coupler, nullptr);
@@ -64,17 +72,19 @@ TEST(PokeThroughRegressionTests, UnfixedFixtureStillFires)
     EXPECT_NEAR(d.penetration, 0.0376 - 0.0395 * (0.26 / 0.30), 1e-9); // ~0.003367 m
 
     // The composite gate refuses the failed solve rather than returning a silently-wrong inertia.
-    EXPECT_THROW((void)root->getCompositeI(0.0), std::runtime_error);
+    EXPECT_THROW((void)root->compositeI(0.0), std::runtime_error);
 }
 
 TEST(WorkedExampleTests, ResolvedStationsMatchWhitepaper)
 {
-    // The whitepaper xl75 worked example (Section 6, 10), read end-to-end from the 0.2 fixture: nose span
+    // The whitepaper xl75 worked example (Section 6, 10), read end-to-end from the fixture: nose span
     // [-0.30, 0]; body abuts to [-1.20, -0.30]; the coupler nests 0.04 m, fore plane at -0.26, span
     // [-0.34, -0.26]; the OnSurface fin seat lands at the body's 0.06 station.
-    const std::shared_ptr<model::part::Part> root = loadAirframe(kPokeThrough);
-    const std::vector<model::part::Placed>   placed = model::part::resolvePlacements(*root, model::part::Pose{});
+    const LoadedDesign design(kPokeThrough);
+    const model::PartNode* root = design.rocket.parts().root();
+    ASSERT_NE(root, nullptr);
 
+    const std::span<const model::part::Placed> placed = root->resolvedPlacements();
     const model::part::Placed* nose    = find(placed, "MultiNose");
     const model::part::Placed* body    = find(placed, "MultiBody");
     const model::part::Placed* coupler = find(placed, "MultiCoupler");

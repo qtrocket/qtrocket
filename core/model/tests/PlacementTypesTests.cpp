@@ -112,6 +112,7 @@ TEST(PlacementTypesTests, ValueTypesDefaultConstruct)
     EXPECT_EQ(placed.part, nullptr);
     EXPECT_DOUBLE_EQ(placed.pose.origin.z(), 0.0);
     expectIdentity(placed.pose.orient);
+    EXPECT_EQ(placed.parentId, 0u); // 0 = root sentinel
 
     const SolveResult result{};
     EXPECT_TRUE(result.ok);

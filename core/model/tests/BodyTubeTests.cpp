@@ -1,15 +1,14 @@
 #include <gtest/gtest.h>
 
-#include <cmath>
 #include <memory>
 #include <numbers>
 #include <stdexcept>
 
 #include "model/InertiaTensors.h"
+#include "model/PartsModel.h"
 #include "model/parts/BodyTube.h"
 #include "model/parts/HollowSphere.h"
 #include "model/parts/Part.h"
-#include "model/tests/TestPart.h"
 
 namespace
 {
@@ -28,11 +27,6 @@ double tubeIxxPerMass(double ri, double ro, double L)
 {
     return 0.25 * (ri * ri + ro * ro) + L * L / 12.0;
 }
-
-std::shared_ptr<model::part::Part> pointMass(const std::string& name, double mass)
-{
-    return std::make_shared<model::part::TestPart>(name, Matrix3::Zero(), mass, Vector3::Zero());
-}
 } // namespace
 
 TEST(BodyTubeTest, MassMatchesHollowCylinder)
@@ -49,10 +43,15 @@ TEST(BodyTubeTest, MassMatchesHollowCylinder)
 TEST(BodyTubeTest, CompositeIEqualsMassTimesTube)
 {
     const double ri = 0.018, ro = 0.019, L = 0.30, density = 680.0;
-    model::part::BodyTube tube("body", ri, ro, L, density);
 
-    const double mass = tube.getMass(0.0);
-    const Matrix3 I = tube.getCompositeI(0.0); // full mass-weighted tensor (kg*m^2)
+    model::PartsModel pm;
+    pm.installRoot(model::PartNode::make(
+        std::make_unique<model::part::BodyTube>("body", ri, ro, L, density)));
+    const model::PartNode* root = pm.root();
+    ASSERT_NE(root, nullptr);
+
+    const double mass = root->part().getMass(0.0);
+    const Matrix3 I = root->compositeI(0.0); // full mass-weighted tensor (kg*m^2)
 
     // Wires the per-unit-mass tensor through the Part base correctly ...
     const Matrix3 expected = mass * model::InertiaTensors::Tube(ri, ro, L);
@@ -76,25 +75,30 @@ TEST(BodyTubeTest, TwoBodyTubesEndToEndEqualOneLongerTube)
     const double ri = 0.018, ro = 0.019, density = 680.0;
     const double L1 = 0.10, L2 = 0.20;
 
-    auto assembly = std::make_shared<model::part::BodyTube>("t1", ri, ro, L1, density);
-    assembly->addChildPart(std::make_shared<model::part::BodyTube>("t2", ri, ro, L2, density),
-                                   model::part::StationLink{.parentStation01 = 1.0, .childStation01 = 0.0,
-                                                                   .seat = model::part::SeatKind::Abut});
+    model::PartsModel pm;
+    pm.installRoot(model::PartNode::make(
+        std::make_unique<model::part::BodyTube>("t1", ri, ro, L1, density)));
+    const auto attached = pm.attach(
+        pm.root()->id(), std::make_unique<model::part::BodyTube>("t2", ri, ro, L2, density),
+        model::part::StationLink{.parentStation01 = 1.0, .childStation01 = 0.0,
+                                        .seat = model::part::SeatKind::Abut});
+    ASSERT_TRUE(attached.has_value());
+    const model::PartNode& root = *pm.root();
 
     const double totalLength = L1 + L2;
     const double totalMass = tubeMass(ri, ro, totalLength, density);
 
-    EXPECT_NEAR(assembly->getCompositeMass(0.0), totalMass, 1e-12);
+    EXPECT_NEAR(root.compositeMass(0.0), totalMass, 1e-12);
 
-    const Vector3 cm = assembly->getCompositeCm(0.0);
+    const Vector3 cm = root.compositeCm(0.0);
     EXPECT_NEAR(cm(0), 0.0, 1e-12);
     EXPECT_NEAR(cm(1), 0.0, 1e-12);
-    // Composite CG is now reported in the root's fore-plane (tip) datum, not the root's own CM: it
-    // shifts by cmLocalZ_root = -L1/2, so the merged center sits at L2/2 - L1/2 = (L2 - L1)/2.
+    // Composite CG is reported in the root's fore-plane (tip) datum: the stack occupies z in
+    // [-L1, L2], so the merged center sits at (L2 - L1)/2.
     EXPECT_NEAR(cm(2), (L2 - L1) / 2.0, 1e-12);
 
     const Matrix3 merged = totalMass * model::InertiaTensors::Tube(ri, ro, totalLength);
-    const Matrix3 I = assembly->getCompositeI(0.0);
+    const Matrix3 I = root.compositeI(0.0);
     for(int r = 0; r < 3; ++r)
     {
         for(int c = 0; c < 3; ++c)
@@ -143,18 +147,32 @@ TEST(BodyTubeTest, TubeAndSphereCmAtMid)
 
 TEST(BodyTubeTest, CloneIsDeepTypePreserving)
 {
-    auto tube = std::make_shared<model::part::BodyTube>("body", 0.018, 0.019, 0.30, 680.0);
-    tube->addChildPart(pointMass("tip", 0.05), model::part::abut(0.2));
+    const double ri = 0.018, ro = 0.019, density = 680.0;
 
-    auto copy = tube->clone();
-    const double massBefore = copy->getCompositeMass(0.0);
-    const double iyyBefore = copy->getCompositeI(0.0)(1, 1);
+    model::PartsModel pm;
+    pm.installRoot(model::PartNode::make(
+        std::make_unique<model::part::BodyTube>("body", ri, ro, 0.30, density)));
+    const auto tip = pm.attach(
+        pm.root()->id(), std::make_unique<model::part::BodyTube>("tip", ri, ro, 0.05, density),
+        model::part::abut(0.2));
+    ASSERT_TRUE(tip.has_value());
 
-    tube->setMass(99.0);
-    tube->addChildPart(pointMass("extra", 50.0), model::part::abut(1.0));
+    const std::unique_ptr<model::PartNode> copy = pm.root()->clone();
+    const double massBefore = copy->compositeMass(0.0);
+    const double iyyBefore = copy->compositeI(0.0)(1, 1);
 
-    EXPECT_DOUBLE_EQ(copy->getCompositeMass(0.0), massBefore);
-    EXPECT_DOUBLE_EQ(copy->getCompositeI(0.0)(1, 1), iyyBefore);
-    EXPECT_NE(dynamic_cast<model::part::BodyTube*>(copy.get()), nullptr);
-    EXPECT_NE(copy->getId(), tube->getId());
+    // edits to the source tree must not leak into the detached copy
+    ASSERT_TRUE(pm.setPartMass(pm.root()->id(), 99.0));
+    ASSERT_TRUE(pm.attach(pm.root()->id(),
+                          std::make_unique<model::part::BodyTube>("extra", ri, ro, 0.10, density),
+                          model::part::abut(1.0)).has_value());
+
+    EXPECT_DOUBLE_EQ(copy->compositeMass(0.0), massBefore);
+    EXPECT_DOUBLE_EQ(copy->compositeI(0.0)(1, 1), iyyBefore);
+
+    // type-preserving, with fresh ids at every node of the copy
+    EXPECT_NE(dynamic_cast<const model::part::BodyTube*>(&copy->part()), nullptr);
+    EXPECT_NE(copy->id(), pm.root()->id());
+    ASSERT_EQ(copy->children().size(), 1u);
+    EXPECT_NE(copy->children()[0]->id(), *tip);
 }

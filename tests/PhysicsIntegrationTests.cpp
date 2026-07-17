@@ -12,6 +12,7 @@
 
 // qtrocket headers
 #include "core/QtRocket.h"
+#include "model/PartsModel.h"
 #include "model/RocketModel.h"
 #include "model/parts/Parts.h"
 #include "sim/Environment.h"
@@ -59,8 +60,10 @@ protected:
             std::string(QTROCKET_DATA_DIR) + "/Aerotech.rse");
 
         auto rocket = qtRocket->getRocket();
-        rocket->setRoot(std::make_shared<model::part::HollowSphere>("Body", 0.04, 0.05, 1956.8));
-        rocket->getTopPart()->setMass(0.5); // Tests expect this exact value
+        rocket->installDesign(model::PartNode::make(
+            std::make_unique<model::part::HollowSphere>("Body", 0.04, 0.05, 1956.8)));
+        // Pin the airframe dry mass to exactly 0.5 kg (tests expect this exact value).
+        ASSERT_TRUE(rocket->parts().setPartMass(rocket->parts().root()->id(), 0.5));
         rocket->setMotorModel(loader->getMotorModelByName("G80T"));
         rocket->setDragCoefficient(0.75);
         rocket->setReferenceArea(0.001134); // m^2 (38 mm body tube)
@@ -340,7 +343,7 @@ TEST_F(PhysicsIntegrationTest, RocketMassEqualsDryPlusMotorNoDoubleCount)
 {
     auto rocket = qtRocket->getRocket();
     const model::MotorModel g80 = loader->getMotorModelByName("G80T");
-    const double dry    = 0.5;                                        // Default TopPart is hollowSphere with mass 0.5
+    const double dry    = 0.5;                                        // airframe mass pinned in SetUp
     const double loaded = g80.getMass(0.0);                           // pre-ignition total weight
     const double empty  = g80.data.totalWeight - g80.data.propWeight; // casing mass
 

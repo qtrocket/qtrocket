@@ -4,6 +4,7 @@
 #include <optional>
 #include <stdexcept>
 
+#include "model/PartsModel.h"
 #include "model/parts/PartFactory.h"
 #include "model/parts/Parts.h"
 #include "model/tests/TestPart.h"
@@ -16,14 +17,19 @@ using model::part::params;
 
 // Assert two parts have identical own-mass and full composite CM/inertia at t=0 -- the strongest
 // black-box check that a factory-built part equals a directly-constructed one (and that a reflected
-// round-trip preserves the geometry the composite math consumes).
-void expectSameMassAndComposite(model::part::Part& a, model::part::Part& b)
+// round-trip preserves the geometry the composite math consumes). Composite queries live on the
+// node, so each part is cloned into its own single-node tree.
+void expectSameMassAndComposite(const model::part::Part& a, const model::part::Part& b)
 {
     EXPECT_DOUBLE_EQ(a.getMass(0.0), b.getMass(0.0));
-    const Vector3 ca = a.getCompositeCm(0.0);
-    const Vector3 cb = b.getCompositeCm(0.0);
-    const Matrix3 ia = a.getCompositeI(0.0);
-    const Matrix3 ib = b.getCompositeI(0.0);
+    model::PartsModel ma;
+    ma.installRoot(model::PartNode::make(a.clone()));
+    model::PartsModel mb;
+    mb.installRoot(model::PartNode::make(b.clone()));
+    const Vector3 ca = ma.root()->compositeCm(0.0);
+    const Vector3 cb = mb.root()->compositeCm(0.0);
+    const Matrix3 ia = ma.root()->compositeI(0.0);
+    const Matrix3 ib = mb.root()->compositeI(0.0);
     for(int i = 0; i < 3; ++i)
     {
         EXPECT_DOUBLE_EQ(ca(i), cb(i));
@@ -208,7 +214,7 @@ TEST(PartFactoryTest, MakePartThrowsOnMissingRequiredField)
 TEST(PartFactoryTest, MakePartThrowsOnUnknownOrNonConstructibleType)
 {
     EXPECT_THROW(makePart("Frobnicator", bodyTubeParams()), std::invalid_argument);
-    // Motor is real but is NOT factory-built (it needs a MotorModel, attached via setMotorModel).
+    // Motor is real but is not factory-built (it needs a MotorModel; installed via PartsModel::setMotor).
     EXPECT_THROW(makePart("Motor", PartParams{}), std::invalid_argument);
 }
 

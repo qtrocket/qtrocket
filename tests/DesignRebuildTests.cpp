@@ -14,9 +14,11 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 /// \endcond
 
@@ -26,8 +28,10 @@
 #include "cli/Repl.h"
 #include "model/DesignSerializer.h"
 #include "model/MotorModelDatabase.h"
+#include "model/PartsModel.h"
 #include "model/RocketModel.h"
-#include "model/parts/Parts.h"
+#include "model/parts/PartFactory.h"
+#include "model/parts/Placement.h"
 #include "utils/Logger.h"
 
 namespace
@@ -61,16 +65,31 @@ std::vector<std::string> stems(const fs::path& dir, const std::string& ext)
    return out;
 }
 
-// A design's motor line ('<motor commonName=".."/>' or "" if none), read from the raw file text --
-// simpler and more direct than resolving through a motor database.
-std::string motorLine(const fs::path& qrd)
+// A design's motor element -- '<motor commonName=".."/>' through any nested <link/> line, or "" if
+// none -- read from the raw file text; simpler and more direct than resolving through a motor
+// database, and it covers the persisted motor link too.
+std::string motorElement(const fs::path& qrd)
 {
    std::ifstream in(qrd);
    std::string line;
+   std::string out;
+   bool inMotor = false;
    while(std::getline(in, line))
-      if(line.find("<motor ") != std::string::npos)
-         return line.substr(line.find("<motor "));
-   return "";
+   {
+      const auto pos = line.find("<motor ");
+      if(!inMotor && pos != std::string::npos)
+      {
+         inMotor = true;
+         line = line.substr(pos);
+      }
+      if(inMotor)
+      {
+         out += line + "\n";
+         if(line.find("/>") != std::string::npos || line.find("</motor>") != std::string::npos)
+            break;
+      }
+   }
+   return out;
 }
 
 // Field-exact PartParams equality: both trees come from the same serializer, so every double must
@@ -101,36 +120,39 @@ void expectSameParams(const model::part::PartParams& a, const model::part::PartP
 }
 
 // Recursive structural equality: type, name, geometry params, and the stored StationLink of every
-// attachment, in order.
-void expectSameTree(const model::part::Part& a, const model::part::Part& b, const std::string& where)
+// attachment edge, in order.
+void expectSameTree(const model::PartNode& a, const model::PartNode& b, const std::string& where)
 {
-   EXPECT_EQ(a.typeName(), b.typeName()) << where;
-   EXPECT_EQ(a.getName(), b.getName()) << where;
-   expectSameParams(model::part::params(a), model::part::params(b), where + "/" + a.getName());
+   EXPECT_EQ(a.part().typeName(), b.part().typeName()) << where;
+   EXPECT_EQ(a.part().getName(), b.part().getName()) << where;
+   expectSameParams(model::part::params(a.part()), model::part::params(b.part()),
+                    where + "/" + a.part().getName());
 
-   const auto& ca = a.getChildParts();
-   const auto& cb = b.getChildParts();
-   ASSERT_EQ(ca.size(), cb.size()) << where << "/" << a.getName() << " child count";
+   const auto ca = a.children();
+   const auto cb = b.children();
+   ASSERT_EQ(ca.size(), cb.size()) << where << "/" << a.part().getName() << " child count";
    for(std::size_t i = 0; i < ca.size(); ++i)
    {
-      const auto& [childA, linkA] = ca[i];
-      const auto& [childB, linkB] = cb[i];
-      const std::string tag = where + "/" + a.getName() + " link[" + std::to_string(i) + "]";
+      const model::part::StationLink& linkA = ca[i]->link();
+      const model::part::StationLink& linkB = cb[i]->link();
+      const std::string tag =
+         where + "/" + a.part().getName() + " link[" + std::to_string(i) + "]";
       EXPECT_EQ(linkA.seat, linkB.seat) << tag;
       EXPECT_EQ(linkA.parentStation01, linkB.parentStation01) << tag;
       EXPECT_EQ(linkA.childStation01, linkB.childStation01) << tag;
       EXPECT_EQ(linkA.gap, linkB.gap) << tag;
-      expectSameTree(*childA, *childB, where + "/" + a.getName());
+      expectSameTree(*ca[i], *cb[i], where + "/" + a.part().getName());
    }
 }
 
-// Load a fixture's airframe (empty motor DB -> geometry only) and hand back the owning root.
-std::shared_ptr<model::part::Part> loadAirframe(const fs::path& qrd)
+// Load a fixture's airframe (empty motor DB -> geometry only). The model owns the node tree, so the
+// caller keeps the whole RocketModel alive and reads parts().root().
+std::unique_ptr<model::RocketModel> loadAirframe(const fs::path& qrd)
 {
-   model::RocketModel        rocket;
+   auto rocket = std::make_unique<model::RocketModel>();
    model::MotorModelDatabase motors;
-   model::DesignSerializer::load(rocket, motors, qrd.string());
-   return rocket.getTopPart();
+   model::DesignSerializer::load(*rocket, motors, qrd.string());
+   return rocket;
 }
 } // namespace
 
@@ -173,13 +195,17 @@ TEST(DesignRebuild, EveryScriptRebuildsItsCommittedFixture)
       ASSERT_TRUE(ok(run(repl, "savedesign " + tmp.string())));
 
       const fs::path committed = kDesignsDir / (stem + ".qrd");
-      const std::shared_ptr<model::part::Part> rebuilt = loadAirframe(tmp);
-      const std::shared_ptr<model::part::Part> fixture = loadAirframe(committed);
-      expectSameTree(*fixture, *rebuilt, stem);
-      EXPECT_EQ(fixture->getCompositeMass(0.0), rebuilt->getCompositeMass(0.0));
-      EXPECT_EQ(fixture->getCompositeCm(0.0).z(), rebuilt->getCompositeCm(0.0).z());
-      EXPECT_EQ(fixture->getCompositeI(0.0), rebuilt->getCompositeI(0.0));
-      EXPECT_EQ(motorLine(committed), motorLine(tmp));
+      const std::unique_ptr<model::RocketModel> rebuilt = loadAirframe(tmp);
+      const std::unique_ptr<model::RocketModel> fixture = loadAirframe(committed);
+      const model::PartNode* rebuiltRoot = rebuilt->parts().root();
+      const model::PartNode* fixtureRoot = fixture->parts().root();
+      ASSERT_NE(rebuiltRoot, nullptr);
+      ASSERT_NE(fixtureRoot, nullptr);
+      expectSameTree(*fixtureRoot, *rebuiltRoot, stem);
+      EXPECT_EQ(fixtureRoot->compositeMass(0.0), rebuiltRoot->compositeMass(0.0));
+      EXPECT_EQ(fixtureRoot->compositeCm(0.0).z(), rebuiltRoot->compositeCm(0.0).z());
+      EXPECT_EQ(fixtureRoot->compositeI(0.0), rebuiltRoot->compositeI(0.0));
+      EXPECT_EQ(motorElement(committed), motorElement(tmp));
 
       std::error_code ec;
       fs::remove(tmp, ec);
@@ -195,18 +221,23 @@ TEST(DesignRebuild, CommittedCorpusIsContiguousAndSeated)
    for(const std::string& stem : stems(kDesignsDir, ".qrd"))
    {
       SCOPED_TRACE(stem);
-      const std::shared_ptr<model::part::Part> root = loadAirframe(kDesignsDir / (stem + ".qrd"));
+      const std::unique_ptr<model::RocketModel> rocket =
+         loadAirframe(kDesignsDir / (stem + ".qrd"));
+      const model::PartNode* root = rocket->parts().root();
+      ASSERT_NE(root, nullptr);
 
       EXPECT_TRUE(root->placementDiagnostics().ok);
 
-      // Every stored link passes the radial seam check for its SeatKind.
-      const auto checkSeams = [](const auto& self, const model::part::Part& parent) -> void
+      // Every stored edge passes the radial seam check for its SeatKind.
+      const auto checkSeams = [](const auto& self, const model::PartNode& parent) -> void
       {
-         for(const auto& [child, link] : parent.getChildParts())
+         for(const auto& child : parent.children())
          {
-            const auto seam = model::part::radialSeamCheck(parent, *child, link);
+            const auto seam =
+               model::part::radialSeamCheck(parent.part(), child->part(), child->link());
             EXPECT_FALSE(seam.has_value())
-               << parent.getName() << " -> " << child->getName() << ": " << seam->message;
+               << parent.part().getName() << " -> " << child->part().getName() << ": "
+               << seam->message;
             self(self, *child);
          }
       };
@@ -214,8 +245,7 @@ TEST(DesignRebuild, CommittedCorpusIsContiguousAndSeated)
 
       // Axial contiguity: sorted by aft end, each span starts within the coverage so far.
       std::vector<std::pair<double, double>> spans; // (aft, fore)
-      for(const model::part::Placed& pl :
-          model::part::resolvePlacements(*root, model::part::Pose{}))
+      for(const model::part::Placed& pl : root->resolvedPlacements())
       {
          const double len = pl.part->axialLength();
          if(len > 0.0)
