@@ -6,7 +6,7 @@ addpart body FinSet name=fins finCount=3 rootChord=0.05 tipChord=0.025 span=0.03
 checkdesign
 setmotor D12
 setdrag 0.75
-setarea 0.000531
+# the reference area is computed from the airframe geometry (pi * body outer radius^2)
 listatmospheres
 listgravity
 listintegrators

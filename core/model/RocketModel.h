@@ -63,18 +63,10 @@ public:
     double getDragCoefficient() const { return dragCoefficient; }
     void setDragCoefficient(double d) { dragCoefficient = d; }
 
-    double getReferenceArea() const { return referenceArea; }
-    /// Set the aero reference (frontal) area (m^2), marking it a manual override that wins over the
-    /// geometry-derived default. Negative values ignored.
-    void setReferenceArea(double a) { if(a >= 0.0) { referenceArea = a; referenceAreaOverridden = true; } }
-
-    /// Whether setReferenceArea() set a manual area; the geometry default applies only when it hasn't.
-    bool isReferenceAreaOverridden() const { return referenceAreaOverridden; }
-
-    /// Reference (frontal) area from geometry (m^2): the single widest frontal disc in the part tree
-    /// (max part getReferenceArea() -- Barrowman/OpenRocket convention, not a sum, not inflated by
-    /// fins). 0 with no design.
-    double deriveReferenceAreaFromGeometry() const;
+    /// Aero reference (frontal) area (m^2), computed purely from geometry: the single widest frontal
+    /// disc in the part tree (max part getReferenceArea() -- Barrowman/OpenRocket convention, not a
+    /// sum, not inflated by fins). 0 with no design.
+    double getReferenceArea() const;
 
     // ---- The part tree -------------------------------------------------------------------------
 
@@ -82,8 +74,8 @@ public:
     PartsModel& parts() { return parts_; }
     const PartsModel& parts() const { return parts_; }
 
-    /// Install a design (null clears): atomic root replace plus the RocketModel-owned install side
-    /// effect -- a freshly-installed airframe must not inherit a manual reference-area override.
+    /// Install a design (null clears): atomic root replace. The reference area follows from the new
+    /// geometry, so nothing carries over from the previous airframe.
     void installDesign(std::unique_ptr<PartNode> root);
 
     /// Clear the design. The motor borrow is re-resolved inside the install seam, so it can never
@@ -114,12 +106,6 @@ private:
 
     /// Dimensionless drag coefficient for the drag term in getForces().
     double dragCoefficient{1.0};
-
-    /// Aero reference (frontal) area (m^2) for the drag model. Default ~ a 38 mm body tube (pi*0.019^2).
-    double referenceArea{1.134e-3};
-
-    /// True once setReferenceArea() set a user value; the geometry default then defers to it.
-    bool referenceAreaOverridden{false};
 
 };
 

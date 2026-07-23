@@ -210,13 +210,11 @@ void DesignSerializer::save(const RocketModel& rocket, const std::string& filena
         }
     }
 
-    // The <sim> block carries only the RocketModel-owned aero options. Launch/environment options
-    // (velocity, angle, atmosphere, gravity, integrator) are not RocketModel state and are not
+    // The <sim> block carries only the RocketModel-owned aero options. Reference area is derived from
+    // geometry (the part tree round-trips it), so only the drag coefficient is stored. Launch/environment
+    // options (velocity, angle, atmosphere, gravity, integrator) are not RocketModel state and are not
     // serialized here -- the CLI manages them as session config.
     tree.put("QtRocketDesign.sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient());
-    tree.put("QtRocketDesign.sim.<xmlattr>.referenceArea", rocket.getReferenceArea());
-    tree.put("QtRocketDesign.sim.<xmlattr>.referenceAreaOverridden",
-                rocket.isReferenceAreaOverridden() ? "true" : "false");
 
     pt::xml_writer_settings<std::string> settings(' ', 2);
     pt::write_xml(filename, tree, std::locale(), settings);
@@ -262,14 +260,10 @@ void DesignSerializer::load(RocketModel& rocket, MotorModelDatabase& motors, con
     rocket.installDesign(std::move(newRoot));
     rocket.setName(root.get<std::string>("design.<xmlattr>.name", ""));
 
-    // Apply the sim/aero block after the install so a restored manual override wins over its reset.
+    // Apply the sim/aero block after the install. Reference area is derived from geometry, so only the
+    // drag coefficient is restored; any legacy referenceArea/referenceAreaOverridden attributes are
+    // ignored (forward-tolerant within major 0).
     rocket.setDragCoefficient(root.get<double>("sim.<xmlattr>.dragCoefficient", rocket.getDragCoefficient()));
-    const bool overridden =
-        root.get<std::string>("sim.<xmlattr>.referenceAreaOverridden", "false") == "true";
-    if(overridden)
-    {
-        rocket.setReferenceArea(root.get<double>("sim.<xmlattr>.referenceArea", rocket.getReferenceArea()));
-    }
 }
 
 } // namespace model

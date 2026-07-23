@@ -5,6 +5,7 @@
 // C headers
 // C++ headers
 #include <memory>
+#include <numbers>
 #include <string>
 
 // 3rd party headers
@@ -51,6 +52,8 @@ public:
     double getLength()      const override { return 2.0 * outerRadius; } ///< axial extent = diameter (pole to pole)
     double getDensity()     const { return density; }     ///< Uniform mass density (kg/m^3).
     double getVolume()      const { return volume; }      ///< Shell volume (4/3)pi(ro^3 - ri^3) (m^3).
+    /// Frontal silhouette disc pi*ro^2 -- a sphere's aero reference area is its equatorial great circle.
+    double getReferenceArea() const override { return std::numbers::pi * outerRadius * outerRadius; }
 
     /// Outer silhouette sqrt(ro^2 - (z+ro)^2) about the center at z = -ro: ro at the equator, 0 at the poles.
     double radiusOuterAt(double zLocal) const override;

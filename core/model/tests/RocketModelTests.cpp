@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <numbers>
 #include <utility>
 
 #include "model/PartsModel.h"
@@ -24,20 +25,20 @@ std::unique_ptr<model::part::FinSet> finSet(const std::string& name)
 }
 } // namespace
 
-TEST(RocketModelFacadeTest, InstallDesignReplacesTreeAndResetsReferenceAreaOverride)
+TEST(RocketModelFacadeTest, InstallDesignReplacesTreeAndReferenceAreaFollowsGeometry)
 {
     RocketModel r;
-    r.setReferenceArea(0.05); // manual override on
-    EXPECT_TRUE(r.isReferenceAreaOverridden());
+    EXPECT_DOUBLE_EQ(r.getReferenceArea(), 0.0); // no design -> no frontal disc
 
-    auto body = bodyTube("Tube");
+    auto body = bodyTube("Tube"); // outer radius 0.019
     const double bodyMass = body->getMass(0.0);
     r.installDesign(PartNode::make(std::move(body)));
 
-    EXPECT_FALSE(r.isReferenceAreaOverridden());  // a new airframe drops the stale manual override
     ASSERT_NE(r.parts().root(), nullptr);
     EXPECT_EQ(r.parts().root()->part().typeName(), "BodyTube");
     EXPECT_DOUBLE_EQ(r.getMass(0.0), bodyMass);   // composite reflects the new root
+    // Reference area is purely geometry-derived: the tube's frontal disc pi*ro^2.
+    EXPECT_DOUBLE_EQ(r.getReferenceArea(), std::numbers::pi * 0.019 * 0.019);
 }
 
 TEST(RocketModelFacadeTest, ClearDesignClearsTreeAndMotorAndFiresCallback)

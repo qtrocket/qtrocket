@@ -41,7 +41,7 @@ Matrix3 RocketModel::getCompositeInertiaTensor(double t)
     return parts_.root()->compositeI(t);
 }
 
-double RocketModel::deriveReferenceAreaFromGeometry() const
+double RocketModel::getReferenceArea() const
 {
     return parts_.hasDesign() ? parts_.root()->maxFrontalReferenceArea() : 0.0;
 }
@@ -81,7 +81,7 @@ Vector3 RocketModel::getForces(double t, const Vector3& position, const Vector3&
     const double altitude = position[2] > 0.0 ? position[2] : 0.0;
     const double rho = atmosphere->getDensity(altitude);
     const double speed = velocity.norm();
-    const Vector3 drag = -0.5 * rho * speed * dragCoefficient * referenceArea * velocity;
+    const Vector3 drag = -0.5 * rho * speed * dragCoefficient * getReferenceArea() * velocity;
     forces += drag;
 
     return forces;
@@ -118,7 +118,6 @@ MotorModel RocketModel::getMotorModel() const
 void RocketModel::installDesign(std::unique_ptr<PartNode> root)
 {
     parts_.installRoot(std::move(root));
-    referenceAreaOverridden = false; // a freshly-installed airframe must not inherit a manual area
 }
 
 } // namespace model

@@ -217,19 +217,24 @@ TEST(AeroTest, AssembledRocketCmMassAndRefArea)
     EXPECT_LT(pm.root()->maxFrontalReferenceArea(), pi * (R + s) * (R + s));
 }
 
-TEST(AeroTest, ManualReferenceAreaOverrideWins)
+TEST(AeroTest, ReferenceAreaIsPurelyGeometric)
 {
     model::RocketModel rocket;
-    rocket.installDesign(model::PartNode::make(
-        std::make_unique<model::part::HollowSphere>("Body", 0.04, 0.05, 1956.8)));
-    // The placeholder body presents no frontal disc, so the geometry-derived area is 0 ...
-    EXPECT_DOUBLE_EQ(rocket.deriveReferenceAreaFromGeometry(), 0.0);
-    EXPECT_FALSE(rocket.isReferenceAreaOverridden());
+    // No design -> no geometry -> zero reference area (drag is unreachable without a design anyway).
+    EXPECT_DOUBLE_EQ(rocket.getReferenceArea(), 0.0);
 
-    // ... and a manual setReferenceArea wins and is flagged as the override.
-    rocket.setReferenceArea(0.005);
-    EXPECT_TRUE(rocket.isReferenceAreaOverridden());
-    EXPECT_DOUBLE_EQ(rocket.getReferenceArea(), 0.005);
+    // A hollow sphere presents its equatorial great circle pi*ro^2 as the frontal disc.
+    const double ro = 0.05;
+    rocket.installDesign(model::PartNode::make(
+        std::make_unique<model::part::HollowSphere>("Body", 0.04, ro, 1956.8)));
+    EXPECT_DOUBLE_EQ(rocket.getReferenceArea(), pi * ro * ro);
+    EXPECT_DOUBLE_EQ(rocket.getReferenceArea(), rocket.parts().root()->maxFrontalReferenceArea());
+
+    // Swapping the airframe re-derives the area from the new geometry, nothing carries over.
+    const double R = 0.019;
+    rocket.installDesign(model::PartNode::make(
+        std::make_unique<model::part::BodyTube>("Tube", 0.0, R, 0.20, 680.0)));
+    EXPECT_DOUBLE_EQ(rocket.getReferenceArea(), pi * R * R);
 }
 
 TEST(AeroTest, MotorIsMassButNotAeroOrReferenceContributor)

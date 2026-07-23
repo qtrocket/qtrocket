@@ -66,7 +66,7 @@ protected:
         ASSERT_TRUE(rocket->parts().setPartMass(rocket->parts().root()->id(), 0.5));
         rocket->setMotorModel(loader->getMotorModelByName("G80T"));
         rocket->setDragCoefficient(0.75);
-        rocket->setReferenceArea(0.001134); // m^2 (38 mm body tube)
+        // Reference area is derived from geometry: the sphere's frontal disc pi*ro^2 (ro = 0.05 m).
     }
 
     struct FlightResult

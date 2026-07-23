@@ -27,7 +27,7 @@ checkdesign
 listparts
 setmotor I280DM
 setdrag 0.75
-setarea 0.001257
+# the reference area is computed from the airframe geometry (pi * body outer radius^2)
 savedesign payload_final.qrd
 launch
 quit

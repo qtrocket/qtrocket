@@ -10,7 +10,7 @@ listparts
 # phase 3: fly
 setmotor B6
 setdrag 0.75
-setarea 0.000302
+# the reference area is computed from the airframe geometry (pi * body outer radius^2)
 status
 launch
 # phase 4: keep it

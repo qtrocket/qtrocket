@@ -11,7 +11,7 @@ checkdesign
 listparts
 # phase 3: four motors
 setdrag 0.75
-setarea 0.000531
+# the reference area is computed from the airframe geometry (pi * body outer radius^2)
 setmotor C11
 launch
 save flight_C11.csv

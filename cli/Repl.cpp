@@ -352,7 +352,6 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
              << "#   listmotors [substr]     list motor common names (optional filter)\n"
              << "#   setmotor <code>         select a motor by common name\n"
              << "#   setdrag <cd>            set drag coefficient (dimensionless)\n"
-             << "#   setarea <m^2>           set aerodynamic reference area, must be >= 0\n"
              << "#   setvelocity <m/s>       set initial speed (default 0)\n"
              << "#   setangle <deg>          set launch angle from vertical (default 0 = up)\n"
              << "#   settimestep <s>         set integrator timestep\n"
@@ -575,24 +574,6 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
         out << "OK setdrag: " << d << "\n";
         return true;
     }
-    else if(cmd == "setarea")
-    {
-        double a = 0.0;
-        if(!parseDouble(iss, a))
-        {
-            out << "ERR usage: setarea <m^2>\n";
-            return true;
-        }
-        if(a < 0.0)
-        {
-            out << "ERR setarea: area must be >= 0\n";
-            return true;
-        }
-        qtRocket->getRocket()->setReferenceArea(a);
-        referenceArea = a;
-        out << "OK setarea: " << a << " m^2\n";
-        return true;
-    }
     else if(cmd == "setvelocity")
     {
         double v = 0.0;
@@ -724,7 +705,7 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
              << "  mass       = " << qtRocket->getRocket()->getMass(0.0) << " kg\n"
              << "  dry_mass   = " << qtRocket->getRocket()->getMass(0.0) - (motorSet ? qtRocket->getRocket()->getMotorModel().getMass(0.0) : 0.0) << " kg\n"
              << "  drag_coeff = " << dragCoeff << "\n"
-             << "  ref_area   = " << referenceArea << " m^2\n"
+             << "  ref_area   = " << qtRocket->getRocket()->getReferenceArea() << " m^2 (from geometry)\n"
              << "  velocity   = " << initialVelocity << " m/s\n"
              << "  angle      = " << initialAngleDeg << " deg (from vertical)\n"
              << "  atmosphere = " << atmosphereModel << "\n"
@@ -1102,10 +1083,9 @@ bool Repl::executeImpl(const std::string& line, std::ostream& out)
          out << "ERR loaddesign: " << e.what() << "\n";
          return true;
       }
-      // Sync staged config from the loaded rocket: it set drag/refArea and may have re-attached
-      // the motor by common name.
+      // Sync staged config from the loaded rocket: it set the drag coefficient and may have re-attached
+      // the motor by common name. Reference area is derived from geometry, so nothing to stage.
       dragCoeff = rocket->getDragCoefficient();
-      referenceArea = rocket->getReferenceArea();
       motorSet = rocket->isMotorSet();
       if(motorSet)
          motorName = rocket->getMotorModel().data.commonName;

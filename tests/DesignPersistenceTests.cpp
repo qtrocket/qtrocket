@@ -8,6 +8,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -107,15 +108,13 @@ TEST_F(DesignRoundTrip, GeometryRoundTripsMassCgStructureAndMultiChild)
     for(int i = 0; i < 3; ++i) { EXPECT_NEAR(cg2(i), cg(i), 1e-9); }
 }
 
-TEST_F(DesignRoundTrip, ReferenceAreaOverrideAndDragRoundTrip)
+TEST_F(DesignRoundTrip, DragCoefficientRoundTripsAndReferenceAreaFollowsGeometry)
 {
     const std::string tmp = tempFile("refarea");
     {
         model::RocketModel r;
         r.installDesign(model::PartNode::make(bodyTube("Body")));
-        r.setReferenceArea(0.0421); // manual override on (after the install, which resets it)
         r.setDragCoefficient(0.55);
-        ASSERT_TRUE(r.isReferenceAreaOverridden());
         model::DesignSerializer::save(r, tmp);
     }
     model::MotorModelDatabase motors;
@@ -123,26 +122,10 @@ TEST_F(DesignRoundTrip, ReferenceAreaOverrideAndDragRoundTrip)
     model::DesignSerializer::load(r2, motors, tmp);
     std::filesystem::remove(tmp);
 
-    EXPECT_TRUE(r2.isReferenceAreaOverridden());
-    EXPECT_DOUBLE_EQ(r2.getReferenceArea(), 0.0421);
+    // The drag coefficient is stored/restored; the reference area is not serialized at all -- it is
+    // re-derived from the reloaded geometry (bodyTube's frontal disc pi*ro^2).
     EXPECT_DOUBLE_EQ(r2.getDragCoefficient(), 0.55);
-}
-
-TEST_F(DesignRoundTrip, NonOverriddenReferenceAreaStaysUnoverriddenOnLoad)
-{
-    const std::string tmp = tempFile("refarea2");
-    {
-        model::RocketModel r; // reference area at its default, not overridden
-        r.installDesign(model::PartNode::make(bodyTube("Body")));
-        ASSERT_FALSE(r.isReferenceAreaOverridden());
-        model::DesignSerializer::save(r, tmp);
-    }
-    model::MotorModelDatabase motors;
-    model::RocketModel r2;
-    model::DesignSerializer::load(r2, motors, tmp);
-    std::filesystem::remove(tmp);
-
-    EXPECT_FALSE(r2.isReferenceAreaOverridden());
+    EXPECT_DOUBLE_EQ(r2.getReferenceArea(), std::numbers::pi * 0.019 * 0.019);
 }
 
 TEST_F(DesignRoundTrip, MotorByNameRoundTripsAndPreservesMassCurve)
